@@ -22,19 +22,14 @@ function CreatePlayerRaceData(src)
     return player
 end
 
--- Command to join the race queue (simple placeholder)
+-- Command to join the race queue
 RegisterCommand("joinrace", function(src, args)
-    if RaceSession.state == SPZ.RaceState.IDLE then
-        if not RaceSession.players[src] then
-            RaceSession.players[src] = CreatePlayerRaceData(src)
-            print(string.format("[Race Engine] Player %s joined the queue.", GetPlayerName(src)))
-            
-            -- Trigger state change to POLLING if min players reached
-            if CountPlayers() >= 1 then -- Min player count for testing
-                StartPolling()
-            end
-        end
-    end
+    exports["spz-races"]:JoinQueue(src)
+end, false)
+
+-- Command to leave the race queue
+RegisterCommand("leaverace", function(src, args)
+    exports["spz-races"]:LeaveQueue(src)
 end, false)
 
 function CountPlayers()

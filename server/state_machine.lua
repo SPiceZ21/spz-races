@@ -39,8 +39,17 @@ function StartPolling()
     SetState(SPZ.RaceState.POLLING)
 end
 
+function ResetToIdle()
+    print("[Race Engine] Resetting to IDLE")
+    RaceSession.pollVotes = {}
+    RaceSession.pollOptions = {}
+    SetState(SPZ.RaceState.IDLE)
+end
+
 -- Export functions for other scripts
 exports("SetRaceState", SetState)
+exports("ResetToIdle", ResetToIdle)
+exports("StartPolling", StartPolling)
 exports("GetCurrentSession", function() return RaceSession end)
 
 -- Initial IDLE check

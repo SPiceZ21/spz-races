@@ -4,6 +4,7 @@ Config = {}
 -- true: both options are the same type, alternating each race
 -- false: mixed pool (not currently the default mentioned by user)
 Config.AlternateTypes = true 
+Config.MinPlayersToStart = 2
 
 Config.DefaultLaps = {
   min = 3,
