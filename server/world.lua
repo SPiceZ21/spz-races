@@ -73,7 +73,12 @@ function StartSpawnTimeoutMonitor()
             end
             
             if allReady then
-                print("[World Setup] All players ready. Transitioning to COUNTDOWN.")
+                print("[World Setup] All players ready. Applying No-Collision.")
+                
+                -- Apply ghost mode between all participants
+                exports["spz-races"]:ApplyRaceNoCollision()
+
+                print("[World Setup] Transitioning to COUNTDOWN.")
                 exports["spz-races"]:SetRaceState(SPZ.RaceState.COUNTDOWN)
                 return
             end
