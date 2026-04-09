@@ -8,6 +8,7 @@ Config.MinPlayersToStart = 2
 Config.PollDuration = 30
 Config.SpawnTimeout = 15
 Config.CountdownSeconds = 5
+Config.PositionBroadcastInterval = 1000
 
 Config.DefaultLaps = {
   min = 3,
