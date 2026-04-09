@@ -7,26 +7,27 @@ local function HandleFinish(source, pData)
     pData.finished = true
     pData.finish_time = GetGameTimer() - (pData.race_start_time or RaceSession.startTime)
     
-    print(string.format("[Race Engine] Player %s (%s) finished! Time: %s ms", pData.name, source, pData.finish_time))
+    -- 12.2 Personal Best Detection
+    local track = RaceSession.track
+    local carClass = RaceSession.carClass
     
-    TriggerClientEvent("SPZ:raceFinished", source, pData.finish_time)
+    local prevBest = exports["spz-leaderboard"]:GetPersonalBest(source, track.name, carClass)
+    pData.personal_best = (prevBest == nil) or (pData.finish_time < prevBest)
+    
+    if pData.personal_best then
+        print(string.format("[Timing] New PB for %s on %s: %s ms", pData.name, track.name, pData.finish_time))
+        exports["spz-leaderboard"]:WriteResult(source, track.name, carClass, pData.finish_time)
+    end
+    
+    print(string.format("[Race Engine] Player %s (%s) finished! Time: %s ms (PB: %s)", pData.name, source, pData.finish_time, pData.personal_best))
+    
+    TriggerClientEvent("SPZ:raceFinished", source, pData.finish_time, pData.personal_best)
     
     -- Update positions one last time
     if UpdateAllPositions then UpdateAllPositions() end
     
     -- Check if everyone is finished or DNF to end the session
-    local allDone = true
-    for _, p in pairs(RaceSession.players) do
-        if not p.finished and not p.dnf then
-            allDone = false
-            break
-        end
-    end
-    
-    if allDone then
-        print("[Race Engine] All participants finished. Ending race.")
-        exports["spz-races"]:SetRaceState(SPZ.RaceState.ENDED)
-    end
+    CheckAllFinished()
 end
 
 local function HandleCheckpointAdvance(source, pData)

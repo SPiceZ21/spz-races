@@ -29,6 +29,9 @@ function StartCountdownSequence()
         TriggerClientEvent("SPZ:go", -1)
         print("[Countdown] RACE LIVE")
 
+        -- 12.3 Global Race Timeout Watchdog
+        StartRaceTimeoutWatchdog()
+
         -- Release participants
         for source, _ in pairs(RaceSession.players) do
             TriggerClientEvent("SPZ:freezeRacer", source, false)
@@ -41,6 +44,28 @@ function StartCountdownSequence()
 
         -- Finalize state transition
         exports["spz-races"]:SetRaceState(SPZ.RaceState.LIVE)
+    end)
+end
+
+-- Authoritative timeout watchdog to prevent infinite sessions
+function StartRaceTimeoutWatchdog()
+    Citizen.CreateThread(function()
+        local maxTimeMs = (Config.Timeouts.RACE_MAX or 600) * 1000
+        local startTime = GetGameTimer()
+
+        while (GetGameTimer() - startTime) < maxTimeMs do
+            Citizen.Wait(5000) -- Check every 5 seconds
+            if RaceSession.state ~= SPZ.RaceState.LIVE then return end
+        end
+
+        if RaceSession.state == SPZ.RaceState.LIVE then
+            print("[Race Engine] Global race timeout reached. Kicking lingering racers.")
+            for source, data in pairs(RaceSession.players) do
+                if not data.finished and not data.dnf then
+                    ProcessDNF(source, "timeout")
+                end
+            end
+        end
     end)
 end
 
