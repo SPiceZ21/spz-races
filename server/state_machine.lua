@@ -22,6 +22,11 @@ local function SetState(newState)
     print(string.format("[Race Engine] State Transition: %s -> %s", oldState, newState))
     RaceSession.state = newState
     
+    -- Handle logic for entering specific states
+    if newState == SPZ.RaceState.WAITING then
+        exports["spz-races"]:SetupRaceWorld()
+    end
+
     -- Notify all players
     TriggerClientEvent("spz_race:state_updated", -1, newState)
 end

@@ -6,6 +6,7 @@ Config = {}
 Config.AlternateTypes = true 
 Config.MinPlayersToStart = 2
 Config.PollDuration = 30
+Config.SpawnTimeout = 15
 
 Config.DefaultLaps = {
   min = 3,
