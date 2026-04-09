@@ -1,7 +1,7 @@
 -- server/dnf.lua
 
--- 12.3 DNF Logic
-function ProcessDNF(source, reason)
+-- 14.2 MarkDNF Logic
+function MarkDNF(source, reason)
     local pData = RaceSession.players[source]
     if not pData or pData.finished or pData.dnf then return end
 
@@ -9,16 +9,31 @@ function ProcessDNF(source, reason)
 
     pData.dnf = true
     pData.dnf_reason = reason
-    pData.finish_time = nil -- No finish time for DNF
+    pData.finish_time = nil
 
-    TriggerClientEvent("SPZ:raceDNF", source, reason)
+    -- 14.2 Despawn Vehicle
+    if GetResourceState("spz-vehicles") == "started" then
+        exports["spz-vehicles"]:DespawnVehicle(source)
+    end
 
-    -- Force return to default bucket if they were in one
+    -- 14.2 Notify remaining racers
+    TriggerClientEvent("SPZ:playerDNF", -1, {
+        source = source,
+        name   = pData.name,
+        reason = reason,
+    })
+
+    -- Return to default bucket and clean up state
     exports["spz-core"]:AssignPlayerToBucket(source, 0)
     exports["spz-core"]:SetPlayerState(source, "IDLE")
 
-    -- Check if everyone is finished or DNF
+    -- 14.3 Check if everyone is finished
     CheckAllFinished()
+end
+
+-- Backward compatibility for early implementation
+function ProcessDNF(source, reason)
+    MarkDNF(source, reason)
 end
 
 function CheckAllFinished()
@@ -34,11 +49,14 @@ function CheckAllFinished()
     end
     
     if allDone and participantsCount > 0 then
-        print("[Race Engine] All participants completed or DNF. Transitioning to ENDED.")
+        print("[Race Engine] All participants completed or DNF. Ending race session.")
         exports["spz-races"]:SetRaceState(SPZ.RaceState.ENDED)
     end
 end
 
--- Export for external use (timeouts, lap-skipping kicks, etc)
-exports("ProcessDNF", ProcessDNF)
+-- mid-race disconnects are handled in server/main.lua to centralized drop events
+-- but we export MarkDNF for it to use.
+
+exports("MarkDNF", MarkDNF)
+exports("ProcessDNF", MarkDNF)
 exports("CheckAllFinished", CheckAllFinished)

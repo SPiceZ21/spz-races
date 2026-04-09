@@ -44,8 +44,30 @@ end
 -- Clean up on drop
 AddEventHandler("playerDropped", function(reason)
     local src = source
-    if RaceSession.players[src] then
-        RaceSession.players[src] = nil
-        print(string.format("[Race Engine] Player %s left the race.", GetPlayerName(src)))
+    local pData = RaceSession.players[src]
+    
+    if pData then
+        -- 14.1 Mid-Race Disconnect
+        local activePhases = {
+            [SPZ.RaceState.WAITING] = true,
+            [SPZ.RaceState.COUNTDOWN] = true,
+            [SPZ.RaceState.LIVE] = true
+        }
+
+        if activePhases[RaceSession.state] then
+            -- Transition to a DNF state rather than just vanishing, ensuring state consistency
+            exports["spz-races"]:MarkDNF(src, "disconnect")
+        else
+            -- Standard cleanup for IDLE/POLLING states
+            RaceSession.players[src] = nil
+            print(string.format("[Race Engine] Player %s left the queue.", GetPlayerName(src)))
+            
+            -- If in polling, check if we still have enough players
+            if RaceSession.state == SPZ.RaceState.POLLING then
+                if exports["spz-races"]:GetQueueCount() < Config.MinPlayersToStart then
+                    exports["spz-races"]:ResetToIdle()
+                end
+            end
+        end
     end
 end)
