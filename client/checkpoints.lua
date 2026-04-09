@@ -1,49 +1,70 @@
 -- client/checkpoints.lua
-local currentCheckpoints = {}
-local nextCheckpointIndex = 1
-local lastHitTime = 0
 
-function LoadTrack(trackData)
-    currentCheckpoints = trackData.checkpoints
-    nextCheckpointIndex = 1
-    
-    -- Clear old blips/markers if any
-    -- Render first CP
+local CurrentCheckpoints = {}
+local CurrentCPIndex = 1
+local RaceState = "IDLE"
+
+-- 11.2 Checkpoint Visuals
+local function DrawRaceMarkers()
+    if #CurrentCheckpoints == 0 or RaceState == "IDLE" then return end
+
+    local cp = CurrentCheckpoints[CurrentCPIndex]
+    if cp then
+        -- Active checkpoint: bright yellow cylinder
+        DrawMarker(1, cp.coords.x, cp.coords.y, cp.coords.z - 1.0,
+                   0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                   cp.radius * 2.0, cp.radius * 2.0, 2.0,
+                   255, 255, 0, 100, false, true, 2, false, nil, nil, false)
+    end
+
+    local nextCp = CurrentCheckpoints[CurrentCPIndex + 1]
+    if nextCp then
+        -- Next checkpoint: semi-transparent white
+        DrawMarker(1, nextCp.coords.x, nextCp.coords.y, nextCp.coords.z - 1.0,
+                   0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                   nextCp.radius * 2.0, nextCp.radius * 2.0, 2.0,
+                   255, 255, 255, 50, false, true, 2, false, nil, nil, false)
+    end
 end
 
-RegisterNetEvent("spz_race:track_data", function(trackData)
-    LoadTrack(trackData)
-end)
-
+-- Thread for visual rendering (consistent with standard marker draw rates)
 Citizen.CreateThread(function()
     while true do
-        Citizen.Wait(0)
-        if #currentCheckpoints > 0 then
-            local playerPed = PlayerPedId()
-            local coords = GetEntityCoords(playerPed)
-            local targetCP = currentCheckpoints[nextCheckpointIndex]
-            
-            if targetCP then
-                -- Render marker
-                DrawMarker(1, targetCP.x, targetCP.y, targetCP.z - 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 5.0, 5.0, 5.0, 255, 0, 0, 100, false, true, 2, nil, nil, false)
-                
-                -- Simple hit detection (replace with hit_detector.lua for precision)
-                local dist = Vdist(coords.x, coords.y, coords.z, targetCP.x, targetCP.y, targetCP.z)
-                if dist < 5.0 and GetGameTimer() - lastHitTime > 1000 then
-                    lastHitTime = GetGameTimer()
-                    
-                    -- Trigger server hit
-                    TriggerServerEvent("spz_race:checkpoint_hit", nextCheckpointIndex)
-                    
-                    -- Logic to advance nextCheckpointIndex (server will sync it back or client handles it)
-                    -- In a real implementation, we'd wait for server confirmation or predict
-                end
-            end
+        if #CurrentCheckpoints > 0 and (RaceState == "LIVE" or RaceState == "COUNTDOWN") then
+            DrawRaceMarkers()
+            Citizen.Wait(0)
+        else
+            Citizen.Wait(500)
         end
     end
 end)
 
--- Receive sync for current_cp from server
-RegisterNetEvent("spz_race:sync_cp", function(nextCP)
-    nextCheckpointIndex = nextCP
+-- Initialization and synchronization
+RegisterNetEvent("SPZ:spawnCheckpoints", function(checkpoints, startIdx)
+    print(string.format("[Checkpoints] Loading track with %d points", #checkpoints))
+    CurrentCheckpoints = checkpoints
+    CurrentCPIndex = startIdx or 1
+end)
+
+RegisterNetEvent("SPZ:nextCheckpoint", function(newIndex)
+    CurrentCPIndex = newIndex
+    -- Local feedback: Sound effect or visual pop could go here
+    PlaySoundFrontend(-1, "CHECKPOINT_NORMAL", "HUD_MINI_GAME_SOUNDSET", 1)
+end)
+
+RegisterNetEvent("spz_race:state_updated", function(newState)
+    RaceState = newState
+    if newState == "IDLE" or newState == "CLEANUP" then
+        CurrentCheckpoints = {}
+        CurrentCPIndex = 1
+    end
+end)
+
+-- Export for hit detector access
+exports("GetCurrentCP", function()
+    return CurrentCheckpoints[CurrentCPIndex], CurrentCPIndex
+end)
+
+exports("GetRaceState", function()
+    return RaceState
 end)

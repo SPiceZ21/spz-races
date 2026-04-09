@@ -29,7 +29,6 @@ server_scripts {
     'server/no_collision.lua',
     'server/countdown.lua',
     'server/checkpoints.lua',
-    'server/timing.lua',
     'server/positions.lua',
     'server/dnf.lua',
     'server/results.lua',

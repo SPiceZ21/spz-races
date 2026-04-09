@@ -26,6 +26,12 @@ local function SetState(newState)
     if newState == SPZ.RaceState.WAITING then
         exports["spz-races"]:SetupRaceWorld()
     elseif newState == SPZ.RaceState.COUNTDOWN then
+        -- Initialize track visuals for all participants
+        if RaceSession.track and RaceSession.track.checkpoints then
+            for src, _ in pairs(RaceSession.players) do
+                TriggerClientEvent("SPZ:spawnCheckpoints", src, RaceSession.track.checkpoints, 1)
+            end
+        end
         exports["spz-races"]:StartCountdownSequence()
     end
 

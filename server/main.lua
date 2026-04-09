@@ -18,6 +18,7 @@ function CreatePlayerRaceData(src)
         finished      = false,
         dnf           = false,
         voted         = false,
+        race_start_time = nil,
     }
     return player
 end
