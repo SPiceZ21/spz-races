@@ -27,7 +27,9 @@ function SetupRaceWorld()
     local grid = SPZ.Math.GridPositions(
         RaceSession.track.start_coords,
         RaceSession.track.start_heading,
-        playerCount
+        playerCount,
+        Config.GridRowSpacing or 8.0,
+        Config.GridColSpacing or 4.5
     )
 
     -- 8.3 Player Placement Sequence
@@ -59,7 +61,7 @@ end
 function StartSpawnTimeoutMonitor()
     Citizen.CreateThread(function()
         local startTime = GetGameTimer()
-        local timeoutMs = Config.SpawnTimeout * 1000
+        local timeoutMs = Config.SpawnTimeout or 8000
         
         while (GetGameTimer() - startTime) < timeoutMs do
             Citizen.Wait(500)

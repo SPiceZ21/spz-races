@@ -40,6 +40,12 @@ function JoinQueue(src)
         return false
     end
 
+    -- 3.5 Check Max Capacity
+    if GetQueueCount() >= (Config.MaxPlayersPerRace or 16) then
+        Notify(src, "The race queue is currently full")
+        return false
+    end
+
     -- 4. Add to RaceSession.players[source]
     RaceSession.players[src] = CreatePlayerRaceData(src)
     

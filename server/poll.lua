@@ -66,7 +66,7 @@ local pollTimer = 0
 function StartRacePoll()
     if RaceSession.state ~= SPZ.RaceState.POLLING then return end
     
-    local tracks = GetWeightedTracks(RaceSession.raceType, 2)
+    local tracks = GetWeightedTracks(RaceSession.raceType, Config.PollOptionsPerType or 2)
     local classes = GetEligibleClasses(RaceSession.players)
 
     if #tracks < 1 then

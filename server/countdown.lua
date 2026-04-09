@@ -50,7 +50,7 @@ end
 -- Authoritative timeout watchdog to prevent infinite sessions
 function StartRaceTimeoutWatchdog()
     Citizen.CreateThread(function()
-        local maxTimeMs = (Config.Timeouts.RACE_MAX or 600) * 1000
+        local maxTimeMs = Config.RaceTimeout or 300000
         local startTime = GetGameTimer()
 
         while (GetGameTimer() - startTime) < maxTimeMs do
