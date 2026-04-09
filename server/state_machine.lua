@@ -33,6 +33,23 @@ local function SetState(newState)
             end
         end
         exports["spz-races"]:StartCountdownSequence()
+    elseif newState == SPZ.RaceState.ENDED then
+        -- Process final standings and broadcast results
+        exports["spz-races"]:ProcessRaceResults()
+        
+        -- Automatic progression to cleanup after results are viewed
+        Citizen.SetTimeout((Config.Timeouts.CLEANUP or 10) * 1000, function()
+            SetState(SPZ.RaceState.CLEANUP or 6) -- Using enum fallback if needed
+        end)
+    elseif newState == SPZ.RaceState.CLEANUP then
+        print("[Race Engine] Entering cleanup. Returning participants to freeroam.")
+        for source, _ in pairs(RaceSession.players) do
+            exports["spz-core"]:AssignPlayerToBucket(source, 0)
+            exports["spz-core"]:SetPlayerState(source, "IDLE")
+        end
+        
+        -- Clear session data and return to IDLE for next cycle
+        ResetToIdle()
     end
 
     -- Notify all players
