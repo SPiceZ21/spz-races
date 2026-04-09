@@ -25,6 +25,8 @@ local function SetState(newState)
     -- Handle logic for entering specific states
     if newState == SPZ.RaceState.WAITING then
         exports["spz-races"]:SetupRaceWorld()
+    elseif newState == SPZ.RaceState.COUNTDOWN then
+        exports["spz-races"]:StartCountdownSequence()
     end
 
     -- Notify all players

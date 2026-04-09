@@ -1,6 +1,4 @@
--- client/main.lua
-
--- ghost car behavior
+-- 9. No-Collision Handler
 RegisterNetEvent("SPZ:applyNoCollision", function(targetServerId)
     local myPed = PlayerPedId()
     local targetId = GetPlayerFromServerId(targetServerId)
@@ -23,4 +21,39 @@ RegisterNetEvent("SPZ:applyNoCollision", function(targetServerId)
             end
         end
     end
+end)
+
+-- 10.2 Client Freeze Logic
+RegisterNetEvent("SPZ:freezeRacer", function(freeze)
+    local ped = PlayerPedId()
+    local veh = GetVehiclePedIsIn(ped, false)
+    
+    -- Freeze positions to prevent any movement before green light
+    FreezeEntityPosition(ped, freeze)
+    if DoesEntityExist(veh) then
+        FreezeEntityPosition(veh, freeze)
+    end
+    
+    -- Toggle invincibility to prevent pre-race griefing or accidental damage
+    SetEntityInvincible(ped, freeze)
+    if DoesEntityExist(veh) then
+        SetEntityInvincible(veh, freeze)
+        SetVehicleTyresCanBurst(veh, not freeze) -- Prevent popped tires while frozen
+    end
+    
+    if freeze then
+        print("[Race] Frozen for countdown.")
+    else
+        print("[Race] Unfrozen - GO!")
+    end
+end)
+
+-- HUD animations/triggers
+RegisterNetEvent("SPZ:countdown", function(seconds)
+    -- This event is typically handled by spz-hud, but we log it here for debug
+    print("[Race] Countdown: " .. seconds)
+end)
+
+RegisterNetEvent("SPZ:go", function()
+    print("[Race] Starting line crossed - GO GO GO!")
 end)
