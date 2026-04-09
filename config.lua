@@ -25,3 +25,4 @@ Config.Timeouts = {
 }
 
 Config.CycleOrder = { "circuit", "sprint" }
+Config.IntermissionTime = 60
