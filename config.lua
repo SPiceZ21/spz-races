@@ -23,3 +23,5 @@ Config.Timeouts = {
   RACE_MAX  = 600, -- 10 mins fallback
   CLEANUP   = 10
 }
+
+Config.CycleOrder = { "circuit", "sprint" }

@@ -42,14 +42,8 @@ local function SetState(newState)
             SetState(SPZ.RaceState.CLEANUP or 6) -- Using enum fallback if needed
         end)
     elseif newState == SPZ.RaceState.CLEANUP then
-        print("[Race Engine] Entering cleanup. Returning participants to freeroam.")
-        for source, _ in pairs(RaceSession.players) do
-            exports["spz-core"]:AssignPlayerToBucket(source, 0)
-            exports["spz-core"]:SetPlayerState(source, "IDLE")
-        end
-        
-        -- Clear session data and return to IDLE for next cycle
-        ResetToIdle()
+        -- Execute the full cleanup sequence (redistribution, bucket deletion, session reset)
+        exports["spz-races"]:RunRaceCleanup()
     end
 
     -- Notify all players
@@ -59,12 +53,7 @@ end
 function StartPolling()
     if RaceSession.state ~= SPZ.RaceState.IDLE then return end
     
-    -- Increment cycle count and alternate race type
-    RaceSession.cycleCount = RaceSession.cycleCount + 1
-    if Config.AlternateTypes then
-        RaceSession.raceType = (RaceSession.cycleCount % 2 == 0) and SPZ.RaceType.SPRINT or SPZ.RaceType.CIRCUIT
-    end
-
+    -- Race format (circuit/sprint) is already pre-determined during the previous cleanup phase
     SetState(SPZ.RaceState.POLLING)
     
     -- Initiate the weighted track and class selection
