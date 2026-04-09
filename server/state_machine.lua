@@ -35,8 +35,10 @@ function StartPolling()
         RaceSession.raceType = (RaceSession.cycleCount % 2 == 0) and SPZ.RaceType.SPRINT or SPZ.RaceType.CIRCUIT
     end
 
-    -- Pick track logic would go here (interfacing with poll.lua)
     SetState(SPZ.RaceState.POLLING)
+    
+    -- Initiate the weighted track and class selection
+    StartRacePoll()
 end
 
 function ResetToIdle()

@@ -5,6 +5,7 @@ Config = {}
 -- false: mixed pool (not currently the default mentioned by user)
 Config.AlternateTypes = true 
 Config.MinPlayersToStart = 2
+Config.PollDuration = 30
 
 Config.DefaultLaps = {
   min = 3,
