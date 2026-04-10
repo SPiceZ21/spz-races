@@ -13,6 +13,7 @@
 -- To override per-track metadata (laps, min_class, poll_weight):
 --   Edit TRACK_META in convert_tracks.py and re-run.
 
+if not SPZ then SPZ = {} end
 SPZ.Tracks = {
 
 

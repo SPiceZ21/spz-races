@@ -74,8 +74,8 @@ function LeaveQueue(src)
         -- If count drops below Config.MinPlayersToStart during POLLING
         if RaceSession.state == SPZ.RaceState.POLLING and count < Config.MinPlayersToStart then
             -- Note: We need a way to cancel the current poll
-            if exports["spz-races"]:ResetToIdle then
-                exports["spz-races"]:ResetToIdle()
+            if exports["spz-races"].ResetToIdle then
+                exports["spz-races"].ResetToIdle()
             end
         end
     end
