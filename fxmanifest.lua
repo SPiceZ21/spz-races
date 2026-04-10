@@ -7,12 +7,21 @@ version '1.0.0'
 author 'SPiceZ-Core'
 
 shared_scripts {
+  '@spz-lib/shared/main.lua',
+  '@spz-lib/shared/callbacks.lua',
+  '@spz-lib/shared/notify.lua',
+  '@spz-lib/shared/timer.lua',
+  '@spz-lib/shared/logger.lua',
+  '@spz-lib/shared/math.lua',
+  '@spz-lib/shared/table.lua',
+  '@spz-lib/shared/string.lua',
   'shared/race_states.lua',
   'shared/events.lua',
   'shared/points.lua',
 }
 
 server_scripts {
+  'config.lua',
   'data/tracks.lua',
   'server/main.lua',
   'server/state_machine.lua',
@@ -22,7 +31,7 @@ server_scripts {
   'server/no_collision.lua',
   'server/countdown.lua',
   'server/checkpoints.lua',
-  'server/timing.lua',
+  -- 'server/timing.lua',
   'server/positions.lua',
   'server/dnf.lua',
   'server/results.lua',
