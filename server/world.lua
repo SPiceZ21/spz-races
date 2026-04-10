@@ -115,9 +115,8 @@ function HandleSpawnTimeout()
     end
 end
 
--- Client confirmation listener
-RegisterNetEvent("SPZ:raceVehicleSpawned", function()
-    local src = source
+-- 11. Receive confirmation from spz-vehicles (server-to-server)
+AddEventHandler("SPZ:raceVehicleSpawned", function(src, model, entity)
     if spawnConfirmed[src] ~= nil then
         spawnConfirmed[src] = true
         print(string.format("[World Setup] Player %s confirmed ready.", src))
