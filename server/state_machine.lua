@@ -78,7 +78,10 @@ Citizen.CreateThread(function()
     while true do
         Citizen.Wait(5000)
         if RaceSession.state == SPZ.RaceState.IDLE then
-            -- Logic to check player count for polling trigger
+            local count = exports["spz-races"]:GetQueueCount()
+            if count >= (Config.MinPlayersToStart or 1) then
+                StartPolling()
+            end
         end
     end
 end)

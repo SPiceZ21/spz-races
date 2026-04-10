@@ -2,7 +2,7 @@
 Config = {}
 
 -- ── Queue ──────────────────────────────────────────────────────────────────
-Config.MinPlayersToStart    = 2       -- min queue size to open poll
+Config.MinPlayersToStart    = 1       -- min queue size to open poll
 Config.PollWaitTime         = 10      -- seconds after threshold before poll opens
 Config.MaxPlayersPerRace    = 16      -- hard cap on queue size
 
