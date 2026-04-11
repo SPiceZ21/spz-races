@@ -37,7 +37,14 @@ local function GetWeightedTracks(type, count)
     return selected
 end
 
--- 7.2 Class Eligibility
+-- 7.2 Class Data Mapping
+local CLASS_METADATA = {
+    [0] = { name = "C", category = "Sport",       description = "Balanced technical performance.",    color = "#639922", locked = false, requiredRank = 0 },
+    [1] = { name = "B", category = "Performance", description = "High-speed road tuned vehicles.",   color = "#185FA5", locked = false, requiredRank = 10 },
+    [2] = { name = "A", category = "Super",       description = "Top Tier performance and aero.",   color = "#BA7517", locked = false, requiredRank = 25 },
+    [3] = { name = "S", category = "Hyper",       description = "Absolute pinnacle of racing.",    color = "#993C1D", locked = false, requiredRank = 50 },
+}
+
 local function GetEligibleClasses(players)
     local minTier = 3 -- Start at max tier
     for source, _ in pairs(players) do
@@ -57,7 +64,11 @@ local function GetEligibleClasses(players)
         eligible[i], eligible[j] = eligible[j], eligible[i]
     end
 
-    return { eligible[1], eligible[2] or eligible[1] }
+    local tier1 = eligible[1]
+    local tier2 = eligible[2] or eligible[1]
+
+    -- Return full metadata objects for the UI
+    return { CLASS_METADATA[tier1], CLASS_METADATA[tier2] }
 end
 
 local pollActive = false
@@ -93,9 +104,21 @@ function StartRacePoll()
     print(string.format("[Poll] Starting poll for %s type. Options: %s, %s", 
         RaceSession.raceType, tracks[1].name, tracks[2] and tracks[2].name or "N/A"))
 
+    -- Prepare lightweight track data for UI (strip coordinates)
+    local uiTracks = {}
+    for i, track in ipairs(tracks) do
+        table.insert(uiTracks, {
+            name = track.name,
+            type = track.type,
+            laps = track.laps,
+            checkpointCount = #track.checkpoints,
+            recommendedClass = track.recommendedClass or "Any"
+        })
+    end
+
     TriggerClientEvent("SPZ:pollOpen", -1, {
-        tracks  = tracks,
-        classes = classes,
+        tracks   = uiTracks,
+        classes  = classes,
         duration = Config.PollDuration,
     })
 

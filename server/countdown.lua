@@ -16,9 +16,23 @@ function StartCountdownSequence()
     Citizen.CreateThread(function()
         local remaining = Config.CountdownSeconds
         
+        -- Gather metadata for UI
+        local totalPlayers = 0
+        for _ in pairs(RaceSession.players) do totalPlayers = totalPlayers + 1 end
+
         while remaining > 0 do
-            -- Notify HUD/UI for animation
-            TriggerClientEvent("SPZ:countdown", -1, remaining)
+            -- Notify HUD/UI for animation with full metadata
+            for source, data in pairs(RaceSession.players) do
+                TriggerClientEvent("SPZ:countdown", source, {
+                    seconds = remaining,
+                    track   = RaceSession.track.name,
+                    class   = RaceSession.carClass.name,
+                    laps    = RaceSession.track.laps,
+                    gridPos = data.gridIndex or 0,
+                    total   = totalPlayers
+                })
+            end
+
             print(string.format("[Countdown] T-minus %s", remaining))
             Citizen.Wait(1000)
             remaining = remaining - 1
