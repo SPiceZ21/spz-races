@@ -10,10 +10,10 @@ local function GetWeightedTracks(type, count)
     end
 
     if #pool == 0 then return {} end
-    if #pool < count then 
+    if #pool < count then
         local result = {}
         for _, item in ipairs(pool) do table.insert(result, item.track) end
-        return result 
+        return result
     end
 
     local selected = {}
@@ -29,7 +29,7 @@ local function GetWeightedTracks(type, count)
             currentWeight = currentWeight + item.weight
             if r <= currentWeight then
                 table.insert(selected, item.track)
-                table.remove(pool, idx) -- Ensure unique selection
+                table.remove(pool, idx)
                 break
             end
         end
@@ -37,48 +37,13 @@ local function GetWeightedTracks(type, count)
     return selected
 end
 
--- 7.2 Class Data Mapping
-local CLASS_METADATA = {
-    [0] = { name = "C", category = "Sport",       description = "Balanced technical performance.",    color = "#639922", locked = false, requiredRank = 0 },
-    [1] = { name = "B", category = "Performance", description = "High-speed road tuned vehicles.",   color = "#185FA5", locked = false, requiredRank = 10 },
-    [2] = { name = "A", category = "Super",       description = "Top Tier performance and aero.",   color = "#BA7517", locked = false, requiredRank = 25 },
-    [3] = { name = "S", category = "Hyper",       description = "Absolute pinnacle of racing.",    color = "#993C1D", locked = false, requiredRank = 50 },
-}
-
-local function GetEligibleClasses(players)
-    local minTier = 3 -- Start at max tier
-    for source, _ in pairs(players) do
-        -- Identity check for each participant
-        local tier = exports["spz-identity"]:GetLicenseTier(source) or 0
-        if tier < minTier then minTier = tier end
-    end
-    
-    local eligible = {}
-    for i = 0, minTier do 
-        table.insert(eligible, i) 
-    end
-
-    -- Shuffle eligible classes to pick two
-    for i = #eligible, 2, -1 do
-        local j = math.random(i)
-        eligible[i], eligible[j] = eligible[j], eligible[i]
-    end
-
-    local tier1 = eligible[1]
-    local tier2 = eligible[2] or eligible[1]
-
-    -- Return full metadata objects for the UI
-    return { CLASS_METADATA[tier1], CLASS_METADATA[tier2] }
-end
-
 local pollActive = false
 local pollTimer = 0
 
 function StartRacePoll()
     if RaceSession.state ~= SPZ.RaceState.POLLING then return end
-    
+
     local tracks = GetWeightedTracks(RaceSession.raceType, Config.PollOptionsPerType or 2)
-    local classes = GetEligibleClasses(RaceSession.players)
 
     if #tracks < 1 then
         print("[Race Poll] Error: No tracks found for type " .. RaceSession.raceType)
@@ -86,44 +51,35 @@ function StartRacePoll()
         return
     end
 
-    RaceSession.pollOptions = {
-        tracks = tracks,
-        classes = classes
-    }
-    
-    RaceSession.pollVotes = {
-        tracks = {0, 0},
-        classes = {0, 0}
-    }
+    RaceSession.pollOptions = { tracks = tracks }
+    RaceSession.pollVotes   = { tracks = {0, 0} }
 
-    -- Reset voter status for all participants
     for _, player in pairs(RaceSession.players) do
         player.voted = false
     end
 
-    print(string.format("[Poll] Starting poll for %s type. Options: %s, %s", 
+    print(string.format("[Poll] Starting poll for %s type. Options: %s, %s",
         RaceSession.raceType, tracks[1].name, tracks[2] and tracks[2].name or "N/A"))
 
-    -- Prepare lightweight track data for UI (strip coordinates)
+    -- Lightweight track data for UI (strip coordinates)
     local uiTracks = {}
-    for i, track in ipairs(tracks) do
+    for _, track in ipairs(tracks) do
         table.insert(uiTracks, {
-            name = track.name,
-            type = track.type,
-            laps = track.laps,
-            checkpointCount = #track.checkpoints,
-            recommendedClass = track.recommendedClass or "Any"
+            name             = track.name,
+            type             = track.type,
+            laps             = track.laps,
+            checkpointCount  = #track.checkpoints,
+            recommendedClass = track.recommendedClass or "Any",
         })
     end
 
     TriggerClientEvent("SPZ:pollOpen", -1, {
         tracks   = uiTracks,
-        classes  = classes,
         duration = Config.PollDuration,
     })
 
     pollActive = true
-    pollTimer = Config.PollDuration
+    pollTimer  = Config.PollDuration
 
     Citizen.CreateThread(function()
         while pollTimer > 0 and pollActive do
@@ -140,47 +96,44 @@ function EndRacePoll()
     if not pollActive then return end
     pollActive = false
 
-    local function TallyWinner(votes)
-        if votes[1] == votes[2] then
-            return math.random(1, 2) -- Tiebreak
-        end
-        return votes[1] > votes[2] and 1 or 2
+    local votes = RaceSession.pollVotes.tracks
+    local trackIdx
+    if votes[1] == votes[2] then
+        trackIdx = math.random(1, 2)
+    else
+        trackIdx = votes[1] > votes[2] and 1 or 2
     end
 
-    local trackIdx = TallyWinner(RaceSession.pollVotes.tracks)
-    local classIdx = TallyWinner(RaceSession.pollVotes.classes)
+    RaceSession.track = RaceSession.pollOptions.tracks[trackIdx]
 
-    RaceSession.track    = RaceSession.pollOptions.tracks[trackIdx]
-    RaceSession.carClass = RaceSession.pollOptions.classes[classIdx]
+    -- Fixed car — no class voting, all players use the same vehicle
+    RaceSession.carClass = { name = "Open", category = "Equal", color = "#FF6200" }
 
     TriggerClientEvent("SPZ:pollResult", -1, {
-        track    = RaceSession.track.name,
-        class    = RaceSession.carClass,
-        type     = RaceSession.track.type,
-        laps     = RaceSession.track.laps,
-        winner   = { trackIdx = trackIdx - 1, classIdx = classIdx - 1 }
+        track  = RaceSession.track.name,
+        class  = RaceSession.carClass,
+        type   = RaceSession.track.type,
+        laps   = RaceSession.track.laps,
+        winner = { trackIdx = trackIdx - 1 },
     })
 
-    -- Advance state machine to WAITING
     exports["spz-races"]:SetRaceState(SPZ.RaceState.WAITING)
 end
 
--- 7.4 Vote Collection
-RegisterNetEvent("SPZ:pollVote", function(trackIdx, classIdx)
+-- 7.4 Vote Collection (track only)
+RegisterNetEvent("SPZ:pollVote", function(trackIdx)
     local src = source
     if not pollActive then return end
-    
+
     local player = RaceSession.players[src]
     if not player or player.voted then return end
 
-    -- Validation
-    if trackIdx < 1 or trackIdx > 2 or classIdx < 1 or classIdx > 2 then return end
+    if trackIdx < 1 or trackIdx > 2 then return end
 
     player.voted = true
     RaceSession.pollVotes.tracks[trackIdx] = RaceSession.pollVotes.tracks[trackIdx] + 1
-    RaceSession.pollVotes.classes[classIdx] = RaceSession.pollVotes.classes[classIdx] + 1
 
-    -- Trigger tally early if everyone has voted
+    -- Early tally if everyone voted
     local allVoted = true
     for _, p in pairs(RaceSession.players) do
         if not p.voted then
@@ -194,5 +147,4 @@ RegisterNetEvent("SPZ:pollVote", function(trackIdx, classIdx)
     end
 end)
 
--- Export for state machine
 exports("StartRacePoll", StartRacePoll)

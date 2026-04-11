@@ -23,10 +23,23 @@ function SetupRaceWorld()
     end
     -- In a real scenario, sort by join time or ELO here
 
+    -- Derive spawn heading from track geometry so cars always face the right direction
+    -- regardless of whether start_heading is set correctly in the track data.
+    local startHeading = RaceSession.track.start_heading or 0
+    local firstCP = RaceSession.track.checkpoints and RaceSession.track.checkpoints[1]
+    if firstCP then
+        local sx = RaceSession.track.start_coords.x
+        local sy = RaceSession.track.start_coords.y
+        local dx = firstCP.coords.x - sx
+        local dy = firstCP.coords.y - sy
+        -- GTA V heading: 0 = North (+Y), increases clockwise
+        startHeading = math.deg(math.atan2(-dx, dy)) % 360
+    end
+
     local playerCount = #playersInOrder
     local grid = SPZ.Math.GridPositions(
         RaceSession.track.start_coords,
-        RaceSession.track.start_heading,
+        startHeading,
         playerCount,
         Config.GridRowSpacing or 8.0,
         Config.GridColSpacing or 4.5

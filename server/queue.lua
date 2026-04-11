@@ -34,13 +34,7 @@ function JoinQueue(src)
         return false
     end
 
-    -- 3. HasLicense(source, 0)? (Class C)
-    if not HasLicense(src, 0) then
-        Notify(src, "Class C license required to join")
-        return false
-    end
-
-    -- 3.5 Check Max Capacity
+    -- 3. Check Max Capacity
     if GetQueueCount() >= (Config.MaxPlayersPerRace or 16) then
         Notify(src, "The race queue is currently full")
         return false

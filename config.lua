@@ -34,5 +34,10 @@ Config.IntermissionTime     = 60      -- seconds between races
 Config.GridRowSpacing       = 8.0     -- metres front-to-back
 Config.GridColSpacing       = 4.5     -- metres side-to-side
 
+-- ── Safe Zone ──────────────────────────────────────────────────────────────
+-- Location players are sent after race cleanup. Set to your paddock / lobby spawn.
+Config.SafeZone             = vector3(-1323.8, -1199.1, 4.0)
+Config.SafeZoneHeading      = 210.0
+
 -- ── Debug ──────────────────────────────────────────────────────────────────
 Config.Debug                = false

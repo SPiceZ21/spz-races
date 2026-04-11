@@ -34,17 +34,19 @@ local function HandleCheckpointAdvance(source, pData)
     local track = RaceSession.track
     local totalCPs = #track.checkpoints
 
+    -- pData.current_cp has already been incremented to the NEXT expected CP.
+    -- When it exceeds totalCPs the player has passed the final checkpoint of a lap/sprint.
     if pData.current_cp > totalCPs then
-        -- Crossed the last CP — lap complete (Circuit)
         if track.type == "circuit" then
+            -- Lap complete
             local timeNow = GetGameTimer()
             local lapStartTime = pData.lap_start_time or RaceSession.startTime
             local lapTime = timeNow - lapStartTime
-            
+
             pData.current_cp = 1
             pData.current_lap = pData.current_lap + 1
             pData.lap_start_time = timeNow
-            
+
             table.insert(pData.lap_times, lapTime)
             if not pData.best_lap or lapTime < pData.best_lap then
                 pData.best_lap = lapTime
@@ -53,30 +55,20 @@ local function HandleCheckpointAdvance(source, pData)
             print(string.format("[Race Engine] %s completed lap %s in %s ms", pData.name, pData.current_lap - 1, lapTime))
             TriggerClientEvent("SPZ:lapComplete", source, pData.current_lap - 1, lapTime)
 
-            -- Check if all laps done
             if pData.current_lap > track.laps then
                 HandleFinish(source, pData)
             else
-                -- Loop back to first CP
                 TriggerClientEvent("SPZ:nextCheckpoint", source, pData.current_cp)
             end
         else
-            -- Sprints shouldn't really reach here if the logic below handles finish on CP=totalCPs
+            -- Sprint: all checkpoints cleared = finish
             HandleFinish(source, pData)
         end
     else
-        -- Handle SPRINT finish or regular CP advance
-        if track.type == "sprint" and pData.current_cp == totalCPs then
-            -- Note: In sprint, the last checkpoint is the finish line.
-            -- Actually, some sprint layouts might have a final CP that needs to be crossed.
-            -- If current_cp == totalCPs, and they just hit it, they should finish.
-            HandleFinish(source, pData)
-        else
-            -- Advance to next checkpoint for rendering
-            TriggerClientEvent("SPZ:nextCheckpoint", source, pData.current_cp)
-        end
+        -- Normal advance — send next checkpoint index to client
+        TriggerClientEvent("SPZ:nextCheckpoint", source, pData.current_cp)
     end
-    
+
     -- Recalculate positions for HUD updates
     if UpdateAllPositions then UpdateAllPositions() end
 end
