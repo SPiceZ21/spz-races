@@ -57,3 +57,22 @@ end)
 RegisterNetEvent("SPZ:go", function()
     print("[Race] Starting line crossed - GO GO GO!")
 end)
+
+-- Teleport player to safe zone after race cleanup.
+-- Fires server-side in cleanup.lua after the race bucket is freed.
+RegisterNetEvent("SPZ:tpToSafeZone", function()
+    local ped = PlayerPedId()
+    local veh = GetVehiclePedIsIn(ped, false)
+    local sz  = Config.SafeZone
+    local sh  = Config.SafeZoneHeading or 0.0
+
+    if DoesEntityExist(veh) then
+        SetEntityCoords(veh, sz.x, sz.y, sz.z, false, false, false, true)
+        SetEntityHeading(veh, sh)
+    else
+        SetEntityCoords(ped, sz.x, sz.y, sz.z, false, false, false, true)
+        SetEntityHeading(ped, sh)
+    end
+
+    print("[Race] Teleported to safe zone.")
+end)
