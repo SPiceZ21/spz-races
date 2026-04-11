@@ -158,6 +158,7 @@ function EndRacePoll()
         class    = RaceSession.carClass,
         type     = RaceSession.track.type,
         laps     = RaceSession.track.laps,
+        winner   = { trackIdx = trackIdx - 1, classIdx = classIdx - 1 }
     })
 
     -- Advance state machine to WAITING
