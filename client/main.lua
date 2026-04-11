@@ -49,9 +49,9 @@ RegisterNetEvent("SPZ:freezeRacer", function(freeze)
 end)
 
 -- HUD animations/triggers
-RegisterNetEvent("SPZ:countdown", function(seconds)
+RegisterNetEvent("SPZ:countdown", function(data)
     -- This event is typically handled by spz-hud, but we log it here for debug
-    print("[Race] Countdown: " .. seconds)
+    print("[Race] Countdown: " .. data.seconds)
 end)
 
 RegisterNetEvent("SPZ:go", function()
