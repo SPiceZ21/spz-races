@@ -11,12 +11,17 @@ local function HandleFinish(source, pData)
     local track = RaceSession.track
     local carClass = RaceSession.carClass
     
-    local prevBest = exports["spz-leaderboard"]:GetPersonalBest(source, track.name, carClass)
-    pData.personal_best = (prevBest == nil) or (pData.finish_time < prevBest)
-    
-    if pData.personal_best then
-        print(string.format("[Timing] New PB for %s on %s: %s ms", pData.name, track.name, pData.finish_time))
-        exports["spz-leaderboard"]:WriteResult(source, track.name, carClass, pData.finish_time)
+    -- Only call leaderboard if resource is actually running
+    if GetResourceState("spz-leaderboard") == "started" then
+        local prevBest = exports["spz-leaderboard"]:GetPersonalBest(source, track.name, carClass)
+        pData.personal_best = (prevBest == nil) or (pData.finish_time < prevBest)
+        
+        if pData.personal_best then
+            print(string.format("[Timing] New PB for %s on %s: %s ms", pData.name, track.name, pData.finish_time))
+            exports["spz-leaderboard"]:WriteResult(source, track.name, carClass, pData.finish_time)
+        end
+    else
+        pData.personal_best = false
     end
     
     print(string.format("[Race Engine] Player %s (%s) finished! Time: %s ms (PB: %s)", pData.name, source, pData.finish_time, pData.personal_best))
