@@ -19,7 +19,7 @@ Config.CycleOrder           = { "circuit", "sprint" }  -- alternates each race
 Config.CountdownSeconds     = 3       -- 3-2-1-GO
 
 -- ── Race ───────────────────────────────────────────────────────────────────
-Config.RaceTimeout          = 300000  -- 5 minutes — DNF anyone not finished
+Config.RaceTimeout          = 3600000  -- 60 minutes — DNF anyone not finished (was 5 mins)
 Config.PositionBroadcastInterval = 1000   -- ms between live position updates
 Config.SpawnTimeout         = 8000    -- ms to wait per player vehicle spawn
 
