@@ -21,7 +21,7 @@ Config.CountdownSeconds     = 3       -- 3-2-1-GO
 -- ── Race ───────────────────────────────────────────────────────────────────
 Config.RaceTimeout          = 3600000  -- 60 minutes — DNF anyone not finished (was 5 mins)
 Config.PositionBroadcastInterval = 1000   -- ms between live position updates
-Config.SpawnTimeout         = 8000    -- ms to wait per player vehicle spawn
+Config.SpawnTimeout         = 30000   -- ms to wait per player vehicle spawn (full chain)
 
 -- ── Post-race ──────────────────────────────────────────────────────────────
 Config.ResultsDisplayTime   = 15000   -- ms stats screen shown before TP back
