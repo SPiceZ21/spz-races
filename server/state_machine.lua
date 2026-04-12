@@ -35,11 +35,11 @@ local function SetState(newState)
         exports["spz-races"]:StartCountdownSequence()
     elseif newState == SPZ.RaceState.ENDED then
         -- Process final standings and broadcast results
-        exports["spz-races"]:ProcessRaceResults()
+        local results = exports["spz-races"]:ProcessRaceResults()
         
         -- Automatic progression to cleanup after results are viewed
         Citizen.SetTimeout(Config.ResultsDisplayTime or 15000, function()
-            SetState(SPZ.RaceState.CLEANUP or 6) -- Using enum fallback if needed
+            exports["spz-races"]:RunRaceCleanup(results)
         end)
     elseif newState == SPZ.RaceState.CLEANUP then
         -- Execute the full cleanup sequence (redistribution, bucket deletion, session reset)
