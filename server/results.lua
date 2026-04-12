@@ -53,6 +53,8 @@ function ProcessRaceResults()
 
     -- Server notification (for internal modules: spz-progression, spz-economy, spz-leaderboard)
     TriggerEvent("SPZ:raceEnd", results)
+
+    return results
 end
 
 -- Export provided for state machine activation in the ENDED state

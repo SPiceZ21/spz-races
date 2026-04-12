@@ -2,34 +2,40 @@
 
 -- 17. Intermission logic
 -- This handles the cooldown between races and re-inviting players to the next cycle.
-function StartIntermission()
+function StartIntermission(results)
+    local lastResults = {}
+    if results and results.standings then
+        for i, racer in ipairs(results.standings) do
+            table.insert(lastResults, {
+                name = racer.name,
+                time = racer.finishTime and string.format("%.2fs", racer.finishTime / 1000) or "DNF",
+            })
+            if i >= 3 then break end
+        end
+    end
+
+    local playersInQueue = exports["spz-races"]:GetQueueCount()
+
     print(string.format("[Race Engine] Starting %ds intermission. Next race type: %s", 
         Config.IntermissionTime or 60, RaceSession.raceType or "unknown"))
 
     -- 17.1 Broadcast start event to all clients for HUD countdowns
     TriggerClientEvent("SPZ:intermissionStart", -1, {
-        seconds  = Config.IntermissionTime or 60,
-        nextType = RaceSession.raceType or "circuit",
+        seconds        = Config.IntermissionTime or 60,
+        nextType       = RaceSession.raceType or "circuit",
+        lastResults    = lastResults,
+        playersInQueue = playersInQueue
     })
 
     -- 17.2 Wait for intermission duration before re-showing the choice screen
     local delayMs = (Config.IntermissionTime or 60) * 1000
     
-    -- Using standard Citizen.SetTimeout for reliable local timing
     Citizen.SetTimeout(delayMs, function()
-        print("[Race Engine] Intermission over. Prompting choice screens.")
+        print("[Race Engine] Intermission over. Transitioning to Poll.")
         
-        -- Retrieve all connected sessions to re-invite everyone (not just previous racers)
-        -- This ensures fresh players who just joined as the race ended are also invited.
-        local sessions = exports["spz-core"]:GetAllSessions()
-        if sessions then
-            for source, _ in pairs(sessions) do
-                TriggerClientEvent("SPZ:showChoiceScreen", source)
-            end
-        else
-            -- Fallback: trigger for everyone currently connected
-            TriggerClientEvent("SPZ:showChoiceScreen", -1)
-        end
+        -- Instead of choice screens, we directly start the poll for the next race.
+        -- This keeps the lobby flow moving automatically.
+        exports["spz-races"]:StartPolling()
     end)
 end
 

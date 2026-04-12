@@ -8,11 +8,13 @@ local function NextCycleType()
 end
 
 -- 16.1 Cleanup Sequence
-function RunRaceCleanup()
+function RunRaceCleanup(results)
+    -- Manually set state to CLEANUP for internal listeners
+    exports["spz-races"]:SetRaceState(SPZ.RaceState.CLEANUP)
+
     print("[Race Engine] Initiating final sequence cleanup.")
     
-    -- 1. Identify all players in the isolated race bucket
-    -- We use the RaceSession.players table as the source of truth for participants
+    -- ... (rest of the loop remains same)
     for source, _ in pairs(RaceSession.players) do
         -- Clear track entities
         if GetResourceState("spz-vehicles") == "started" then
@@ -60,7 +62,7 @@ function RunRaceCleanup()
 
     -- Trigger intermission period
     if StartIntermission then
-        StartIntermission()
+        StartIntermission(results)
     end
 end
 
