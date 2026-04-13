@@ -56,7 +56,7 @@ function SetupRaceWorld()
         exports["spz-core"]:AssignPlayerToBucket(source, RaceSession.bucketId)
         
         -- Request vehicle spawn from dedicated vehicle manager
-        local chosenModel = "zentorno" -- Default race car for now
+        local chosenModel = RaceSession.carClass and RaceSession.carClass.model or "sultan"
         
         print(string.format("[World Setup] Spawning vehicle '%s' for player %s at grid %d", chosenModel, source, i))
         local spawnOk, spawnErr = pcall(function()

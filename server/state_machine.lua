@@ -10,6 +10,7 @@ RaceSession = {
     players      = {},
     pollVotes    = {},
     pollOptions  = {},
+    pollPhase    = 1, -- 1 = Track, 2 = Vehicle
     cycleCount   = 0,
 }
 
@@ -54,9 +55,8 @@ function StartPolling()
     if RaceSession.state ~= SPZ.RaceState.IDLE then return end
     
     -- Race format (circuit/sprint) is already pre-determined during the previous cleanup phase
-    SetState(SPZ.RaceState.POLLING)
-    
-    -- Initiate the weighted track and class selection
+    -- Initiate the weighted track selection
+    RaceSession.pollPhase = 1
     StartRacePoll()
 end
 

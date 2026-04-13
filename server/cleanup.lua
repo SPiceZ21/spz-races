@@ -50,6 +50,7 @@ function RunRaceCleanup(results)
         players      = {},
         pollVotes    = {},
         pollOptions  = {},
+        pollPhase    = 1,
         cycleCount   = lastCycleCount + 1,
     }
 
