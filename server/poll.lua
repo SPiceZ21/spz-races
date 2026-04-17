@@ -176,6 +176,11 @@ function EndRacePoll()
     else
         -- Vehicle phase ended
         local selection = RaceSession.pollOptions[winnerIdx]
+        if not selection then
+            print("[Race Poll] Error: Selection was nil for winnerIdx " .. tostring(winnerIdx))
+            exports["spz-races"]:ResetToIdle()
+            return
+        end
         
         RaceSession.selection = selection
         -- Set carClass for the race engine
@@ -208,6 +213,7 @@ RegisterNetEvent("SPZ:pollVote", function(data)
     local player = RaceSession.players[src]
     if not player or player.voted then return end
 
+    if not data or not data.index then return end
     local index = data.index
     if not index or index < 1 or index > #RaceSession.pollVotes then return end
 
