@@ -9,7 +9,7 @@ local function HandleFinish(source, pData)
     
     -- 12.2 Personal Best Detection
     local track = RaceSession.track
-    local carClass = RaceSession.carClass
+    local carClass = RaceSession.carClassId
     
     -- Only call leaderboard if resource is actually running
     if GetResourceState("spz-leaderboard") == "started" then
@@ -18,7 +18,6 @@ local function HandleFinish(source, pData)
         
         if pData.personal_best then
             print(string.format("[Timing] New PB for %s on %s: %s ms", pData.name, track.name, pData.finish_time))
-            exports["spz-leaderboard"]:WriteResult(source, track.name, carClass, pData.finish_time)
         end
     else
         pData.personal_best = false

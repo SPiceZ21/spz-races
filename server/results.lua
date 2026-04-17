@@ -8,7 +8,7 @@ function ProcessRaceResults()
         raceId    = RaceSession.raceId or "N/A",
         track     = RaceSession.track.name,
         type      = RaceSession.track.type,        -- "circuit" | "sprint"
-        carClass  = RaceSession.carClass,
+        carClass  = RaceSession.carClassId,
         laps      = RaceSession.track.laps,
         duration  = GetGameTimer() - RaceSession.startTime,
         finishers = {},    -- ordered P1 → PN

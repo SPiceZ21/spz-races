@@ -183,6 +183,7 @@ function EndRacePoll()
         end
         
         RaceSession.selection = selection
+        RaceSession.carClassId = selection.class
         -- Set carClass for the race engine
         local meta = exports["spz-vehicles"]:GetClassMeta(selection.class)
         RaceSession.carClass = { 
