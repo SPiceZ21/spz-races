@@ -69,6 +69,11 @@ function SetupRaceWorld()
         -- Update identity state
         exports["spz-core"]:SetPlayerState(source, "RACING")
         
+        -- Force competitive racing assists
+        if GetResourceState("spz-physics") == "started" then
+            exports["spz-physics"]:SetAssists(source, Config.RaceAssists)
+        end
+
         spawnConfirmed[source] = false
     end
 
