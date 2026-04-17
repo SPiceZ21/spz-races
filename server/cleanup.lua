@@ -9,8 +9,10 @@ end
 
 -- 16.1 Cleanup Sequence
 function RunRaceCleanup(results)
-    -- Manually set state to CLEANUP for internal listeners
-    exports["spz-races"]:SetRaceState(SPZ.RaceState.CLEANUP)
+    -- Transition to CLEANUP state so other modules can react (no-op in state machine handler)
+    if RaceSession.state ~= SPZ.RaceState.CLEANUP then
+        exports["spz-races"]:SetRaceState(SPZ.RaceState.CLEANUP)
+    end
 
     print("[Race Engine] Initiating final sequence cleanup.")
     
@@ -60,6 +62,12 @@ function RunRaceCleanup(results)
 
     -- Return state machine to IDLE
     exports["spz-races"]:SetRaceState(SPZ.RaceState.IDLE)
+
+    -- Block the idle polling loop while intermission runs
+    RaceSession.intermissionActive = true
+
+    -- Broadcast queue update so UIs reflect the reset
+    if BroadcastQueueUpdate then BroadcastQueueUpdate() end
 
     -- Trigger intermission period
     if StartIntermission then

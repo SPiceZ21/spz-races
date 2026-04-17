@@ -23,15 +23,37 @@ function CreatePlayerRaceData(src)
     return player
 end
 
--- Command to join the race queue
-RegisterCommand("joinrace", function(src, args)
+-- Net events so clients (via spz-menu NUI bridge) can join/leave
+RegisterNetEvent("SPZ:joinQueue", function()
+    local src = source
+    exports["spz-races"]:JoinQueue(src)
+end)
+
+RegisterNetEvent("SPZ:leaveQueue", function()
+    local src = source
+    exports["spz-races"]:LeaveQueue(src)
+end)
+
+-- Commands kept as admin/debug convenience
+RegisterCommand("joinrace", function(src)
     exports["spz-races"]:JoinQueue(src)
 end, false)
 
--- Command to leave the race queue
-RegisterCommand("leaverace", function(src, args)
+RegisterCommand("leaverace", function(src)
     exports["spz-races"]:LeaveQueue(src)
 end, false)
+
+-- Push current queue status to all clients so widgets update without polling
+function BroadcastQueueUpdate()
+    local count = exports["spz-races"]:GetQueueCount()
+    TriggerClientEvent("SPZ:queueUpdated", -1, {
+        count     = count,
+        raceType  = RaceSession.raceType or "circuit",
+        raceState = RaceSession.state,
+    })
+end
+
+exports("BroadcastQueueUpdate", BroadcastQueueUpdate)
 
 function CountPlayers()
     local count = 0
