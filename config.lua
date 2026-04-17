@@ -23,6 +23,13 @@ Config.RaceTimeout          = 3600000  -- 60 minutes — DNF anyone not finished
 Config.PositionBroadcastInterval = 1000   -- ms between live position updates
 Config.SpawnTimeout         = 30000   -- ms to wait per player vehicle spawn (full chain)
 
+-- ── Physics ────────────────────────────────────────────────────────────────
+Config.RaceAssists = {
+  tcs = true,
+  abs = true,
+  esc = false,
+  lc  = true,
+}
 -- ── Post-race ──────────────────────────────────────────────────────────────
 Config.ResultsDisplayTime   = 15000   -- ms stats screen shown before TP back
 
