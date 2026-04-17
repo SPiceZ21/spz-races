@@ -1,21 +1,20 @@
 -- server/queue.lua
 
 local function GetPlayerState(src)
-    -- Assuming spz-identity framework exists
-    return exports["spz-identity"]:GetPlayerState(src)
+    return exports["spz-core"]:GetPlayerState(src)
 end
 
 local function SetPlayerState(src, state)
-    exports["spz-identity"]:SetPlayerState(src, state)
+    exports["spz-core"]:SetPlayerState(src, state)
 end
 
-local function HasLicense(src, index)
-    return exports["spz-identity"]:HasLicense(src, index)
+local function HasLicense(src, classId)
+    local tier = exports["spz-identity"]:GetLicenseTier(src) or 0
+    return tier >= classId
 end
 
-local function Notify(src, msg)
-    -- Placeholder for notification system
-    TriggerClientEvent("spz_race:notify", src, msg)
+local function Notify(src, msg, msgType)
+    TriggerClientEvent("spz-lib:Notify", src, msg, msgType or "info", 4000)
 end
 
 function JoinQueue(src)
@@ -46,32 +45,31 @@ function JoinQueue(src)
     -- 5. SetPlayerState(source, "QUEUED")
     SetPlayerState(src, "QUEUED")
 
-    -- 6. Notify "Joined queue (X players waiting)"
+    -- 6. Notify and broadcast
     local count = GetQueueCount()
-    Notify(src, string.format("Joined queue (%s players waiting)", count))
+    Notify(src, string.format("Joined queue (%s players waiting)", count), "success")
+    BroadcastQueueUpdate()
 
-    -- 7. If count >= Config.MinPlayersToStart → start pre-poll countdown
+    -- 7. If count >= Config.MinPlayersToStart → start poll
     if count >= Config.MinPlayersToStart then
         StartPolling()
     end
-    
+
     return true
 end
 
 function LeaveQueue(src)
     -- 6.2 LeaveQueue Logic
-    if RaceSession.players[src] then
-        RaceSession.players[src] = nil
-        SetPlayerState(src, "IDLE")
+    if not RaceSession.players[src] then return end
 
-        local count = GetQueueCount()
-        -- If count drops below Config.MinPlayersToStart during POLLING
-        if RaceSession.state == SPZ.RaceState.POLLING and count < Config.MinPlayersToStart then
-            -- Note: We need a way to cancel the current poll
-            if exports["spz-races"].ResetToIdle then
-                exports["spz-races"].ResetToIdle()
-            end
-        end
+    RaceSession.players[src] = nil
+    SetPlayerState(src, "FREEROAM")
+    Notify(src, "Left the queue", "info")
+    BroadcastQueueUpdate()
+
+    local count = GetQueueCount()
+    if RaceSession.state == SPZ.RaceState.POLLING and count < Config.MinPlayersToStart then
+        exports["spz-races"]:ResetToIdle()
     end
 end
 

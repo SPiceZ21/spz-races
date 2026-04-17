@@ -4,11 +4,12 @@
 -- This handles the cooldown between races and re-inviting players to the next cycle.
 function StartIntermission(results)
     local lastResults = {}
-    if results and results.standings then
-        for i, racer in ipairs(results.standings) do
+    if results and results.finishers then
+        for i, racer in ipairs(results.finishers) do
             table.insert(lastResults, {
-                name = racer.name,
-                time = racer.finishTime and string.format("%.2fs", racer.finishTime / 1000) or "DNF",
+                name     = racer.name,
+                position = racer.position,
+                time     = racer.finish_time and string.format("%.2fs", racer.finish_time / 1000) or "DNF",
             })
             if i >= 3 then break end
         end
@@ -32,9 +33,7 @@ function StartIntermission(results)
     
     Citizen.SetTimeout(delayMs, function()
         print("[Race Engine] Intermission over. Transitioning to Poll.")
-        
-        -- Instead of choice screens, we directly start the poll for the next race.
-        -- This keeps the lobby flow moving automatically.
+        RaceSession.intermissionActive = false
         exports["spz-races"]:StartPolling()
     end)
 end

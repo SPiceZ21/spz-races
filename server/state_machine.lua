@@ -35,16 +35,15 @@ local function SetState(newState)
         end
         exports["spz-races"]:StartCountdownSequence()
     elseif newState == SPZ.RaceState.ENDED then
-        -- Process final standings and broadcast results
         local results = exports["spz-races"]:ProcessRaceResults()
-        
-        -- Automatic progression to cleanup after results are viewed
+        -- Wait for results screen, then run cleanup once
         Citizen.SetTimeout(Config.ResultsDisplayTime or 15000, function()
             exports["spz-races"]:RunRaceCleanup(results)
         end)
     elseif newState == SPZ.RaceState.CLEANUP then
-        -- Execute the full cleanup sequence (redistribution, bucket deletion, session reset)
-        exports["spz-races"]:RunRaceCleanup()
+        -- Informational only — cleanup is driven by the ENDED timeout above.
+        -- Nothing to execute here to avoid double-despawn.
+        print("[Race Engine] State: CLEANUP")
     end
 
     -- Notify all players
@@ -73,11 +72,11 @@ exports("ResetToIdle", ResetToIdle)
 exports("StartPolling", StartPolling)
 exports("GetCurrentSession", function() return RaceSession end)
 
--- Initial IDLE check
+-- Polling loop — only fires when truly idle and not mid-intermission
 Citizen.CreateThread(function()
     while true do
         Citizen.Wait(5000)
-        if RaceSession.state == SPZ.RaceState.IDLE then
+        if RaceSession.state == SPZ.RaceState.IDLE and not RaceSession.intermissionActive then
             local count = exports["spz-races"]:GetQueueCount()
             if count >= (Config.MinPlayersToStart or 1) then
                 StartPolling()
