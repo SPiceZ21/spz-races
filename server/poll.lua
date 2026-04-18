@@ -188,7 +188,8 @@ function EndRacePoll()
             phase = "track"
         })
 
-        Citizen.SetTimeout(2000, function()
+        -- Tiny pause lets the winner highlight render, then vehicle poll fires immediately
+        Citizen.SetTimeout(400, function()
             RaceSession.pollPhase = 2
             StartRacePoll()
         end)
