@@ -16,6 +16,8 @@ Config.PollOptionsPerType   = 2       -- track options per poll (always 2)
 Config.CycleOrder           = { "circuit", "sprint" }  -- alternates each race
 
 -- ── Countdown ──────────────────────────────────────────────────────────────
+Config.StagingTimeSeconds   = 60      -- seconds frozen on grid before 3-2-1 starts
+                                      -- (players see full track map, inspect car)
 Config.CountdownSeconds     = 3       -- 3-2-1-GO
 
 -- ── Race ───────────────────────────────────────────────────────────────────

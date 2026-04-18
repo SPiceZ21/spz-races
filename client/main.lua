@@ -48,6 +48,32 @@ RegisterNetEvent("SPZ:freezeRacer", function(freeze)
     end
 end)
 
+-- ── Staging phase (freeze + track preview before the 3-2-1) ─────────────
+-- Fires every second during the staging window.
+-- spz-hud should listen for this event and display a "Race starts in X"
+-- banner so drivers know how long they have to inspect the track.
+RegisterNetEvent("SPZ:stagingPhase", function(data)
+    -- Pass-through to HUD resource if present
+    if GetResourceState("spz-hud") == "started" then
+        SendNUIMessage({
+            type    = "SPZ_STAGING",
+            payload = data,
+        })
+    end
+    if Config.Debug then
+        print(string.format("[Race] Staging: %ds remaining (track: %s)",
+              data.remaining, tostring(data.track)))
+    end
+end)
+
+-- Staging ended — HUD can dismiss the staging banner
+RegisterNetEvent("SPZ:stagingEnd", function()
+    if GetResourceState("spz-hud") == "started" then
+        SendNUIMessage({ type = "SPZ_STAGING_END" })
+    end
+    print("[Race] Staging complete — countdown incoming")
+end)
+
 -- HUD animations/triggers
 RegisterNetEvent("SPZ:countdown", function(data)
     -- This event is typically handled by spz-hud, but we log it here for debug
