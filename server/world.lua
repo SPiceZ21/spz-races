@@ -23,17 +23,32 @@ function SetupRaceWorld()
     end
     -- In a real scenario, sort by join time or ELO here
 
-    -- Derive spawn heading from track geometry so cars always face the right direction
-    -- regardless of whether start_heading is set correctly in the track data.
-    local startHeading = RaceSession.track.start_heading or 0
-    local firstCP = RaceSession.track.checkpoints and RaceSession.track.checkpoints[1]
-    if firstCP then
+    -- Resolve spawn heading: prefer the explicitly-authored track heading.
+    -- Circuit tracks have checkpoint[1] = start_coords, so computing from that
+    -- gives atan2(0,0)=0 (due north) regardless of the actual track direction.
+    -- Only fall back to geometry when start_heading is missing, and skip any
+    -- checkpoint that sits on (or within 5 m of) the start position.
+    local startHeading = RaceSession.track.start_heading
+
+    if not startHeading then
+        -- Geometry fallback: find the first checkpoint meaningfully ahead
         local sx = RaceSession.track.start_coords.x
         local sy = RaceSession.track.start_coords.y
-        local dx = firstCP.coords.x - sx
-        local dy = firstCP.coords.y - sy
-        -- GTA V heading: 0 = North (+Y), increases clockwise
-        startHeading = math.deg(math.atan2(-dx, dy)) % 360
+        if RaceSession.track.checkpoints then
+            for _, cp in ipairs(RaceSession.track.checkpoints) do
+                local dx = cp.coords.x - sx
+                local dy = cp.coords.y - sy
+                -- Skip checkpoints that are basically at the start line
+                if math.sqrt(dx * dx + dy * dy) > 5.0 then
+                    startHeading = math.deg(math.atan2(-dx, dy)) % 360
+                    break
+                end
+            end
+        end
+        startHeading = startHeading or 0.0
+        print(string.format("[World Setup] No start_heading in track data — computed %.1f° from geometry", startHeading))
+    else
+        print(string.format("[World Setup] Using track start_heading: %.1f°", startHeading))
     end
 
     local playerCount = #playersInOrder
