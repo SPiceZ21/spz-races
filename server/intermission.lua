@@ -32,9 +32,12 @@ function StartIntermission(results)
     local delayMs = (Config.IntermissionTime or 60) * 1000
     
     Citizen.SetTimeout(delayMs, function()
-        print("[Race Engine] Intermission over. Transitioning to Poll.")
+        print("[Race Engine] Intermission over. Queue is open — idle loop will start poll when players are ready.")
         RaceSession.intermissionActive = false
-        exports["spz-races"]:StartPolling()
+        -- Do NOT call StartPolling() directly here — if the queue is already populated
+        -- the 5-second idle loop in state_machine.lua will pick it up within 5 seconds.
+        -- Calling it unconditionally starts a ghost race when the queue is empty.
+        BroadcastQueueUpdate()
     end)
 end
 

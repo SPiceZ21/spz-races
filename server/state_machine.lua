@@ -52,9 +52,15 @@ end
 
 function StartPolling()
     if RaceSession.state ~= SPZ.RaceState.IDLE then return end
-    
+
+    -- Do not start a poll if nobody is queued — the idle loop will retry every 5 s
+    local count = GetQueueCount and GetQueueCount() or 0
+    if count < (Config.MinPlayersToStart or 1) then
+        print(string.format("[Race Engine] StartPolling skipped — %d player(s) queued (need %d)", count, Config.MinPlayersToStart or 1))
+        return
+    end
+
     -- Race format (circuit/sprint) is already pre-determined during the previous cleanup phase
-    -- Initiate the weighted track selection
     RaceSession.pollPhase = 1
     StartRacePoll()
 end

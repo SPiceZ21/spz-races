@@ -87,18 +87,37 @@ function StartRacePoll()
             return
         end
 
-        -- Shuffle and pick up to 2 classes
+        -- Shuffle classes for variety
         for i = #availableClasses, 2, -1 do
             local j = math.random(1, i)
             availableClasses[i], availableClasses[j] = availableClasses[j], availableClasses[i]
         end
-        local wantedClasses = math.min(2, #availableClasses)
 
+        local TARGET   = Config.PollOptionsPerType or 2
         local vehicles = {}
-        for i = 1, wantedClasses do
-            local pool = exports["spz-vehicles"]:GetPollPool(availableClasses[i], 1)
-            if pool and pool[1] then
+        local seenModels = {}
+
+        -- Pass 1: one vehicle per class (prefers class variety)
+        for _, classId in ipairs(availableClasses) do
+            if #vehicles >= TARGET then break end
+            local pool = exports["spz-vehicles"]:GetPollPool(classId, 1)
+            if pool and pool[1] and not seenModels[pool[1].model] then
+                seenModels[pool[1].model] = true
                 table.insert(vehicles, pool[1])
+            end
+        end
+
+        -- Pass 2: if still short (e.g. only 1 class registered), pull more from
+        --         the same class so the poll always shows TARGET options.
+        if #vehicles < TARGET then
+            local need  = TARGET - #vehicles
+            local extra = exports["spz-vehicles"]:GetPollPool(availableClasses[1], need + 1)
+            for _, v in ipairs(extra or {}) do
+                if #vehicles >= TARGET then break end
+                if not seenModels[v.model] then
+                    seenModels[v.model] = true
+                    table.insert(vehicles, v)
+                end
             end
         end
 
