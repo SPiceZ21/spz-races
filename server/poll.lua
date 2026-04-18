@@ -70,43 +70,70 @@ function StartRacePoll()
                 recommendedClass = track.recommendedClass or "Any",
             })
         end
-        
-        RaceSession.pollVotes = { 0, 0 }
+
+        -- Size votes table to actual option count (may be 1 if pool was thin)
+        RaceSession.pollVotes = {}
+        for i = 1, #pollOptions do RaceSession.pollVotes[i] = 0 end
     else
         -- PHASE 2: VEHICLE SELECTION
-        -- Picker 2 different classes randomly
-        local classes = { 0, 1, 2, 3 }
-        local selectedClasses = {}
-        for i = 1, 2 do
-            local idx = math.random(1, #classes)
-            table.insert(selectedClasses, classes[idx])
-            table.remove(classes, idx)
+        -- Discover all classes that actually have race-eligible vehicles in the registry,
+        -- then pick up to 2 distinct classes at random.
+        local availableClasses = {}
+        do
+            local seen = {}
+            for _, data in pairs(SPZ.VehicleRegistry) do
+                if data.race and data.class and not seen[data.class] then
+                    seen[data.class] = true
+                    table.insert(availableClasses, data.class)
+                end
+            end
         end
 
+        if #availableClasses == 0 then
+            print("[Race Poll] Error: No race-eligible vehicles in any class. Resetting.")
+            exports["spz-races"]:ResetToIdle()
+            return
+        end
+
+        -- Shuffle and pick up to 2 classes
+        for i = #availableClasses, 2, -1 do
+            local j = math.random(1, i)
+            availableClasses[i], availableClasses[j] = availableClasses[j], availableClasses[i]
+        end
+        local wantedClasses = math.min(2, #availableClasses)
+
         local vehicles = {}
-        for _, classId in ipairs(selectedClasses) do
-            local pool = exports["spz-vehicles"]:GetPollPool(classId, 1)
+        for i = 1, wantedClasses do
+            local pool = exports["spz-vehicles"]:GetPollPool(availableClasses[i], 1)
             if pool and pool[1] then
                 table.insert(vehicles, pool[1])
             end
+        end
+
+        if #vehicles == 0 then
+            print("[Race Poll] Error: GetPollPool returned nothing for any class. Resetting.")
+            exports["spz-races"]:ResetToIdle()
+            return
         end
 
         pollOptions = vehicles
         for _, veh in ipairs(vehicles) do
             local meta = exports["spz-vehicles"]:GetClassMeta(veh.class)
             table.insert(uiOptions, {
-                name     = veh.model,
-                label    = veh.label,
-                subtext  = meta and meta.name or "Unknown",
-                color    = meta and meta.color or "#FFFFFF",
-                stats    = {
+                name    = veh.model,
+                label   = veh.label,
+                subtext = meta and meta.name or "Unknown",
+                color   = meta and meta.color or "#FFFFFF",
+                stats   = {
                     { label = "Speed", value = veh.top_speed or "??" },
                     { label = "Accel", value = veh.accel or "??" },
                 }
             })
         end
 
-        RaceSession.pollVotes = { 0, 0 }
+        -- Size votes table to actual option count
+        RaceSession.pollVotes = {}
+        for i = 1, #pollOptions do RaceSession.pollVotes[i] = 0 end
     end
 
     RaceSession.pollOptions = pollOptions
