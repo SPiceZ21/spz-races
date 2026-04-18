@@ -76,20 +76,12 @@ function StartRacePoll()
         for i = 1, #pollOptions do RaceSession.pollVotes[i] = 0 end
     else
         -- PHASE 2: VEHICLE SELECTION
-        -- Discover all classes that actually have race-eligible vehicles in the registry,
-        -- then pick up to 2 distinct classes at random.
-        local availableClasses = {}
-        do
-            local seen = {}
-            for _, data in pairs(SPZ.VehicleRegistry) do
-                if data.race and data.class and not seen[data.class] then
-                    seen[data.class] = true
-                    table.insert(availableClasses, data.class)
-                end
-            end
-        end
+        -- Discover all classes that actually have race-eligible vehicles in the registry.
+        -- We use the export rather than accessing SPZ.VehicleRegistry directly, because
+        -- that table lives in spz-vehicles' Lua scope and is not visible here.
+        local availableClasses = exports["spz-vehicles"]:GetRaceClasses()
 
-        if #availableClasses == 0 then
+        if not availableClasses or #availableClasses == 0 then
             print("[Race Poll] Error: No race-eligible vehicles in any class. Resetting.")
             exports["spz-races"]:ResetToIdle()
             return
