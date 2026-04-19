@@ -37,8 +37,9 @@ local function GetWeightedTracks(type, count)
     return selected
 end
 
-local pollActive = false
-local pollTimer = 0
+local pollActive     = false
+local pollTimer      = 0
+local pollGeneration = 0   -- incremented each phase; threads check this to self-terminate
 
 function StartRacePoll()
     if RaceSession.state ~= SPZ.RaceState.IDLE and RaceSession.state ~= SPZ.RaceState.POLLING then return end
@@ -160,14 +161,16 @@ function StartRacePoll()
         subtitle = phase == 1 and "VOTE FOR THE NEXT RACE" or "SELECT YOUR PERFORMANCE"
     })
 
-    pollActive = true
-    pollTimer  = Config.PollDuration
+    pollActive     = true
+    pollTimer      = Config.PollDuration
+    pollGeneration = pollGeneration + 1
+    local myGen    = pollGeneration
 
     Citizen.CreateThread(function()
-        while pollTimer > 0 and pollActive do
+        while pollTimer > 0 and pollActive and pollGeneration == myGen do
             Citizen.Wait(1000)
             pollTimer = pollTimer - 1
-            if pollTimer == 0 then
+            if pollTimer == 0 and pollGeneration == myGen then
                 EndRacePoll()
             end
         end
