@@ -60,7 +60,9 @@ local function HandleCheckpointAdvance(source, pData)
             TriggerClientEvent("SPZ:lapComplete", source, pData.current_lap - 1, lapTime)
 
             if pData.current_lap > track.laps then
-                HandleFinish(source, pData)
+                -- Final lap done — route to CP 1 (start/finish line) for the finish cross
+                pData.awaitingFinish = true
+                TriggerClientEvent("SPZ:nextCheckpoint", source, 1)
             else
                 TriggerClientEvent("SPZ:nextCheckpoint", source, pData.current_cp)
             end
@@ -81,7 +83,7 @@ end
 RegisterNetEvent("SPZ:checkpointHit", function(cpIndex)
     local src = source
     local pData = RaceSession.players[src]
-    
+
     if not pData then return end
     if pData.finished or pData.dnf then return end
     if RaceSession.state ~= SPZ.RaceState.LIVE then return end
@@ -89,6 +91,12 @@ RegisterNetEvent("SPZ:checkpointHit", function(cpIndex)
     -- Enforcement: Must be the correct next checkpoint (prevents skipping)
     if cpIndex ~= pData.current_cp then
         print(string.format("[Security] CP skip attempt by %s: expected %d, got %d", pData.name, pData.current_cp, cpIndex))
+        return
+    end
+
+    -- Circuit: after all laps' sectors are done, driver must cross CP 1 (start/finish) to finish
+    if pData.awaitingFinish and cpIndex == 1 then
+        HandleFinish(src, pData)
         return
     end
 

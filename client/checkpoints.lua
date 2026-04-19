@@ -3,6 +3,7 @@
 local CurrentCheckpoints = {}
 local CurrentCPIndex     = 1
 local RaceState          = "IDLE"
+local TrackType          = "circuit"   -- "circuit" | "sprint"
 
 -- One blip per checkpoint, indexed 1…N
 local AllBlips    = {}
@@ -10,24 +11,37 @@ local AllBlips    = {}
 local RouteBlip   = nil
 
 -- Blip appearance constants
-local SPRITE_CP_ACTIVE   = 38   -- Checkered flag style
-local SPRITE_CP_PENDING  = 38
+local SPRITE_CP_PENDING  = 1    -- Small circle dot for intermediate checkpoints
+local SPRITE_CP_ACTIVE   = 38   -- Checkered flag for the active target
+local SPRITE_CP_FINISH   = 38   -- Checkered flag for the finish line
 local COLOUR_ACTIVE      = 17   -- Orange
 local COLOUR_PENDING     = 4    -- White
-local COLOUR_FINISH      = 2    -- Green  (last CP on sprints)
+local COLOUR_FINISH      = 2    -- Green
 local SCALE_ACTIVE       = 1.1
-local SCALE_PENDING      = 0.65
+local SCALE_PENDING      = 0.7
+
+-- ---------------------------------------------------------------------------
+-- Internal: index of the finish line checkpoint
+--   circuit → CP 1 is both start AND finish
+--   sprint  → CP N is the finish
+-- ---------------------------------------------------------------------------
+local function _finishIdx(total)
+    return TrackType == "circuit" and 1 or total
+end
 
 -- ---------------------------------------------------------------------------
 -- Internal: build the label string shown in the map legend for a blip
 -- ---------------------------------------------------------------------------
 local function _cpLabel(idx, total)
-    if idx == 1 and total > 1 then
-        return string.format("Start / CP 1")
-    elseif idx == total then
+    local fi = _finishIdx(total)
+    if idx == 1 and TrackType == "circuit" then
+        return "Start / Finish"
+    elseif idx == 1 then
+        return "Start"
+    elseif idx == fi then
         return string.format("Finish (CP %d)", idx)
     else
-        return string.format("CP %d / %d", idx, total)
+        return string.format("CP %d", idx)
     end
 end
 
@@ -52,17 +66,17 @@ end
 local function _buildBlips(checkpoints)
     _clearAllBlips()
     local total = #checkpoints
+    local fi    = _finishIdx(total)
 
     for i, cp in ipairs(checkpoints) do
         local blip = AddBlipForCoord(cp.coords.x, cp.coords.y, cp.coords.z)
+        local isFinish = (i == fi)
 
-        -- Pending appearance (will be overridden for the active CP below)
-        SetBlipSprite(blip, SPRITE_CP_PENDING)
-        SetBlipColour(blip, i == total and COLOUR_FINISH or COLOUR_PENDING)
+        SetBlipSprite(blip, isFinish and SPRITE_CP_FINISH or SPRITE_CP_PENDING)
+        SetBlipColour(blip, isFinish and COLOUR_FINISH or COLOUR_PENDING)
         SetBlipScale(blip, SCALE_PENDING)
-        SetBlipAsShortRange(blip, true)  -- only visible when zoomed in enough
+        SetBlipAsShortRange(blip, false)  -- all visible on minimap so route is clear
 
-        -- Numbered label
         BeginTextCommandSetBlipName("STRING")
         AddTextComponentString(_cpLabel(i, total))
         EndTextCommandSetBlipName(blip)
@@ -77,10 +91,12 @@ end
 local function _setActiveBlip(idx)
     local total = #CurrentCheckpoints
     if total == 0 then return end
+    local fi = _finishIdx(total)
 
     for i, blip in ipairs(AllBlips) do
         if not DoesBlipExist(blip) then goto continue end
 
+        local isFinish = (i == fi)
         if i == idx then
             -- Active checkpoint — large, orange, always visible
             SetBlipSprite(blip,   SPRITE_CP_ACTIVE)
@@ -88,11 +104,11 @@ local function _setActiveBlip(idx)
             SetBlipScale(blip,    SCALE_ACTIVE)
             SetBlipAsShortRange(blip, false)
         else
-            -- Restore pending appearance
-            SetBlipSprite(blip,   SPRITE_CP_PENDING)
-            SetBlipColour(blip,   i == total and COLOUR_FINISH or COLOUR_PENDING)
+            -- Restore pending appearance — finish line stays green, others white dots
+            SetBlipSprite(blip,   isFinish and SPRITE_CP_FINISH or SPRITE_CP_PENDING)
+            SetBlipColour(blip,   isFinish and COLOUR_FINISH or COLOUR_PENDING)
             SetBlipScale(blip,    SCALE_PENDING)
-            SetBlipAsShortRange(blip, true)
+            SetBlipAsShortRange(blip, false)
         end
         ::continue::
     end
@@ -163,8 +179,9 @@ end)
 -- ---------------------------------------------------------------------------
 
 -- Full track loaded (sent by server when entering COUNTDOWN or STAGING)
-RegisterNetEvent("SPZ:spawnCheckpoints", function(checkpoints, startIdx)
-    print(string.format("[Checkpoints] Loading track with %d checkpoints", #checkpoints))
+RegisterNetEvent("SPZ:spawnCheckpoints", function(checkpoints, startIdx, trackType)
+    print(string.format("[Checkpoints] Loading track with %d checkpoints (type: %s)", #checkpoints, trackType or "circuit"))
+    TrackType          = trackType or "circuit"
     CurrentCheckpoints = checkpoints
     CurrentCPIndex     = startIdx or 1
     _buildBlips(checkpoints)

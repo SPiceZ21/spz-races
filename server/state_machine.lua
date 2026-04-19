@@ -30,7 +30,7 @@ local function SetState(newState)
         -- Initialize track visuals for all participants
         if RaceSession.track and RaceSession.track.checkpoints then
             for src, _ in pairs(RaceSession.players) do
-                TriggerClientEvent("SPZ:spawnCheckpoints", src, RaceSession.track.checkpoints, 1)
+                TriggerClientEvent("SPZ:spawnCheckpoints", src, RaceSession.track.checkpoints, 1, RaceSession.track.type)
             end
         end
         exports["spz-races"]:StartCountdownSequence()
