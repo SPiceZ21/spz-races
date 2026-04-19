@@ -22,6 +22,7 @@ local function SetState(newState)
     -- Validate transition logic here if required
     print(string.format("[Race Engine] State Transition: %s -> %s", oldState, newState))
     RaceSession.state = newState
+    GlobalState.RaceState = newState
     
     -- Handle logic for entering specific states
     if newState == SPZ.RaceState.WAITING then
