@@ -60,11 +60,12 @@ function RunRaceCleanup(results)
     RaceSession.raceType = NextCycleType()
     print(string.format("[Race Engine] Next cycle (#%d) initialized as: %s", RaceSession.cycleCount, RaceSession.raceType))
 
+    -- Block the idle polling loop BEFORE transitioning to IDLE so the
+    -- 5-second polling thread cannot sneak in between the two writes.
+    RaceSession.intermissionActive = true
+
     -- Return state machine to IDLE
     exports["spz-races"]:SetRaceState(SPZ.RaceState.IDLE)
-
-    -- Block the idle polling loop while intermission runs
-    RaceSession.intermissionActive = true
 
     -- Broadcast queue update so UIs reflect the reset
     if BroadcastQueueUpdate then BroadcastQueueUpdate() end
