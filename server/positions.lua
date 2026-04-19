@@ -12,7 +12,8 @@ local function GetDistToNextCP(source, pData)
     if not DoesEntityExist(ped) then return 9999.0 end
 
     local playerPos = GetEntityCoords(ped)
-    return #(playerPos - cp.coords)
+    local cpPos = vector3(cp.coords.x, cp.coords.y, cp.coords.z)
+    return #(playerPos - cpPos)
 end
 
 function CalculatePositions()
