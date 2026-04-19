@@ -30,10 +30,13 @@ function ProcessRaceResults()
                 points_earned = (SPZ.PointsTable and SPZ.PointsTable[pData.position]) or 0,
             })
         else
+            local totalCPs = RaceSession.track and RaceSession.track.checkpoints and #RaceSession.track.checkpoints or 1
             table.insert(results.dnf, {
-                source     = source,
-                name       = pData.name,
-                dnf_reason = pData.dnf_reason or "timeout",
+                source      = source,
+                name        = pData.name,
+                dnf_reason  = pData.dnf_reason or "timeout",
+                -- Progress fraction (0–1) for adaptive SR penalty in spz-progression
+                progress    = math.min(1.0, (pData.current_cp or 1) / totalCPs),
             })
         end
     end
