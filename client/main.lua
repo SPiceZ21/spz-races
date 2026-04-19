@@ -50,27 +50,18 @@ end)
 
 -- ── Staging phase (freeze + track preview before the 3-2-1) ─────────────
 -- Fires every second during the staging window.
--- spz-hud should listen for this event and display a "Race starts in X"
--- banner so drivers know how long they have to inspect the track.
+-- Relayed via TriggerEvent so spz-hud's NUI bridge can forward to its UI page.
 RegisterNetEvent("SPZ:stagingPhase", function(data)
-    -- Pass-through to HUD resource if present
-    if GetResourceState("spz-hud") == "started" then
-        SendNUIMessage({
-            type    = "SPZ_STAGING",
-            payload = data,
-        })
-    end
+    TriggerEvent("SPZ:hud:staging", data)
     if Config.Debug then
         print(string.format("[Race] Staging: %ds remaining (track: %s)",
               data.remaining, tostring(data.track)))
     end
 end)
 
--- Staging ended — HUD can dismiss the staging banner
+-- Staging ended — relay so spz-hud can dismiss the staging banner
 RegisterNetEvent("SPZ:stagingEnd", function()
-    if GetResourceState("spz-hud") == "started" then
-        SendNUIMessage({ type = "SPZ_STAGING_END" })
-    end
+    TriggerEvent("SPZ:hud:stagingEnd")
     print("[Race] Staging complete — countdown incoming")
 end)
 
