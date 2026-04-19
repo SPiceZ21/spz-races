@@ -14,8 +14,8 @@ Citizen.CreateThread(function()
                 local playerPos = GetEntityCoords(playerPed)
                 
                 -- Distance check against CP center and assigned radius
-                -- Using # operator for optimized vector distance calculation
-                local dist = #(playerPos - cp.coords)
+                local cpPos = vector3(cp.coords.x, cp.coords.y, cp.coords.z)
+                local dist = #(playerPos - cpPos)
                 
                 if dist < (cp.radius or 5.0) then
                     -- Notify server of the hit
