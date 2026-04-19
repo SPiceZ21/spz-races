@@ -11,14 +11,15 @@ local AllBlips    = {}
 local RouteBlip   = nil
 
 -- Blip appearance constants
-local SPRITE_CP_PENDING  = 1    -- Small circle dot for intermediate checkpoints
-local SPRITE_CP_ACTIVE   = 38   -- Checkered flag for the active target
-local SPRITE_CP_FINISH   = 38   -- Checkered flag for the finish line
-local COLOUR_ACTIVE      = 17   -- Orange
-local COLOUR_PENDING     = 4    -- White
+-- Blip appearance constants
+local SPRITE_CP_PENDING  = 1    -- Simple dot for upcoming path
+local SPRITE_CP_ACTIVE   = 164  -- Large arrow for the immediate target
+local SPRITE_CP_FINISH   = 458  -- Premium checkered flag for the finish line
+local COLOUR_ACTIVE      = 17   -- Orange/Gold
+local COLOUR_PENDING     = 4    -- White (semi-transparent via short range)
 local COLOUR_FINISH      = 2    -- Green
 local SCALE_ACTIVE       = 1.1
-local SCALE_PENDING      = 0.7
+local SCALE_PENDING      = 0.6
 
 -- ---------------------------------------------------------------------------
 -- Internal: index of the finish line checkpoint
@@ -75,7 +76,7 @@ local function _buildBlips(checkpoints)
         SetBlipSprite(blip, isFinish and SPRITE_CP_FINISH or SPRITE_CP_PENDING)
         SetBlipColour(blip, isFinish and COLOUR_FINISH or COLOUR_PENDING)
         SetBlipScale(blip, SCALE_PENDING)
-        SetBlipAsShortRange(blip, false)  -- all visible on minimap so route is clear
+        SetBlipAsShortRange(blip, true)  -- Hide distant clutter by default
 
         BeginTextCommandSetBlipName("STRING")
         AddTextComponentString(_cpLabel(i, total))
@@ -98,17 +99,26 @@ local function _setActiveBlip(idx)
 
         local isFinish = (i == fi)
         if i == idx then
-            -- Active checkpoint — large, orange, always visible
+            -- Active checkpoint — large arrow, always visible on minimap
             SetBlipSprite(blip,   SPRITE_CP_ACTIVE)
             SetBlipColour(blip,   COLOUR_ACTIVE)
             SetBlipScale(blip,    SCALE_ACTIVE)
             SetBlipAsShortRange(blip, false)
-        else
-            -- Restore pending appearance — finish line stays green, others white dots
-            SetBlipSprite(blip,   isFinish and SPRITE_CP_FINISH or SPRITE_CP_PENDING)
-            SetBlipColour(blip,   isFinish and COLOUR_FINISH or COLOUR_PENDING)
-            SetBlipScale(blip,    SCALE_PENDING)
+            SetBlipPriority(blip, 10)
+        elseif isFinish then
+            -- Finish line — always visible so players know where they are heading
+            SetBlipSprite(blip,   SPRITE_CP_FINISH)
+            SetBlipColour(blip,   COLOUR_FINISH)
+            SetBlipScale(blip,    SCALE_ACTIVE)
             SetBlipAsShortRange(blip, false)
+            SetBlipPriority(blip, 9)
+        else
+            -- Pending checkpoints — small dots, only visible when close (ShortRange)
+            SetBlipSprite(blip,   SPRITE_CP_PENDING)
+            SetBlipColour(blip,   COLOUR_PENDING)
+            SetBlipScale(blip,    SCALE_PENDING)
+            SetBlipAsShortRange(blip, true)
+            SetBlipPriority(blip, 1)
         end
         ::continue::
     end
