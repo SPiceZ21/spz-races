@@ -113,17 +113,20 @@ local function _setActiveBlip(idx)
         ::continue::
     end
 
-    -- Dedicated route blip — always points to current CP via GPS
+    -- Dedicated route blip — update coords in-place to avoid GPS flicker
     local cp = CurrentCheckpoints[idx]
     if cp then
-        if RouteBlip and DoesBlipExist(RouteBlip) then RemoveBlip(RouteBlip) end
-        RouteBlip = AddBlipForCoord(cp.coords.x, cp.coords.y, cp.coords.z)
-        SetBlipSprite(RouteBlip, 8)          -- Route destination flag
-        SetBlipColour(RouteBlip, COLOUR_ACTIVE)
-        SetBlipScale(RouteBlip, 0.0)         -- Invisible dot — only shows the route line
-        SetBlipRoute(RouteBlip, true)
-        SetBlipRouteColour(RouteBlip, COLOUR_ACTIVE)
-        SetBlipAsShortRange(RouteBlip, false)
+        if RouteBlip and DoesBlipExist(RouteBlip) then
+            SetBlipCoords(RouteBlip, cp.coords.x, cp.coords.y, cp.coords.z)
+        else
+            RouteBlip = AddBlipForCoord(cp.coords.x, cp.coords.y, cp.coords.z)
+            SetBlipSprite(RouteBlip, 8)
+            SetBlipColour(RouteBlip, COLOUR_ACTIVE)
+            SetBlipScale(RouteBlip, 0.0)
+            SetBlipRoute(RouteBlip, true)
+            SetBlipRouteColour(RouteBlip, COLOUR_ACTIVE)
+            SetBlipAsShortRange(RouteBlip, false)
+        end
         BeginTextCommandSetBlipName("STRING")
         AddTextComponentString(_cpLabel(idx, #CurrentCheckpoints))
         EndTextCommandSetBlipName(RouteBlip)
