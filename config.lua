@@ -48,5 +48,16 @@ Config.GridColSpacing       = 4.5     -- metres side-to-side
 Config.SafeZone             = vector3(-1323.8, -1199.1, 4.0)
 Config.SafeZoneHeading      = 210.0
 
+-- ── Checkpoints ────────────────────────────────────────────────────────────
+-- How long (ms) a racer can go without hitting any checkpoint before they are
+-- automatically DNF'd for idling / going off-route.
+Config.IdleKickMs           = 120000  -- 2 minutes
+
+-- Duration (ms) gate flare particle effects stay visible after a checkpoint hit.
+Config.FlareDisplayMs       = 3000
+
+-- GPS route colour index (GTA colour palette, 51 = bright yellow).
+Config.GpsRouteColour       = 51
+
 -- ── Debug ──────────────────────────────────────────────────────────────────
 Config.Debug                = false
