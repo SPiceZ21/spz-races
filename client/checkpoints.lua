@@ -5,34 +5,41 @@ local CurrentCPIndex     = 1
 local RaceState          = "IDLE"
 local TrackType          = "circuit"   -- "circuit" | "sprint"
 
--- One blip per checkpoint, indexed 1…N
-local AllBlips    = {}
--- Separate dedicated route blip that always points to the ACTIVE checkpoint
-local RouteBlip   = nil
+-- ── Blips ──────────────────────────────────────────────────────────────────
+local AllBlips  = {}
+local RouteBlip = nil
 
--- Blip appearance constants
--- Blip appearance constants
-local SPRITE_CP_PENDING  = 1    -- Simple dot for upcoming path
-local SPRITE_CP_ACTIVE   = 164  -- Large arrow for the immediate target
-local SPRITE_CP_FINISH   = 458  -- Premium checkered flag for the finish line
-local COLOUR_ACTIVE      = 17   -- Orange/Gold
-local COLOUR_PENDING     = 4    -- White (semi-transparent via short range)
-local COLOUR_FINISH      = 2    -- Green
-local SCALE_ACTIVE       = 1.1
-local SCALE_PENDING      = 0.6
+local SPRITE_PENDING = 1
+local SPRITE_ACTIVE  = 164
+local SPRITE_FINISH  = 458
+local COLOUR_ACTIVE  = 17   -- orange/gold
+local COLOUR_PENDING = 4    -- white
+local COLOUR_FINISH  = 2    -- green
+local SCALE_ACTIVE   = 1.1
+local SCALE_PENDING  = 0.6
 
--- ---------------------------------------------------------------------------
--- Internal: index of the finish line checkpoint
---   circuit → CP 1 is both start AND finish
---   sprint  → CP N is the finish
--- ---------------------------------------------------------------------------
+-- ── Gate props ─────────────────────────────────────────────────────────────
+-- Physical objects spawned at the left/right lane-marker coords of every checkpoint.
+-- We use a traffic cone by default; START and FINISH gates get a barrel instead.
+local GATE_PROP_DEFAULT = joaat("prop_roadcone02a")
+local GATE_PROP_FINISH  = joaat("prop_mp_barrier_02b")
+
+local GateObjects = {}   -- flat list of entity handles
+
+-- ── GPS route ──────────────────────────────────────────────────────────────
+local GpsActive = false
+
+-- ── Particle asset ─────────────────────────────────────────────────────────
+local PTFX_ASSET  = "core"
+local PTFX_EFFECT = "exp_grd_flare"
+local PTFX_SCALE  = 0.9
+
+-- ── Helpers ────────────────────────────────────────────────────────────────
+
 local function _finishIdx(total)
     return TrackType == "circuit" and 1 or total
 end
 
--- ---------------------------------------------------------------------------
--- Internal: build the label string shown in the map legend for a blip
--- ---------------------------------------------------------------------------
 local function _cpLabel(idx, total)
     local fi = _finishIdx(total)
     if idx == 1 and TrackType == "circuit" then
@@ -46,9 +53,8 @@ local function _cpLabel(idx, total)
     end
 end
 
--- ---------------------------------------------------------------------------
--- Internal: remove every blip and the route blip
--- ---------------------------------------------------------------------------
+-- ── Blips ──────────────────────────────────────────────────────────────────
+
 local function _clearAllBlips()
     for _, blip in ipairs(AllBlips) do
         if DoesBlipExist(blip) then RemoveBlip(blip) end
@@ -61,22 +67,19 @@ local function _clearAllBlips()
     end
 end
 
--- ---------------------------------------------------------------------------
--- Internal: create one blip per checkpoint labelled "CP 1", "CP 2" …
--- ---------------------------------------------------------------------------
 local function _buildBlips(checkpoints)
     _clearAllBlips()
     local total = #checkpoints
     local fi    = _finishIdx(total)
 
     for i, cp in ipairs(checkpoints) do
-        local blip = AddBlipForCoord(cp.coords.x, cp.coords.y, cp.coords.z)
+        local blip    = AddBlipForCoord(cp.coords.x, cp.coords.y, cp.coords.z)
         local isFinish = (i == fi)
 
-        SetBlipSprite(blip, isFinish and SPRITE_CP_FINISH or SPRITE_CP_PENDING)
+        SetBlipSprite(blip, isFinish and SPRITE_FINISH or SPRITE_PENDING)
         SetBlipColour(blip, isFinish and COLOUR_FINISH or COLOUR_PENDING)
         SetBlipScale(blip, SCALE_PENDING)
-        SetBlipAsShortRange(blip, true)  -- Hide distant clutter by default
+        SetBlipAsShortRange(blip, true)
 
         BeginTextCommandSetBlipName("STRING")
         AddTextComponentString(_cpLabel(i, total))
@@ -86,9 +89,6 @@ local function _buildBlips(checkpoints)
     end
 end
 
--- ---------------------------------------------------------------------------
--- Internal: highlight the active checkpoint and route to it
--- ---------------------------------------------------------------------------
 local function _setActiveBlip(idx)
     local total = #CurrentCheckpoints
     if total == 0 then return end
@@ -96,25 +96,21 @@ local function _setActiveBlip(idx)
 
     for i, blip in ipairs(AllBlips) do
         if not DoesBlipExist(blip) then goto continue end
-
         local isFinish = (i == fi)
         if i == idx then
-            -- Active checkpoint — large arrow, always visible on minimap
-            SetBlipSprite(blip,   SPRITE_CP_ACTIVE)
+            SetBlipSprite(blip,   SPRITE_ACTIVE)
             SetBlipColour(blip,   COLOUR_ACTIVE)
             SetBlipScale(blip,    SCALE_ACTIVE)
             SetBlipAsShortRange(blip, false)
             SetBlipPriority(blip, 10)
         elseif isFinish then
-            -- Finish line — always visible so players know where they are heading
-            SetBlipSprite(blip,   SPRITE_CP_FINISH)
+            SetBlipSprite(blip,   SPRITE_FINISH)
             SetBlipColour(blip,   COLOUR_FINISH)
             SetBlipScale(blip,    SCALE_ACTIVE)
             SetBlipAsShortRange(blip, false)
             SetBlipPriority(blip, 9)
         else
-            -- Pending checkpoints — small dots, only visible when close (ShortRange)
-            SetBlipSprite(blip,   SPRITE_CP_PENDING)
+            SetBlipSprite(blip,   SPRITE_PENDING)
             SetBlipColour(blip,   COLOUR_PENDING)
             SetBlipScale(blip,    SCALE_PENDING)
             SetBlipAsShortRange(blip, true)
@@ -123,7 +119,6 @@ local function _setActiveBlip(idx)
         ::continue::
     end
 
-    -- Dedicated route blip — update coords in-place to avoid GPS flicker
     local cp = CurrentCheckpoints[idx]
     if cp then
         if RouteBlip and DoesBlipExist(RouteBlip) then
@@ -143,13 +138,145 @@ local function _setActiveBlip(idx)
     end
 end
 
--- ---------------------------------------------------------------------------
--- 11.2 Checkpoint world markers (drawn every frame while racing)
--- ---------------------------------------------------------------------------
+-- ── Gate props ─────────────────────────────────────────────────────────────
+
+local function _awaitModel(model)
+    while not HasModelLoaded(model) do
+        RequestModel(model)
+        Citizen.Wait(0)
+    end
+end
+
+local function _placeProp(model, pos)
+    _awaitModel(model)
+    local obj = CreateObject(model, pos.x, pos.y, pos.z, false, false, false)
+    PlaceObjectOnGroundProperly(obj)
+    FreezeEntityPosition(obj, true)
+    SetEntityCollision(obj, false, true)
+    SetEntityInvincible(obj, true)
+    SetEntityAsMissionEntity(obj, true, true)
+    return obj
+end
+
+local function _spawnGates(checkpoints)
+    local total = #checkpoints
+    local fi    = _finishIdx(total)
+
+    for i, cp in ipairs(checkpoints) do
+        if cp.left and cp.right then
+            local model = (i == 1 or i == fi) and GATE_PROP_FINISH or GATE_PROP_DEFAULT
+            GateObjects[#GateObjects + 1] = _placeProp(model, cp.left)
+            GateObjects[#GateObjects + 1] = _placeProp(model, cp.right)
+        end
+    end
+end
+
+local function _clearGates()
+    for _, obj in ipairs(GateObjects) do
+        if DoesEntityExist(obj) then
+            SetEntityAsMissionEntity(obj, false, true)
+            DeleteObject(obj)
+        end
+    end
+    GateObjects = {}
+end
+
+-- ── Particle flares ────────────────────────────────────────────────────────
+
+local function _fireGateFlare(cpIndex)
+    local cp = CurrentCheckpoints[cpIndex]
+    if not cp or not cp.left or not cp.right then return end
+
+    while not HasNamedPtfxAssetLoaded(PTFX_ASSET) do
+        RequestNamedPtfxAsset(PTFX_ASSET)
+        Citizen.Wait(0)
+    end
+
+    UseParticleFxAssetNextCall(PTFX_ASSET)
+    local lh = StartParticleFxLoopedAtCoord(PTFX_EFFECT,
+        cp.left.x, cp.left.y, cp.left.z,
+        0.0, 0.0, 0.0, PTFX_SCALE, false, false, false, 0)
+
+    UseParticleFxAssetNextCall(PTFX_ASSET)
+    local rh = StartParticleFxLoopedAtCoord(PTFX_EFFECT,
+        cp.right.x, cp.right.y, cp.right.z,
+        0.0, 0.0, 0.0, PTFX_SCALE, false, false, false, 0)
+
+    SetTimeout(Config.FlareDisplayMs or 3000, function()
+        StopParticleFxLooped(lh, false)
+        StopParticleFxLooped(rh, false)
+    end)
+end
+
+-- ── GPS multi-route ────────────────────────────────────────────────────────
+
+local function _buildGpsRoute(checkpoints, fromIdx)
+    if GpsActive then
+        ClearGpsMultiRoute()
+    end
+    StartGpsMultiRoute(Config.GpsRouteColour or 51, false, false)
+    for i = fromIdx, #checkpoints do
+        local cp = checkpoints[i]
+        AddPointToGpsMultiRoute(cp.coords.x, cp.coords.y, cp.coords.z or 0.0)
+    end
+    -- For circuits, loop back to CP1 (start/finish line)
+    if TrackType == "circuit" and fromIdx > 1 then
+        local finish = checkpoints[1]
+        AddPointToGpsMultiRoute(finish.coords.x, finish.coords.y, finish.coords.z or 0.0)
+    end
+    SetGpsMultiRouteRender(true, 16, 16)
+    GpsActive = true
+end
+
+local function _clearGpsRoute()
+    if GpsActive then
+        ClearGpsMultiRoute()
+        GpsActive = false
+    end
+end
+
+-- ── World markers + 3D distance text ───────────────────────────────────────
+
+local function _drawDistanceLabel(cp, idx, total)
+    local playerPos = GetEntityCoords(PlayerPedId())
+    local cpPos     = vector3(cp.coords.x, cp.coords.y, cp.coords.z)
+    local dist      = #(playerPos - cpPos)
+
+    -- Vertical pillar above the checkpoint — height scales with distance (looks cool from afar)
+    local pillarH = math.min(80.0, math.max(2.0, dist * 0.35))
+
+    DrawMarker(1,                                       -- vertical cylinder
+        cp.coords.x, cp.coords.y, cp.coords.z,
+        0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0,
+        0.4, 0.4, pillarH,
+        255, 200, 0, 180,
+        false, true, 2, false, nil, nil, false)
+
+    -- 2D screen text: label + distance (only render when player is close enough)
+    if dist < 200.0 then
+        local onScreen, sx, sy = World3dToScreen2d(
+            cp.coords.x, cp.coords.y, cp.coords.z + pillarH + 1.2)
+        if onScreen then
+            local label = _cpLabel(idx, total)
+            local distStr = string.format("%.0fm", dist)
+            SetTextScale(0.28, 0.28)
+            SetTextFont(4)
+            SetTextProportional(1)
+            SetTextColour(255, 200, 0, 240)
+            SetTextCentre(1)
+            SetTextEntry("STRING")
+            AddTextComponentString(label .. "\n" .. distStr)
+            DrawText(sx, sy)
+        end
+    end
+end
+
 local function DrawRaceMarkers()
     if #CurrentCheckpoints == 0 or RaceState == "IDLE" then return end
+    local total = #CurrentCheckpoints
 
-    -- Active checkpoint: bright yellow cylinder
+    -- Active CP — bright yellow cylinder + distance label
     local cp = CurrentCheckpoints[CurrentCPIndex]
     if cp then
         DrawMarker(1,
@@ -159,9 +286,10 @@ local function DrawRaceMarkers()
             cp.radius * 2.0, cp.radius * 2.0, 2.5,
             255, 200, 0, 120,
             false, true, 2, false, nil, nil, false)
+        _drawDistanceLabel(cp, CurrentCPIndex, total)
     end
 
-    -- Next checkpoint: dim white
+    -- Next CP — dim white preview
     local nextCp = CurrentCheckpoints[CurrentCPIndex + 1]
     if nextCp then
         DrawMarker(1,
@@ -174,7 +302,7 @@ local function DrawRaceMarkers()
     end
 end
 
--- Marker render thread — tight loop only during active race / staging
+-- Marker render thread
 Citizen.CreateThread(function()
     while true do
         if #CurrentCheckpoints > 0
@@ -187,25 +315,44 @@ Citizen.CreateThread(function()
     end
 end)
 
--- ---------------------------------------------------------------------------
--- Net events
--- ---------------------------------------------------------------------------
+-- ── Net events ─────────────────────────────────────────────────────────────
 
--- Full track loaded (sent by server when entering COUNTDOWN or STAGING)
+-- Full track loaded (server sends this during COUNTDOWN / STAGING)
 RegisterNetEvent("SPZ:spawnCheckpoints", function(checkpoints, startIdx, trackType)
-    print(string.format("[Checkpoints] Loading track with %d checkpoints (type: %s)", #checkpoints, trackType or "circuit"))
+    print(string.format("[Checkpoints] Loading %d checkpoints (type: %s)", #checkpoints, trackType or "circuit"))
     TrackType          = trackType or "circuit"
     CurrentCheckpoints = checkpoints
     CurrentCPIndex     = startIdx or 1
+
     _buildBlips(checkpoints)
     _setActiveBlip(CurrentCPIndex)
+    _buildGpsRoute(checkpoints, CurrentCPIndex)
+
+    -- Spawn gate props in a thread so we don't block the net event handler
+    Citizen.CreateThread(function()
+        _spawnGates(checkpoints)
+    end)
 end)
 
--- Player hit a checkpoint — advance the active indicator
+-- Player hit a checkpoint — advance indicator, fire flare at the one just cleared
 RegisterNetEvent("SPZ:nextCheckpoint", function(newIndex)
-    CurrentCPIndex = newIndex
+    local prevIndex    = CurrentCPIndex
+    CurrentCPIndex     = newIndex
+
     PlaySoundFrontend(-1, "CHECKPOINT_NORMAL", "HUD_MINI_GAME_SOUNDSET", 1)
     _setActiveBlip(CurrentCPIndex)
+    _buildGpsRoute(CurrentCheckpoints, CurrentCPIndex)
+
+    -- Fire flare at the checkpoint the player just cleared
+    Citizen.CreateThread(function()
+        _fireGateFlare(prevIndex)
+    end)
+end)
+
+-- Lap complete — route loops back from CP 1
+RegisterNetEvent("SPZ:lapComplete", function(lapNum, lapTimeMs)
+    -- GPS route is rebuilt by SPZ:nextCheckpoint (which fires right after lap complete)
+    PlaySoundFrontend(-1, "CHECKPOINT_UNDER_THE_BRIDGE_STUNT", "HUD_MINI_GAME_SOUNDSET", 1)
 end)
 
 -- Race state changed
@@ -213,14 +360,15 @@ RegisterNetEvent("spz_race:state_updated", function(newState)
     RaceState = newState
     if newState == "IDLE" or newState == "CLEANUP" then
         _clearAllBlips()
+        _clearGates()
+        _clearGpsRoute()
         CurrentCheckpoints = {}
         CurrentCPIndex     = 1
     end
 end)
 
--- ---------------------------------------------------------------------------
--- Exports for other client scripts
--- ---------------------------------------------------------------------------
+-- ── Exports ────────────────────────────────────────────────────────────────
+
 exports("GetCurrentCP", function()
     return CurrentCheckpoints[CurrentCPIndex], CurrentCPIndex
 end)
