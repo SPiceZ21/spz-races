@@ -1,5 +1,5 @@
--- Initialize Global Framework Object if not already present
-SPZ = SPZ or {}
+-- Initialize Global Framework Object
+SPZ = exports["spz-lib"]:GetCoreObject()
 
 -- 5.1 Race State Enum
 SPZ.RaceState = {
