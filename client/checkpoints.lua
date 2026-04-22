@@ -202,7 +202,7 @@ local function _fireGateFlare(cpIndex)
         cp.right.x, cp.right.y, cp.right.z,
         0.0, 0.0, 0.0, PTFX_SCALE, false, false, false, 0)
 
-    SetTimeout(Config.FlareDisplayMs or 3000, function()
+    SetTimeout((Config and Config.FlareDisplayMs) or 3000, function()
         StopParticleFxLooped(lh, false)
         StopParticleFxLooped(rh, false)
     end)
@@ -214,7 +214,7 @@ local function _buildGpsRoute(checkpoints, fromIdx)
     if GpsActive then
         ClearGpsMultiRoute()
     end
-    StartGpsMultiRoute(Config.GpsRouteColour or 51, false, false)
+    StartGpsMultiRoute((Config and Config.GpsRouteColour) or 51, false, false)
     for i = fromIdx, #checkpoints do
         local cp = checkpoints[i]
         AddPointToGpsMultiRoute(cp.coords.x, cp.coords.y, cp.coords.z or 0.0)

@@ -50,7 +50,7 @@ end)
 
 -- ── Staging phase ───────────────────────────────────────────────────────
 RegisterNetEvent("SPZ:stagingPhase", function(data)
-    if Config.Debug then
+    if Config and Config.Debug then
         print(string.format("[Race] Staging: %ds remaining (track: %s)",
               data.remaining, tostring(data.track)))
     end
@@ -73,8 +73,8 @@ end)
 RegisterNetEvent("SPZ:tpToSafeZone", function()
     local ped = PlayerPedId()
     local veh = GetVehiclePedIsIn(ped, false)
-    local sz  = Config.SafeZone
-    local sh  = Config.SafeZoneHeading or 0.0
+    local sz  = (Config and Config.SafeZone) or vector3(0.0, 0.0, 0.0)
+    local sh  = (Config and Config.SafeZoneHeading) or 0.0
 
     if DoesEntityExist(veh) then
         SetEntityCoords(veh, sz.x, sz.y, sz.z, false, false, false, true)

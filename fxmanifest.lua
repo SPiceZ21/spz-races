@@ -7,6 +7,7 @@ version '1.0.0'
 author 'SPiceZ-Core'
 
 shared_scripts {
+  'config.lua',
   '@spz-lib/shared/main.lua',
   '@spz-lib/shared/callbacks.lua',
   '@spz-lib/shared/notify.lua',
@@ -21,7 +22,6 @@ shared_scripts {
 }
 
 server_scripts {
-  'config.lua',
   'data/tracks.lua',
   'server/main.lua',
   'server/state_machine.lua',
