@@ -77,5 +77,10 @@ RegisterNetEvent("spz_race:state_updated", function(state)
         if GetResourceState("spz-poll") == "started" then
             exports["spz-poll"]:StopPoll()
         end
+    elseif state == "WAITING" or state == "COUNTDOWN" or state == "LIVE" then
+        -- Ensure poll is closed when moving out of polling
+        if GetResourceState("spz-poll") == "started" then
+            exports["spz-poll"]:StopPoll()
+        end
     end
 end)
