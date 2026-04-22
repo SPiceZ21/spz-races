@@ -155,9 +155,12 @@ end
 
 -- 11. Receive confirmation from spz-vehicles (server-to-server)
 AddEventHandler("SPZ:raceVehicleSpawned", function(src, model, entity)
+    print(string.format("[World Setup] DEBUG: Received SPZ:raceVehicleSpawned for player %s", src))
     if spawnConfirmed[src] ~= nil then
         spawnConfirmed[src] = true
         print(string.format("[World Setup] Player %s confirmed ready.", src))
+    else
+        print(string.format("[World Setup] WARNING: Received confirmation for unknown player %s", src))
     end
 end)
 
