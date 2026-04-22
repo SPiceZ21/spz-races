@@ -249,8 +249,9 @@ function EndRacePoll()
 end
 
 -- 7.4 Vote Collection
-RegisterNetEvent("SPZ:pollVote", function(data)
-    local src = source
+RegisterNetEvent("SPZ:pollVote", function(data, sourceOverride)
+    local src = sourceOverride or source
+    print(string.format("[Race Poll] DEBUG: Received vote from %s (sourceOverride: %s)", src, sourceOverride))
     if not pollActive then return end
 
     local player = RaceSession.players[src]
