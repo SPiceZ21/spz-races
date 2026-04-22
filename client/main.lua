@@ -48,26 +48,19 @@ RegisterNetEvent("SPZ:freezeRacer", function(freeze)
     end
 end)
 
--- ── Staging phase (freeze + track preview before the 3-2-1) ─────────────
--- Fires every second during the staging window.
--- Relayed via TriggerEvent so spz-hud's NUI bridge can forward to its UI page.
+-- ── Staging phase ───────────────────────────────────────────────────────
 RegisterNetEvent("SPZ:stagingPhase", function(data)
-    TriggerEvent("SPZ:hud:staging", data)
     if Config.Debug then
         print(string.format("[Race] Staging: %ds remaining (track: %s)",
               data.remaining, tostring(data.track)))
     end
 end)
 
--- Staging ended — relay so spz-hud can dismiss the staging banner
 RegisterNetEvent("SPZ:stagingEnd", function()
-    TriggerEvent("SPZ:hud:stagingEnd")
     print("[Race] Staging complete — countdown incoming")
 end)
 
--- HUD animations/triggers
 RegisterNetEvent("SPZ:countdown", function(data)
-    -- This event is typically handled by spz-hud, but we log it here for debug
     print("[Race] Countdown: " .. data.seconds)
 end)
 
