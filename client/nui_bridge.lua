@@ -70,16 +70,19 @@ end)
 
 -- ── State Management ──────────────────────────────────────────────────────
 RegisterNetEvent("spz_race:state_updated", function(state)
+    print(string.format("[NUI Bridge] DEBUG: State updated to %s", state))
     if state == "IDLE" or state == "ENDED" or state == "CLEANUP" then
         if GetResourceState("spz-raceUI") == "started" then
             exports["spz-raceUI"]:HideAll()
         end
         if GetResourceState("spz-poll") == "started" then
+            print("[NUI Bridge] DEBUG: Stopping poll due to IDLE/ENDED")
             exports["spz-poll"]:StopPoll()
         end
     elseif state == "WAITING" or state == "COUNTDOWN" or state == "LIVE" then
         -- Ensure poll is closed when moving out of polling
         if GetResourceState("spz-poll") == "started" then
+            print("[NUI Bridge] DEBUG: Stopping poll due to WAITING/COUNTDOWN/LIVE")
             exports["spz-poll"]:StopPoll()
         end
     end
