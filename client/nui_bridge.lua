@@ -23,6 +23,13 @@ end)
 RegisterNetEvent("SPZ:pollResult", function(data)
     if GetResourceState("spz-poll") == "started" then
         exports["spz-poll"]:UpdatePoll(data)
+        
+        -- If it's the final phase, close the UI after a short delay so players can see the winner
+        if data.phase == "vehicle" then
+            Citizen.SetTimeout(1200, function()
+                exports["spz-poll"]:StopPoll()
+            end)
+        end
     end
 end)
 
