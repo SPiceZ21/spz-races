@@ -211,7 +211,7 @@ function EndRacePoll()
         })
 
         -- Tiny pause lets the winner highlight render, then vehicle poll fires immediately
-        Citizen.SetTimeout(400, function()
+        Citizen.SetTimeout(100, function()
             RaceSession.pollPhase = 2
             StartRacePoll()
         end)
@@ -267,10 +267,16 @@ RegisterNetEvent("SPZ:pollVote", function(data, sourceOverride)
     -- Early tally if everyone voted
     local allVoted = true
     local playerCount = 0
-    for _, p in pairs(RaceSession.players) do
-        playerCount = playerCount + 1
-        if not p.voted then
-            allVoted = false
+    for src, p in pairs(RaceSession.players) do
+        -- Verify player is still actually online to prevent "ghost" players from blocking the poll
+        if GetPlayerName(src) then
+            playerCount = playerCount + 1
+            if not p.voted then
+                allVoted = false
+            end
+        else
+            -- Prune disconnected player
+            RaceSession.players[src] = nil
         end
     end
 

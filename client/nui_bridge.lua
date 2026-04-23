@@ -87,3 +87,39 @@ RegisterNetEvent("spz_race:state_updated", function(state)
         end
     end
 end)
+
+-- ── Telemetry & Race Data ──────────────────────────────────────────────────
+RegisterNetEvent("SPZ:spawnCheckpoints", function(checkpoints, currentIdx)
+    if GetResourceState("spz-raceUI") == "started" then
+        exports["spz-raceUI"]:UpdateRaceOverlay({ 
+            totalCheckpoints = #checkpoints, 
+            checkpoint = currentIdx or 1 
+        })
+    end
+end)
+
+RegisterNetEvent("SPZ:nextCheckpoint", function(cpIndex)
+    if GetResourceState("spz-raceUI") == "started" then
+        exports["spz-raceUI"]:UpdateRaceOverlay({ checkpoint = cpIndex })
+    end
+end)
+
+RegisterNetEvent("SPZ:lapComplete", function(lapNum)
+    if GetResourceState("spz-raceUI") == "started" then
+        exports["spz-raceUI"]:UpdateRaceOverlay({ lapNum = lapNum + 1, checkpoint = 1 })
+    end
+end)
+
+local _lastPosBroadcast = 0
+RegisterNetEvent("SPZ:positionUpdate", function(payload)
+    if GetResourceState("spz-raceUI") == "started" then
+        local now = GetGameTimer()
+        if now - _lastPosBroadcast < 200 then return end
+        _lastPosBroadcast = now
+        
+        exports["spz-raceUI"]:UpdateRaceOverlay({ 
+            positions = payload, 
+            mySource = GetPlayerServerId(PlayerId()) 
+        })
+    end
+end)
