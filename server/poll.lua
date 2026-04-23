@@ -210,8 +210,8 @@ function EndRacePoll()
             phase = "track"
         })
 
-        -- Tiny pause lets the winner highlight render, then vehicle poll fires immediately
-        Citizen.SetTimeout(100, function()
+        -- Instant transition lets the winner highlight render on next frame, then vehicle poll fires immediately
+        Citizen.SetTimeout(0, function()
             RaceSession.pollPhase = 2
             StartRacePoll()
         end)
@@ -250,15 +250,20 @@ end
 
 -- 7.4 Vote Collection
 RegisterNetEvent("SPZ:pollVote", function(data, sourceOverride)
-    local src = sourceOverride or source
-    print(string.format("[Race Poll] DEBUG: Received vote from %s (sourceOverride: %s)", src, sourceOverride))
+    local src = tonumber(sourceOverride or source)
+    if not src then return end
+
+    if Config.Debug then
+        print(string.format("[Race Poll] DEBUG: Received vote from %s (index: %s)", src, data and data.index or "nil"))
+    end
+
     if not pollActive then return end
 
     local player = RaceSession.players[src]
     if not player or player.voted then return end
 
     if not data or not data.index then return end
-    local index = data.index
+    local index = tonumber(data.index)
     if not index or index < 1 or index > #RaceSession.pollVotes then return end
 
     player.voted = true
@@ -267,20 +272,23 @@ RegisterNetEvent("SPZ:pollVote", function(data, sourceOverride)
     -- Early tally if everyone voted
     local allVoted = true
     local playerCount = 0
-    for src, p in pairs(RaceSession.players) do
-        -- Verify player is still actually online to prevent "ghost" players from blocking the poll
-        if GetPlayerName(src) then
+    
+    -- Sync check with current online players
+    for pSrc, pData in pairs(RaceSession.players) do
+        local onlineName = GetPlayerName(pSrc)
+        if onlineName then
             playerCount = playerCount + 1
-            if not p.voted then
+            if not pData.voted then
                 allVoted = false
             end
         else
-            -- Prune disconnected player
-            RaceSession.players[src] = nil
+            -- Clean up players who dropped
+            RaceSession.players[pSrc] = nil
         end
     end
 
     if allVoted and playerCount > 0 then
+        print("[Race Poll] All participants have voted. Ending poll early.")
         EndRacePoll()
     end
 end)
