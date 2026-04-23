@@ -59,8 +59,19 @@ function JoinQueue(src)
 end
 
 function LeaveQueue(src)
-    -- 6.2 LeaveQueue Logic
     if not RaceSession.players[src] then return end
+
+    local activePhases = {
+        [SPZ.RaceState.WAITING] = true,
+        [SPZ.RaceState.COUNTDOWN] = true,
+        [SPZ.RaceState.LIVE] = true
+    }
+
+    if activePhases[RaceSession.state] then
+        exports["spz-races"]:MarkDNF(src, "Abandoned Race")
+        Notify(src, "You abandoned the race.", "error")
+        return
+    end
 
     RaceSession.players[src] = nil
     SetPlayerState(src, "FREEROAM")
