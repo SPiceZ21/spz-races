@@ -25,7 +25,7 @@ function RunRaceCleanup(results)
 
         -- Redistribution to freeroam
         exports["spz-core"]:AssignPlayerToBucket(source, 0)
-        exports["spz-core"]:SetPlayerState(source, "IDLE")
+        exports["spz-core"]:SetPlayerState(source, "FREEROAM")
 
         -- Trigger client-side teleport to safe zone
         TriggerClientEvent("SPZ:tpToSafeZone", source)

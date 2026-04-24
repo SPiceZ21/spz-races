@@ -78,7 +78,7 @@ end)
 -- ── State Management ──────────────────────────────────────────────────────
 RegisterNetEvent("spz_race:state_updated", function(state)
     print(string.format("[NUI Bridge] DEBUG: State updated to %s", state))
-    if state == "IDLE" or state == "ENDED" or state == "CLEANUP" then
+    if state == "IDLE" or state == "CLEANUP" then
         if GetResourceState("spz-raceUI") == "started" then
             exports["spz-raceUI"]:HideAll()
         end
@@ -129,4 +129,74 @@ RegisterNetEvent("SPZ:positionUpdate", function(payload)
             mySource = GetPlayerServerId(PlayerId()) 
         })
     end
+end)
+
+-- ── Results & Progression ──────────────────────────────────────────────────
+local _pendingStats = nil
+
+RegisterNetEvent("SPZ:raceEnd", function(results)
+    if GetResourceState("spz-raceUI") ~= "started" then return end
+    
+    local mySource = GetPlayerServerId(PlayerId())
+    local myResult = nil
+    
+    -- Find my data in finishers
+    if results.finishers then
+        for _, finisher in ipairs(results.finishers) do
+            if finisher.source == mySource then
+                myResult = finisher
+                break
+            end
+        end
+    end
+    
+    -- If not in finishers, check DNF
+    if not myResult and results.dnf then
+        for _, dnf in ipairs(results.dnf) do
+            if dnf.source == mySource then
+                myResult = dnf
+                myResult.position = "DNF"
+                break
+            end
+        end
+    end
+    
+    if not myResult then 
+        print("^1[NUI Bridge] ERROR: Could not find my result in race data!^7")
+        return 
+    end
+    
+    print("^2[NUI Bridge] DEBUG: Received raceEnd. Track: " .. tostring(results.track) .. "^7")
+    
+    _pendingStats = {
+        trackName = results.track or "UNKNOWN",
+        finishTime = myResult.finish_time and string.format("%02d:%05.2f", math.floor(myResult.finish_time/60000), (myResult.finish_time%60000)/1000) or "DNF",
+        position = myResult.position or "DNF",
+        bestLap = myResult.best_lap and string.format("%02d:%05.2f", math.floor(myResult.best_lap/60000), (myResult.best_lap%60000)/1000) or "N/A",
+    }
+    
+    -- We wait for progressionUpdate to show the UI
+end)
+
+RegisterNetEvent("SPZ:progressionUpdate", function(data)
+    print("^2[NUI Bridge] DEBUG: Received progressionUpdate. PendingStats: " .. tostring(_pendingStats ~= nil) .. "^7")
+    if GetResourceState("spz-raceUI") ~= "started" then return end
+    if not _pendingStats then return end
+    
+    -- Combine stats with gains
+    local payload = {
+        trackName = _pendingStats.trackName,
+        finishTime = _pendingStats.finishTime,
+        position = _pendingStats.position,
+        bestLap = _pendingStats.bestLap,
+        xpGained = data.xpGain or 0,
+        xpNewProgress = 0.5, -- TODO: Calculate actual progress fraction
+        classPointsGained = data.pointsGain or 0,
+        cpNewProgress = 0.5, -- TODO: Calculate actual progress fraction
+        iRatingDelta = data.irDelta or 0,
+        safetyRatingDelta = data.srDelta or 0
+    }
+    
+    exports["spz-raceUI"]:ShowPostRaceStats(payload)
+    _pendingStats = nil -- Clear for next race
 end)
