@@ -55,6 +55,55 @@ end
 
 exports("BroadcastQueueUpdate", BroadcastQueueUpdate)
 
+-- ── Fallback Resync Handler ──────────────────────────────────────────────────
+-- Client requests a full truth dump when it suspects it is desynced.
+RegisterNetEvent("SPZ:requestResync", function()
+    local src = source
+    local pData = RaceSession and RaceSession.players and RaceSession.players[src]
+    if not pData then return end
+
+    -- Re-send current checkpoint index so the hit-detector stays on track
+    TriggerClientEvent("SPZ:nextCheckpoint", src, pData.current_cp)
+
+    -- Re-send current race state so UI and markers correct themselves
+    TriggerClientEvent("spz_race:state_updated", src, RaceSession.state)
+
+    -- Re-broadcast current positions so the leaderboard is up-to-date
+    if CalculatePositions and RaceSession.state == SPZ.RaceState.LIVE then
+        local ranked = CalculatePositions()
+        local payload = {}
+        for i, entry in ipairs(ranked) do
+            local pd = RaceSession.players[entry.source]
+            table.insert(payload, {
+                source   = entry.source,
+                name     = pd.name,
+                crew_tag = pd.crew_tag,
+                position = i,
+                lap      = pd.current_lap,
+                finished = pd.finished,
+            })
+        end
+        -- version = 0 so the client version guard does NOT reject it (resync always wins)
+        TriggerClientEvent("SPZ:positionUpdate", src, payload, 0)
+    end
+end)
+
+-- Export so spz-core cleanup.lua can call it
+exports("HandlePlayerDisconnect", function(source)
+    local pData = RaceSession and RaceSession.players and RaceSession.players[source]
+    if not pData then return end
+    local activePhases = {
+        [SPZ.RaceState.WAITING]   = true,
+        [SPZ.RaceState.COUNTDOWN] = true,
+        [SPZ.RaceState.LIVE]      = true,
+    }
+    if activePhases[RaceSession.state] then
+        if MarkDNF then MarkDNF(source, "disconnect") end
+    else
+        RaceSession.players[source] = nil
+    end
+end)
+
 function CountPlayers()
     local count = 0
     for _, _ in pairs(RaceSession.players) do
