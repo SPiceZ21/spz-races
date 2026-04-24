@@ -56,10 +56,12 @@ function CalculatePositions()
 end
 
 -- 13.2 Periodic Broadcast
+local _posVersion = 0
+
 Citizen.CreateThread(function()
     while true do
         Citizen.Wait(Config.PositionBroadcastInterval or 1000)
-        
+
         if RaceSession.state == SPZ.RaceState.LIVE then
             local ranked = CalculatePositions()
             local payload = {}
@@ -76,8 +78,9 @@ Citizen.CreateThread(function()
                 })
             end
 
-            -- Broadcasting to everyone in the race (effectively -1 as racers are isolated in bucket)
-            TriggerClientEvent("SPZ:positionUpdate", -1, payload)
+            _posVersion = _posVersion + 1
+            -- Clients reject packets whose version is not strictly greater than their last
+            TriggerClientEvent("SPZ:positionUpdate", -1, payload, _posVersion)
         end
     end
 end)

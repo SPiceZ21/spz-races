@@ -118,15 +118,26 @@ RegisterNetEvent("SPZ:lapComplete", function(lapNum)
 end)
 
 local _lastPosBroadcast = 0
-RegisterNetEvent("SPZ:positionUpdate", function(payload)
+local _lastPosVersion   = 0
+RegisterNetEvent("SPZ:positionUpdate", function(payload, version)
+    -- version == 0 is a forced resync from the server; always accept and reset counter
+    if version and version == 0 then
+        _lastPosVersion = 0
+    elseif version and version <= _lastPosVersion then
+        -- Reject out-of-order packets
+        return
+    else
+        _lastPosVersion = version or (_lastPosVersion + 1)
+    end
+
     if GetResourceState("spz-raceUI") == "started" then
         local now = GetGameTimer()
         if now - _lastPosBroadcast < 200 then return end
         _lastPosBroadcast = now
-        
-        exports["spz-raceUI"]:UpdateRaceOverlay({ 
-            positions = payload, 
-            mySource = GetPlayerServerId(PlayerId()) 
+
+        exports["spz-raceUI"]:UpdateRaceOverlay({
+            positions = payload,
+            mySource  = GetPlayerServerId(PlayerId()),
         })
     end
 end)

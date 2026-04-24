@@ -68,6 +68,24 @@ RegisterNetEvent("SPZ:go", function()
     print("[Race] Starting line crossed - GO GO GO!")
 end)
 
+-- ── Fallback Resync ─────────────────────────────────────────────────────────
+-- If the client missed a state event (e.g. network blip), request a full truth
+-- dump from the server every 12 seconds while in a live race.
+local _clientRaceState = "IDLE"
+
+RegisterNetEvent("spz_race:state_updated", function(state)
+    _clientRaceState = state
+end)
+
+Citizen.CreateThread(function()
+    while true do
+        Citizen.Wait(12000)
+        if _clientRaceState == "LIVE" then
+            TriggerServerEvent("SPZ:requestResync")
+        end
+    end
+end)
+
 -- Teleport player to safe zone after race cleanup.
 -- Fires server-side in cleanup.lua after the race bucket is freed.
 RegisterNetEvent("SPZ:tpToSafeZone", function()
