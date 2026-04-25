@@ -153,6 +153,24 @@ RegisterNetEvent("SPZ:tt:cpHit", function(cpIndex)
     end
 end)
 
+-- ── Net: player requested restart to start ───────────────────────────────────
+
+RegisterNetEvent("SPZ:tt:Restart", function()
+    local src = source
+    local s   = TT[src]
+    if not s then return end
+
+    -- Abandon current in-progress lap, reset to pre-start
+    s.phase     = "PRE_START"
+    s.currentCp = 1
+    s.lapStart  = nil
+
+    TriggerClientEvent("SPZ:tt:Restarted", src, {
+        lapsDone = #s.lapTimes,
+        bestLap  = s.bestLap,
+    })
+end)
+
 -- ── /quittt ───────────────────────────────────────────────────────────────────
 
 RegisterCommand("quittt", function(source)

@@ -424,6 +424,91 @@
     margin-bottom: 10px;
   }
 
+  /* ── Restart bar (bottom of HUD) ───────────────────── */
+
+  #hud-restart-bar {
+    border-top: 1px solid rgba(255,255,255,0.06);
+    padding: 0;
+    overflow: hidden;
+  }
+
+  /* Idle state: clickable hint */
+  #restart-idle {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 7px 12px;
+    cursor: pointer;
+    transition: background .15s;
+    font-size: 11px;
+    color: var(--text-muted);
+  }
+  #restart-idle:hover { background: rgba(249,115,22,0.08); color: #fff; }
+  #restart-idle kbd {
+    background: rgba(255,255,255,0.1);
+    border: 1px solid rgba(255,255,255,0.18);
+    border-radius: 4px;
+    font-size: 9px;
+    font-family: inherit;
+    padding: 1px 5px;
+    color: #ccc;
+    letter-spacing: 0.05em;
+  }
+  #restart-idle .restart-icon { color: var(--orange); font-size: 13px; }
+
+  /* Countdown state */
+  #restart-countdown {
+    display: none;
+    flex-direction: column;
+    gap: 4px;
+    padding: 7px 12px 8px;
+  }
+  #restart-countdown.active { display: flex; }
+
+  #restart-prog-wrap {
+    height: 3px;
+    background: rgba(255,255,255,0.08);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  #restart-prog {
+    height: 100%;
+    background: var(--orange);
+    border-radius: 2px;
+    width: 100%;
+    transform-origin: left;
+    transition: width 50ms linear;
+  }
+
+  #restart-countdown-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  #restart-countdown-text {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--orange);
+    letter-spacing: 0.05em;
+  }
+  #restart-cancel-hint {
+    font-size: 9px;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+  }
+  #restart-cancel-hint:hover { color: #fff; }
+  #restart-cancel-hint kbd {
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.14);
+    border-radius: 3px;
+    font-size: 8px;
+    font-family: inherit;
+    padding: 1px 4px;
+  }
+
   /* ── New-best toast ─────────────────────────────────── */
   #toast {
     position: fixed;
@@ -500,6 +585,22 @@
       </div>
     </div>
     <div id="hud-laps"></div>
+
+    <!-- Restart bar -->
+    <div id="hud-restart-bar">
+      <div id="restart-idle">
+        <span class="restart-icon">↩</span>
+        <span>Restart to Start</span>
+        <kbd id="restart-key-label">—</kbd>
+      </div>
+      <div id="restart-countdown">
+        <div id="restart-prog-wrap"><div id="restart-prog"></div></div>
+        <div id="restart-countdown-row">
+          <span id="restart-countdown-text">Restarting in <strong id="restart-num">3</strong>…</span>
+          <span id="restart-cancel-hint"><kbd id="restart-key-cancel">—</kbd> Cancel</span>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -532,6 +633,21 @@
 let _tracks      = [];
 let _filter      = 'all';
 let _searchQuery = '';
+
+// ── Restart elements ───────────────────────────────────────────────────────
+const restartIdle      = document.getElementById('restart-idle');
+const restartCountdown = document.getElementById('restart-countdown');
+const restartProg      = document.getElementById('restart-prog');
+const restartNum       = document.getElementById('restart-num');
+const restartCancel    = document.getElementById('restart-cancel-hint');
+const restartKeyLabel  = document.getElementById('restart-key-label');
+const restartKeyCancel = document.getElementById('restart-key-cancel');
+
+function setRestartKey(key) {
+  const label = key || 'BACK';
+  restartKeyLabel.textContent  = label;
+  restartKeyCancel.textContent = label;
+}
 
 // ── Elements ───────────────────────────────────────────────────────────────
 const menuOverlay   = document.getElementById('menu-overlay');
@@ -663,6 +779,8 @@ window.addEventListener('message', ({ data }) => {
       hudCpVal.textContent     = `1 / ${d.cpTotal || '?'}`;
       hudLaps.innerHTML        = '';
       hudTimer.textContent     = '--:--.---';
+      setRestartKey(d.restartKey);
+      resetRestartBar();
       hud.classList.add('visible');
       resultsOverlay.classList.remove('visible');
       break;
@@ -717,14 +835,60 @@ window.addEventListener('message', ({ data }) => {
       resultsOverlay.classList.add('visible');
       break;
 
+    // ── Restart: countdown started ────────────────────────────────────────
+    case 'tt_restart_start':
+      restartIdle.style.display      = 'none';
+      restartCountdown.classList.add('active');
+      restartProg.style.width        = '100%';
+      restartNum.textContent         = '3';
+      break;
+
+    // ── Restart: tick ─────────────────────────────────────────────────────
+    case 'tt_restart_tick': {
+      const pct = Math.max(0, d.remaining / d.totalMs) * 100;
+      restartProg.style.width  = pct + '%';
+      restartNum.textContent   = d.seconds;
+      break;
+    }
+
+    // ── Restart: cancelled ────────────────────────────────────────────────
+    case 'tt_restart_cancel':
+      restartCountdown.classList.remove('active');
+      restartIdle.style.display = '';
+      restartProg.style.width   = '100%';
+      break;
+
+    // ── Restart: executed ────────────────────────────────────────────────
+    case 'tt_restart_done':
+      restartCountdown.classList.remove('active');
+      restartIdle.style.display = '';
+      restartProg.style.width   = '100%';
+      hudLapLabel.textContent   = d.lapLabel || 'DRIVE TO THE START LINE';
+      hudBest.textContent       = d.bestLap  || '--:--.---';
+      hudTimer.textContent      = '--:--.---';
+      hudCpVal.textContent      = '1 / ' + (hudCpVal.textContent.split('/')[1] || '?').trim();
+      break;
+
     // ── Hide everything ────────────────────────────────────────────────────
     case 'tt_hide':
       hud.classList.remove('visible');
       resultsOverlay.classList.remove('visible');
       menuOverlay.classList.remove('visible');
+      resetRestartBar();
       break;
   }
 });
+
+// ── Restart bar clicks ─────────────────────────────────────────────────────
+restartIdle.addEventListener('click', () => post('tt_restartBtn'));
+restartCancel.addEventListener('click', () => post('tt_restartBtn'));
+
+// Reset restart bar to idle state
+function resetRestartBar() {
+  restartCountdown.classList.remove('active');
+  restartIdle.style.display = '';
+  restartProg.style.width   = '100%';
+}
 
 // ── Dismiss results ────────────────────────────────────────────────────────
 document.getElementById('dismiss-btn').addEventListener('click', () => {
