@@ -527,7 +527,7 @@ end)
 
 RegisterNUICallback("tt_selectTrack", function(data, cb)
     SetNuiFocus(false, false)
-    TriggerServerEvent("SPZ:tt:SelectTrack", tonumber(data.index))
+    TriggerServerEvent("SPZ:tt:SelectTrack", data.index)
     cb("ok")
 end)
 
