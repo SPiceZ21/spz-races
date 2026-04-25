@@ -43,9 +43,10 @@ RegisterCommand("timetrail", function(source)
         return
     end
     local list = {}
-    for i, t in ipairs(SPZ.Tracks) do
-        list[#list + 1] = { index = i, name = t.name, type = t.type, laps = t.laps }
+    for id, t in pairs(SPZ.Tracks) do
+        list[#list + 1] = { index = id, name = t.name, type = t.type, laps = t.laps }
     end
+    table.sort(list, function(a, b) return a.name < b.name end)
     TriggerClientEvent("SPZ:tt:OpenMenu", src, list)
 end, false)
 
