@@ -29,6 +29,7 @@ server_scripts {
   'server/results.lua',
   'server/cleanup.lua',
   'server/intermission.lua',
+  'server/timetrail.lua',
 }
 
 client_scripts {
@@ -36,6 +37,13 @@ client_scripts {
   'client/checkpoints.lua',
   'client/hit_detector.lua',
   'client/nui_bridge.lua',
+  'client/timetrail.lua',
+}
+
+ui_page 'ui/timetrail.html'
+
+files {
+  'ui/timetrail.html',
 }
 
 dependencies {
