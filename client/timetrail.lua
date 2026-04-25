@@ -1,20 +1,26 @@
 -- client/timetrail.lua
--- Time Trial client: visuals, hit detection, NUI bridge.
+-- Time Trial client: visuals, hit detection, restart, NUI bridge.
 
 local TTActive     = false
-local TTTrack      = nil      -- full track table
-local TTCpIndex    = 1        -- next checkpoint to hit
+local TTTrack      = nil
+local TTCpIndex    = 1
 local TTLapNum     = 0
 local TTLapLabel   = ""
-local TTLapStart   = 0        -- GetGameTimer() when current lap timer started
-local TTBestLap    = nil      -- best lap in ms
+local TTLapStart   = 0
+local TTBestLap    = nil
 local TTLapTimes   = {}
 local TTReadyAt    = 0        -- grace period: detector sleeps until this time
 
-local CP_Z_THRESH  = 8.0
-local DEBOUNCE_MS  = 500
+-- Restart state
+local TTRestartActive = false
+local TTRestartEndsAt = 0
+local RESTART_MS      = 3000   -- countdown duration
+local TT_RESTART_KEY  = "BACK" -- must match RegisterKeyMapping default below
 
--- ── Time formatter ────────────────────────────────────────────────────────────
+local CP_Z_THRESH = 8.0
+local DEBOUNCE_MS = 500
+
+-- ── Helpers ───────────────────────────────────────────────────────────────────
 
 local function FmtTime(ms)
     if not ms then return "--:--.---" end
@@ -24,7 +30,11 @@ local function FmtTime(ms)
     return string.format("%02d:%02d.%03d", m, s, t)
 end
 
--- ── NUI bridge ────────────────────────────────────────────────────────────────
+local function _lapLabel(n)
+    if n == 1 then return "OUT LAP"
+    elseif n == 2 then return "HOT LAP"
+    else return "PRACTICE LAP" end
+end
 
 local function UI(action, data)
     SendNUIMessage({ action = action, data = data or {} })
@@ -46,7 +56,7 @@ local function _clearBlips()
     end
 end
 
-local function _isFinishIdx(i, total, trackType)
+local function _isFinish(i, total, trackType)
     return (trackType == "circuit" and i == 1) or (trackType == "sprint" and i == total)
 end
 
@@ -54,7 +64,7 @@ local function _buildBlips(checkpoints, activeIdx, trackType)
     _clearBlips()
     local total = #checkpoints
     for i, cp in ipairs(checkpoints) do
-        local isFin = _isFinishIdx(i, total, trackType)
+        local isFin = _isFinish(i, total, trackType)
         local isAct = (i == activeIdx)
         local b     = AddBlipForCoord(cp.coords.x, cp.coords.y, cp.coords.z)
         SetBlipSprite(b, isAct and 164 or isFin and 458 or 1)
@@ -85,7 +95,7 @@ local function _updateBlip(newIdx, trackType)
     local total = TTTrack and #TTTrack.checkpoints or 0
     for i, b in ipairs(_blips) do
         if not DoesBlipExist(b) then goto continue end
-        local isFin = _isFinishIdx(i, total, trackType)
+        local isFin = _isFinish(i, total, trackType)
         local isAct = (i == newIdx)
         SetBlipSprite(b, isAct and 164 or isFin and 458 or 1)
         SetBlipColour(b, isAct and 17 or isFin and 2 or 4)
@@ -178,7 +188,7 @@ local function _gateR2(cp)
     return r * r
 end
 
--- ── Checkpoint particle flare ─────────────────────────────────────────────────
+-- ── Flare ─────────────────────────────────────────────────────────────────────
 
 local PTFX_ASSET  = "core"
 local PTFX_EFFECT = "exp_grd_flare"
@@ -197,20 +207,100 @@ local function _fireFlare(cpIndex)
     local rh = StartParticleFxLoopedAtCoord(PTFX_EFFECT,
         cp.right.x, cp.right.y, cp.right.z, 0,0,0, 0.9, false, false, false, 0)
     SetTimeout(3000, function()
-        StopParticleFxLooped(lh, false)
-        StopParticleFxLooped(rh, false)
+        StopParticleFxLooped(lh, false) StopParticleFxLooped(rh, false)
     end)
 end
+
+-- ── Teleport to start (shared by Begin, SprintReset, and Restart) ─────────────
+
+local function _tpToStart(gracePeriodMs)
+    if not TTTrack then return end
+    local ped     = PlayerPedId()
+    local veh     = GetVehiclePedIsIn(ped)
+    local sp      = TTTrack.start_coords
+    local heading = TTTrack.start_heading or 0.0
+    if veh ~= 0 then
+        SetEntityCoords(veh, sp.x, sp.y, sp.z, false, false, false, true)
+        SetEntityHeading(veh, heading)
+        SetVehicleEngineOn(veh, true, true, false)
+    else
+        SetEntityCoords(ped, sp.x, sp.y, sp.z, false, false, false, true)
+        SetEntityHeading(ped, heading)
+    end
+    TTReadyAt = GetGameTimer() + (gracePeriodMs or 1500)
+end
+
+-- ── Restart logic ─────────────────────────────────────────────────────────────
+
+local function _cancelRestart()
+    if not TTRestartActive then return end
+    TTRestartActive = false
+    UI("tt_restart_cancel", {})
+end
+
+local function _executeRestart()
+    TTRestartActive = false
+    TTCpIndex       = 1
+    TTLapStart      = 0
+
+    _tpToStart(1500)
+    _buildBlips(TTTrack.checkpoints, 1, TTTrack.type)
+    _buildGPS(TTTrack.checkpoints, 1, TTTrack.type)
+
+    TriggerServerEvent("SPZ:tt:Restart")
+    UI("tt_restart_done", {
+        lapLabel = "DRIVE TO THE START LINE",
+        bestLap  = FmtTime(TTBestLap),
+    })
+    PlaySoundFrontend(-1, "BACK", "HUD_FRONTEND_DEFAULT_SOUNDSET", 1)
+end
+
+-- ── Restart command ───────────────────────────────────────────────────────────
+
+RegisterCommand("tt_restart", function()
+    if not TTActive then return end
+    if TTRestartActive then
+        _cancelRestart()
+        return
+    end
+    TTRestartActive = true
+    TTRestartEndsAt = GetGameTimer() + RESTART_MS
+    UI("tt_restart_start", { totalMs = RESTART_MS })
+    PlaySoundFrontend(-1, "WAYPOINT_SET", "HUD_FRONTEND_DEFAULT_SOUNDSET", 1)
+end, false)
+
+RegisterKeyMapping("tt_restart", "Time Trial — Restart to Start", "keyboard", TT_RESTART_KEY)
+
+-- ── Restart countdown thread ──────────────────────────────────────────────────
+
+Citizen.CreateThread(function()
+    while true do
+        if TTRestartActive then
+            local remaining = TTRestartEndsAt - GetGameTimer()
+            if remaining <= 0 then
+                _executeRestart()
+            else
+                UI("tt_restart_tick", {
+                    remaining = remaining,
+                    totalMs   = RESTART_MS,
+                    seconds   = math.ceil(remaining / 1000),
+                })
+            end
+            Citizen.Wait(50)
+        else
+            Citizen.Wait(200)
+        end
+    end
+end)
 
 -- ── Marker render thread ──────────────────────────────────────────────────────
 
 Citizen.CreateThread(function()
     while true do
         if TTActive and TTTrack then
-            local cps  = TTTrack.checkpoints
-            local cp   = cps[TTCpIndex]
+            local cps = TTTrack.checkpoints
+            local cp  = cps[TTCpIndex]
             if cp then
-                -- Active CP: bright yellow cylinder + pillar + distance text
                 local pPos = GetEntityCoords(PlayerPedId())
                 local dist = #(pPos - vector3(cp.coords.x, cp.coords.y, cp.coords.z))
                 local pilH = math.min(80.0, math.max(2.0, dist * 0.35))
@@ -220,7 +310,6 @@ Citizen.CreateThread(function()
                     0,0,0, 0,0,0,
                     cp.radius * 2.0, cp.radius * 2.0, 2.5,
                     255, 200, 0, 120, false, true, 2, false, nil, nil, false)
-
                 DrawMarker(1,
                     cp.coords.x, cp.coords.y, cp.coords.z,
                     0,0,0, 0,0,0,
@@ -231,18 +320,14 @@ Citizen.CreateThread(function()
                     local ok, sx, sy = World3dToScreen2d(
                         cp.coords.x, cp.coords.y, cp.coords.z + pilH + 1.2)
                     if ok then
-                        SetTextScale(0.28, 0.28)
-                        SetTextFont(4)
-                        SetTextProportional(1)
-                        SetTextColour(255, 200, 0, 240)
-                        SetTextCentre(1)
+                        SetTextScale(0.28, 0.28) SetTextFont(4) SetTextProportional(1)
+                        SetTextColour(255, 200, 0, 240) SetTextCentre(1)
                         SetTextEntry("STRING")
                         AddTextComponentString(("CP %d\n%.0fm"):format(TTCpIndex, dist))
                         DrawText(sx, sy)
                     end
                 end
 
-                -- Next CP: faint white preview
                 local ncp = cps[TTCpIndex + 1]
                 if ncp then
                     DrawMarker(1,
@@ -263,7 +348,7 @@ end)
 
 Citizen.CreateThread(function()
     while true do
-        if TTActive and TTTrack and GetGameTimer() >= TTReadyAt then
+        if TTActive and TTTrack and not TTRestartActive and GetGameTimer() >= TTReadyAt then
             local cp = TTTrack.checkpoints[TTCpIndex]
             if cp then
                 local pos   = GetEntityCoords(PlayerPedId())
@@ -275,7 +360,7 @@ Citizen.CreateThread(function()
                     TriggerServerEvent("SPZ:tt:cpHit", TTCpIndex)
                     Citizen.Wait(DEBOUNCE_MS)
                 else
-                    local d    = math.sqrt(dist2)
+                    local d = math.sqrt(dist2)
                     Citizen.Wait(d > 80 and 100 or d > 30 and 50 or 0)
                 end
             else
@@ -287,13 +372,12 @@ Citizen.CreateThread(function()
     end
 end)
 
--- ── Live lap timer HUD update ─────────────────────────────────────────────────
+-- ── Timer HUD thread ──────────────────────────────────────────────────────────
 
 Citizen.CreateThread(function()
     while true do
         if TTActive and TTLapStart > 0 then
-            local elapsed = GetGameTimer() - TTLapStart
-            UI("tt_timer", { elapsed = elapsed, formatted = FmtTime(elapsed) })
+            UI("tt_timer", { formatted = FmtTime(GetGameTimer() - TTLapStart) })
             Citizen.Wait(50)
         else
             Citizen.Wait(200)
@@ -304,14 +388,15 @@ end)
 -- ── Full cleanup ──────────────────────────────────────────────────────────────
 
 local function _cleanup()
-    TTActive    = false
-    TTTrack     = nil
-    TTCpIndex   = 1
-    TTLapNum    = 0
-    TTLapLabel  = ""
-    TTLapStart  = 0
-    TTBestLap   = nil
-    TTLapTimes  = {}
+    TTActive        = false
+    TTTrack         = nil
+    TTCpIndex       = 1
+    TTLapNum        = 0
+    TTLapLabel      = ""
+    TTLapStart      = 0
+    TTBestLap       = nil
+    TTLapTimes      = {}
+    TTRestartActive = false
     _clearBlips()
     _clearGates()
     _clearGPS()
@@ -319,58 +404,39 @@ end
 
 -- ── Net events ────────────────────────────────────────────────────────────────
 
--- Server wants to show the track selection menu
 RegisterNetEvent("SPZ:tt:OpenMenu", function(trackList)
     SetNuiFocus(true, true)
     UI("tt_open_menu", { tracks = trackList })
 end)
 
--- Session is ready — teleport player, build visuals
 RegisterNetEvent("SPZ:tt:Begin", function(payload)
-    local track   = payload.track
-    TTTrack       = track
-    TTCpIndex     = 1
-    TTLapNum      = 0
-    TTBestLap     = nil
-    TTLapStart    = 0
-    TTLapTimes    = {}
-    TTReadyAt     = GetGameTimer() + 2500   -- 2.5s grace so player isn't on the line
-    TTActive      = true
+    local track = payload.track
+    TTTrack     = track
+    TTCpIndex   = 1
+    TTLapNum    = 0
+    TTBestLap   = nil
+    TTLapStart  = 0
+    TTLapTimes  = {}
+    TTActive    = true
 
-    -- Teleport player + vehicle to start
-    local ped     = PlayerPedId()
-    local veh     = GetVehiclePedIsIn(ped)
-    local sp      = track.start_coords
-    local heading = track.start_heading or 0.0
-
-    if veh ~= 0 then
-        SetEntityCoords(veh, sp.x, sp.y, sp.z, false, false, false, true)
-        SetEntityHeading(veh, heading)
-        SetVehicleEngineOn(veh, true, true, false)
-    else
-        SetEntityCoords(ped, sp.x, sp.y, sp.z, false, false, false, true)
-        SetEntityHeading(ped, heading)
-    end
-
-    -- Visuals
+    _tpToStart(2500)
     _buildBlips(track.checkpoints, 1, track.type)
     _buildGPS(track.checkpoints, 1, track.type)
     Citizen.CreateThread(function() _spawnGates(track.checkpoints) end)
 
     UI("tt_hud_show", {
-        track    = track.name,
-        trackType = track.type,
-        lapLabel  = "DRIVE TO THE START LINE",
-        bestLap   = nil,
-        lapTimes  = {},
-        cpIndex   = 1,
-        cpTotal   = #track.checkpoints,
+        track      = track.name,
+        trackType  = track.type,
+        lapLabel   = "DRIVE TO THE START LINE",
+        bestLap    = nil,
+        cpIndex    = 1,
+        cpTotal    = #track.checkpoints,
+        restartKey = TT_RESTART_KEY,
     })
 
     exports["spz-lib"]:Notify("Time Trial — " .. track.name .. " | Drive through the start gate!", "info")
 end)
 
--- Server confirmed a lap has started
 RegisterNetEvent("SPZ:tt:LapStarted", function(data)
     TTLapNum   = data.lap
     TTLapLabel = data.label
@@ -381,43 +447,33 @@ RegisterNetEvent("SPZ:tt:LapStarted", function(data)
         lapLabel = data.label,
         bestLap  = FmtTime(TTBestLap),
     })
-
     PlaySoundFrontend(-1, "CHECKPOINT_UNDER_THE_BRIDGE_STUNT", "HUD_MINI_GAME_SOUNDSET", 1)
 end)
 
--- Advance checkpoint indicator
 RegisterNetEvent("SPZ:tt:NextCp", function(newIdx)
     local prevIdx = TTCpIndex
     TTCpIndex     = newIdx
 
     PlaySoundFrontend(-1, "CHECKPOINT_NORMAL", "HUD_MINI_GAME_SOUNDSET", 1)
-
     if TTTrack then
         _updateBlip(newIdx, TTTrack.type)
         _buildGPS(TTTrack.checkpoints, newIdx, TTTrack.type)
         Citizen.CreateThread(function() _fireFlare(prevIdx) end)
     end
-
     UI("tt_next_cp", {
         cpIndex = newIdx,
         total   = TTTrack and #TTTrack.checkpoints or 0,
     })
 end)
 
--- Lap completed
 RegisterNetEvent("SPZ:tt:LapComplete", function(data)
     if data.lapTime < (TTBestLap or math.huge) then TTBestLap = data.lapTime end
     TTLapTimes[#TTLapTimes + 1] = data.lapTime
-    TTLapStart = 0   -- pause timer display between laps
+    TTLapStart = 0
 
     local formatted = {}
     for i, t in ipairs(TTLapTimes) do
-        formatted[i] = {
-            lapNum  = i,
-            label   = _lapLabel(i),
-            time    = FmtTime(t),
-            isBest  = (t == TTBestLap),
-        }
+        formatted[i] = { lapNum = i, label = _lapLabel(i), time = FmtTime(t), isBest = (t == TTBestLap) }
     end
 
     UI("tt_lap_complete", {
@@ -428,43 +484,31 @@ RegisterNetEvent("SPZ:tt:LapComplete", function(data)
         allLaps   = formatted,
         isNewBest = data.isNewBest,
     })
-
     PlaySoundFrontend(-1, "CHECKPOINT_UNDER_THE_BRIDGE_STUNT", "HUD_MINI_GAME_SOUNDSET", 1)
 end)
 
--- Sprint track: reset to start for next run
-RegisterNetEvent("SPZ:tt:SprintReset", function(data)
+RegisterNetEvent("SPZ:tt:SprintReset", function()
     if not TTActive or not TTTrack then return end
     Citizen.Wait(2500)
-
-    local ped     = PlayerPedId()
-    local veh     = GetVehiclePedIsIn(ped)
-    local sp      = TTTrack.start_coords
-    local heading = TTTrack.start_heading or 0.0
-
-    if veh ~= 0 then
-        SetEntityCoords(veh, sp.x, sp.y, sp.z, false, false, false, true)
-        SetEntityHeading(veh, heading)
-    else
-        SetEntityCoords(ped, sp.x, sp.y, sp.z, false, false, false, true)
-        SetEntityHeading(ped, heading)
-    end
-
-    TTReadyAt = GetGameTimer() + 1500
+    _tpToStart(1500)
     _buildBlips(TTTrack.checkpoints, 1, TTTrack.type)
     _buildGPS(TTTrack.checkpoints, 1, TTTrack.type)
 end)
 
--- Session ended (by /quittt or disconnect)
+-- Server confirmed the restart reset
+RegisterNetEvent("SPZ:tt:Restarted", function(data)
+    TTLapStart = 0
+    UI("tt_lap_started", {
+        lap      = (data.lapsDone or 0),
+        lapLabel = "DRIVE TO THE START LINE",
+        bestLap  = FmtTime(TTBestLap),
+    })
+end)
+
 RegisterNetEvent("SPZ:tt:End", function(data)
     local formatted = {}
     for i, t in ipairs(data.lapTimes or {}) do
-        formatted[i] = {
-            lapNum = i,
-            label  = _lapLabel(i),
-            time   = FmtTime(t),
-            isBest = (t == data.bestLap),
-        }
+        formatted[i] = { lapNum = i, label = _lapLabel(i), time = FmtTime(t), isBest = (t == data.bestLap) }
     end
 
     UI("tt_end", {
@@ -473,12 +517,10 @@ RegisterNetEvent("SPZ:tt:End", function(data)
         allLaps   = formatted,
         totalLaps = data.totalLaps or 0,
     })
-
     SetNuiFocus(true, true)
     _cleanup()
 
-    exports["spz-lib"]:Notify(
-        "Time Trial ended — Best lap: " .. FmtTime(data.bestLap), "info")
+    exports["spz-lib"]:Notify("Time Trial ended — Best lap: " .. FmtTime(data.bestLap), "info")
 end)
 
 -- ── NUI callbacks ─────────────────────────────────────────────────────────────
@@ -500,8 +542,17 @@ RegisterNUICallback("tt_dismissResults", function(_, cb)
     cb("ok")
 end)
 
-local function _lapLabel(n)
-    if n == 1 then return "OUT LAP"
-    elseif n == 2 then return "HOT LAP"
-    else return "PRACTICE LAP" end
-end
+-- Button click from HUD
+RegisterNUICallback("tt_restartBtn", function(_, cb)
+    if TTActive then
+        if TTRestartActive then
+            _cancelRestart()
+        else
+            TTRestartActive = true
+            TTRestartEndsAt = GetGameTimer() + RESTART_MS
+            UI("tt_restart_start", { totalMs = RESTART_MS })
+            PlaySoundFrontend(-1, "WAYPOINT_SET", "HUD_FRONTEND_DEFAULT_SOUNDSET", 1)
+        end
+    end
+    cb("ok")
+end)
