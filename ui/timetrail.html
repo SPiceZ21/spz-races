@@ -4,8 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>SPZ · Time Trial</title>
-<link rel="stylesheet" href="../../spz-ui/components/styles/spz-ui.css">
-<link href="https://fonts.cdnfonts.com/css/panchang" rel="stylesheet">
+<link rel="stylesheet" href="https://cfx-nui-spz-ui/theme.css">
 <style>
   :root { --panchang: 'Panchang', sans-serif; }
   html, body { width: 100vw; height: 100vh; overflow: hidden; background: transparent; font-family: var(--spz-font-body); }
@@ -57,21 +56,17 @@
 <body>
 <div id="root"></div>
 
-<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" crossorigin></script>
-<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" crossorigin></script>
+<script src="https://unpkg.com/preact@latest/dist/preact.min.js"></script>
+<script src="https://unpkg.com/preact@latest/hooks/dist/hooks.umd.js"></script>
 <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" crossorigin></script>
 <script src="https://unpkg.com/lucide@latest"></script>
 
-<script type="text/babel" src="../../spz-ui/components/Icon.jsx"></script>
-<script type="text/babel" src="../../spz-ui/components/Badge.jsx"></script>
-<script type="text/babel" src="../../spz-ui/components/Kbd.jsx"></script>
-<script type="text/babel" src="../../spz-ui/components/Button.jsx"></script>
-<script type="text/babel" src="../../spz-ui/components/Card.jsx"></script>
-<script type="text/babel" src="../../spz-ui/components/Input.jsx"></script>
-<script type="text/babel" src="../../spz-ui/components/Progress.jsx"></script>
+<script type="text/babel" src="https://cfx-nui-spz-ui/components.jsx"></script>
 
 <script type="text/babel">
-const { useState, useEffect, useRef } = React;
+/** @jsx h */
+const { h, render } = preact;
+const { useState, useEffect, useRef } = preactHooks;
 
 function App() {
   const [view, setView] = useState('none'); // 'menu', 'hud', 'results', 'none'
@@ -285,7 +280,7 @@ function App() {
   );
 }
 
-ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+render(<App />, document.getElementById('root'));
 </script>
 </body>
 </html>
