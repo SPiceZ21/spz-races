@@ -37,7 +37,7 @@ local function _lapLabel(n)
 end
 
 local function UI(action, data)
-    SendNUIMessage({ action = action, data = data or {} })
+    exports["spz-raceUI"]:TT_Broadcast(action, data or {})
 end
 
 -- ── Blips ─────────────────────────────────────────────────────────────────────
@@ -406,9 +406,7 @@ end
 
 RegisterNetEvent("SPZ:tt:OpenMenu", function(trackList)
     print("[TimeTrial] Received OpenMenu event from server with " .. #trackList .. " tracks")
-    SetNuiFocus(true, true)
-    print("[TimeTrial] Sending tt_open_menu to NUI")
-    UI("tt_open_menu", { tracks = trackList })
+    exports["spz-raceUI"]:TT_ShowMenu(trackList)
 end)
 
 RegisterNetEvent("SPZ:tt:Begin", function(payload)
@@ -527,25 +525,21 @@ end)
 
 -- ── NUI callbacks ─────────────────────────────────────────────────────────────
 
-RegisterNUICallback("tt_selectTrack", function(data, cb)
-    SetNuiFocus(false, false)
-    TriggerServerEvent("SPZ:tt:SelectTrack", data.index)
-    cb("ok")
+-- ── Relay events from spz-raceUI ──────────────────────────────────────────────
+
+AddEventHandler("SPZ:tt:nuiSelectTrack", function(index)
+    TriggerServerEvent("SPZ:tt:SelectTrack", index)
 end)
 
-RegisterNUICallback("tt_closeMenu", function(_, cb)
-    SetNuiFocus(false, false)
-    cb("ok")
+AddEventHandler("SPZ:tt:nuiCloseMenu", function()
+    -- handled locally in raceUI for focus
 end)
 
-RegisterNUICallback("tt_dismissResults", function(_, cb)
-    SetNuiFocus(false, false)
+AddEventHandler("SPZ:tt:nuiDismissResults", function()
     UI("tt_hide", {})
-    cb("ok")
 end)
 
--- Button click from HUD
-RegisterNUICallback("tt_restartBtn", function(_, cb)
+AddEventHandler("SPZ:tt:nuiRestartBtn", function()
     if TTActive then
         if TTRestartActive then
             _cancelRestart()
@@ -556,5 +550,4 @@ RegisterNUICallback("tt_restartBtn", function(_, cb)
             PlaySoundFrontend(-1, "WAYPOINT_SET", "HUD_FRONTEND_DEFAULT_SOUNDSET", 1)
         end
     end
-    cb("ok")
 end)
