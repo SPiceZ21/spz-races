@@ -63,6 +63,15 @@
 
 <script type="text/babel" src="components.jsx"></script>
 
+<script>
+  // Global error logger to help debug in F8 console
+  window.onerror = function(msg, url, line, col, error) {
+    console.log(`[TimeTrial UI ERROR] ${msg} at ${line}:${col} in ${url}`);
+    if (error) console.log(error.stack);
+    return false;
+  };
+</script>
+
 <script type="text/babel">
 /** @jsx h */
 /** @jsxFrag Fragment */
@@ -86,7 +95,7 @@ function App() {
     const handler = (e) => {
       if (!e.data || !e.data.action) return;
       const { action, data = {} } = e.data;
-      console.log("[TimeTrial UI] Received action:", action);
+      console.log("[TimeTrial UI] Received action:", action, JSON.stringify(data).substring(0, 100));
       switch (action) {
         case 'tt_open_menu':
           setTracks(data.tracks || []);
