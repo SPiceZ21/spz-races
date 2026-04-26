@@ -2,916 +2,290 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SPiceZ Time Trial</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SPZ · Time Trial</title>
+<link rel="stylesheet" href="../../spz-ui/components/styles/spz-ui.css">
+<link href="https://fonts.cdnfonts.com/css/panchang" rel="stylesheet">
 <style>
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root { --panchang: 'Panchang', sans-serif; }
+  html, body { width: 100vw; height: 100vh; overflow: hidden; background: transparent; font-family: var(--spz-font-body); }
+  .overlay-center { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.7); backdrop-filter: blur(8px); }
+  
+  /* ── HUD ── */
+  .hud-box { 
+    position: fixed; bottom: 10vh; right: 3vw; width: 280px; 
+    background: var(--spz-surface-1); border: 1px solid var(--spz-line); 
+    border-radius: var(--spz-radius-4); box-shadow: var(--spz-shadow-3); overflow: hidden;
+    animation: spz-in 400ms var(--spz-ease-out);
+  }
+  .hud-header { background: var(--spz-orange); padding: 6px 12px; display: flex; justify-content: space-between; align-items: center; }
+  .hud-header-text { font-family: var(--spz-font-mono); font-size: 10px; font-weight: 700; text-transform: uppercase; color: #0a0a0a; letter-spacing: 0.1em; }
+  
+  .hud-timer-wrap { padding: 14px 16px 8px; }
+  .hud-timer-label { font-family: var(--spz-font-mono); font-size: 10px; font-weight: 600; color: var(--spz-orange); text-transform: uppercase; letter-spacing: 0.15em; margin-bottom: 2px; }
+  .hud-timer-val { font-family: var(--spz-font-mono); font-size: 32px; font-weight: 600; color: var(--spz-fg-1); line-height: 1; font-variant-numeric: tabular-nums; }
 
-  body {
-    font-family: 'Segoe UI', system-ui, sans-serif;
-    background: transparent;
-    color: #fff;
-    user-select: none;
-    overflow: hidden;
-    width: 100vw;
-    height: 100vh;
-  }
+  .hud-stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 8px 16px 14px; border-top: 1px solid var(--spz-line-faint); }
+  .hud-stat-item { display: flex; flex-direction: column; }
+  .hud-stat-label { font-family: var(--spz-font-mono); font-size: 9px; color: var(--spz-fg-3); text-transform: uppercase; letter-spacing: 0.05em; }
+  .hud-stat-val { font-family: var(--spz-font-mono); font-size: 14px; font-weight: 600; color: var(--spz-fg-1); }
+  .hud-stat-val[data-best="true"] { color: var(--spz-success); }
 
-  /* ── Variables ─────────────────────────────────────── */
-  :root {
-    --orange: #f97316;
-    --orange-dim: #c2510e;
-    --bg-dark: rgba(10, 10, 15, 0.92);
-    --bg-card: rgba(20, 20, 28, 0.95);
-    --border: rgba(249, 115, 22, 0.3);
-    --text-muted: #7a7a8c;
-    --green: #22c55e;
-    --purple: #a855f7;
-  }
+  .hud-laps { max-height: 120px; overflow-y: auto; border-top: 1px solid var(--spz-line-faint); background: var(--spz-surface-2); }
+  .lap-row { display: flex; align-items: center; padding: 6px 14px; border-bottom: 1px solid var(--spz-line-faint); font-family: var(--spz-font-mono); font-size: 11px; }
+  .lap-row[data-best="true"] { color: var(--spz-success); background: rgba(41,211,152,0.05); }
 
-  /* ════════════════════════════════════════════════════
-     TRACK SELECTION MENU
-  ════════════════════════════════════════════════════ */
+  /* Restart Bar */
+  .restart-bar { border-top: 1px solid var(--spz-line); padding: 8px 12px; cursor: pointer; transition: background 150ms; }
+  .restart-bar:hover { background: var(--spz-surface-2); }
+  .restart-progress { height: 2px; background: var(--spz-orange); position: absolute; bottom: 0; left: 0; transition: width 100ms linear; }
 
-  #menu-overlay {
-    display: none;
-    position: fixed;
-    inset: 0;
-    background: rgba(0,0,0,0.72);
-    backdrop-filter: blur(6px);
-    z-index: 100;
-    align-items: center;
-    justify-content: center;
+  /* ── Track Menu ── */
+  .menu-card { width: 560px; max-height: 80vh; display: flex; flex-direction: column; }
+  .track-row { 
+    display: flex; align-items: center; padding: 12px 16px; border-radius: var(--spz-radius-3); cursor: pointer;
+    transition: background 150ms; margin-bottom: 2px; border: 1px solid transparent;
   }
-  #menu-overlay.visible { display: flex; }
+  .track-row:hover { background: var(--spz-surface-2); border-color: var(--spz-line); }
+  .track-name { font-family: var(--spz-font-display); font-weight: 600; font-size: 15px; color: var(--spz-fg-1); flex: 1; }
 
-  #menu-box {
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    width: 560px;
-    max-height: 78vh;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    box-shadow: 0 0 40px rgba(249,115,22,0.15);
-  }
-
-  #menu-header {
-    padding: 18px 20px 14px;
-    border-bottom: 1px solid var(--border);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    flex-shrink: 0;
-  }
-
-  #menu-header h1 {
-    font-size: 17px;
-    font-weight: 700;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    color: var(--orange);
-  }
-
-  #menu-header .sub {
-    font-size: 11px;
-    color: var(--text-muted);
-    letter-spacing: 0.05em;
-    margin-top: 2px;
-  }
-
-  #menu-close {
-    background: none;
-    border: 1px solid rgba(255,255,255,0.12);
-    border-radius: 6px;
-    color: var(--text-muted);
-    font-size: 14px;
-    padding: 4px 10px;
-    cursor: pointer;
-    transition: all .15s;
-  }
-  #menu-close:hover { border-color: var(--orange); color: var(--orange); }
-
-  #menu-filters {
-    padding: 12px 20px;
-    display: flex;
-    gap: 8px;
-    border-bottom: 1px solid rgba(255,255,255,0.05);
-    flex-shrink: 0;
-  }
-
-  .filter-btn {
-    background: rgba(255,255,255,0.05);
-    border: 1px solid rgba(255,255,255,0.1);
-    border-radius: 6px;
-    color: var(--text-muted);
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    padding: 5px 14px;
-    cursor: pointer;
-    transition: all .15s;
-  }
-  .filter-btn:hover  { border-color: var(--orange); color: var(--orange); }
-  .filter-btn.active { background: var(--orange); border-color: var(--orange); color: #fff; }
-
-  #track-search {
-    margin-left: auto;
-    background: rgba(255,255,255,0.05);
-    border: 1px solid rgba(255,255,255,0.1);
-    border-radius: 6px;
-    color: #fff;
-    font-size: 12px;
-    padding: 5px 12px;
-    outline: none;
-    width: 150px;
-    transition: border-color .15s;
-  }
-  #track-search:focus { border-color: var(--orange); }
-  #track-search::placeholder { color: var(--text-muted); }
-
-  #track-list {
-    overflow-y: auto;
-    flex: 1;
-    padding: 8px 12px 12px;
-  }
-  #track-list::-webkit-scrollbar { width: 4px; }
-  #track-list::-webkit-scrollbar-track { background: transparent; }
-  #track-list::-webkit-scrollbar-thumb { background: var(--orange-dim); border-radius: 2px; }
-
-  .track-item {
-    display: flex;
-    align-items: center;
-    padding: 10px 14px;
-    border-radius: 8px;
-    cursor: pointer;
-    border: 1px solid transparent;
-    margin-bottom: 4px;
-    transition: all .15s;
-  }
-  .track-item:hover {
-    background: rgba(249,115,22,0.08);
-    border-color: rgba(249,115,22,0.25);
-  }
-
-  .track-item .name {
-    font-size: 13px;
-    font-weight: 600;
-    flex: 1;
-  }
-
-  .badge {
-    font-size: 9px;
-    font-weight: 700;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    padding: 2px 7px;
-    border-radius: 4px;
-    margin-left: 8px;
-  }
-  .badge.circuit { background: rgba(168, 85, 247, 0.2); color: #c084fc; border: 1px solid rgba(168,85,247,0.3); }
-  .badge.sprint  { background: rgba(249,115, 22, 0.2); color: #fb923c; border: 1px solid rgba(249,115,22,0.3); }
-
-  .track-item .laps-label {
-    font-size: 10px;
-    color: var(--text-muted);
-    margin-left: 10px;
-  }
-
-  #track-empty {
-    text-align: center;
-    color: var(--text-muted);
-    font-size: 13px;
-    padding: 30px;
-    display: none;
-  }
-
-  /* ════════════════════════════════════════════════════
-     LIVE HUD  (bottom-right corner)
-  ════════════════════════════════════════════════════ */
-
-  #hud {
-    display: none;
-    position: fixed;
-    right: 20px;
-    bottom: 90px;
-    width: 270px;
-    z-index: 10;
-  }
-  #hud.visible { display: block; }
-
-  #hud-inner {
-    background: var(--bg-dark);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    overflow: hidden;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.5);
-  }
-
-  #hud-track {
-    background: var(--orange);
-    padding: 5px 12px;
-    font-size: 10px;
-    font-weight: 700;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
-
-  #hud-track .type-badge {
-    font-size: 9px;
-    opacity: 0.8;
-  }
-
-  #hud-lap-label {
-    padding: 6px 12px 2px;
-    font-size: 10px;
-    font-weight: 700;
-    letter-spacing: 0.15em;
-    text-transform: uppercase;
-    color: var(--orange);
-  }
-
-  #hud-timer {
-    padding: 0 12px 6px;
-    font-size: 28px;
-    font-weight: 700;
-    font-variant-numeric: tabular-nums;
-    letter-spacing: 0.03em;
-    color: #fff;
-    line-height: 1;
-  }
-
-  #hud-divider {
-    height: 1px;
-    background: rgba(255,255,255,0.06);
-    margin: 0 12px;
-  }
-
-  #hud-stats {
-    padding: 6px 12px;
-    display: flex;
-    justify-content: space-between;
-    font-size: 11px;
-  }
-
-  .stat-block .label {
-    color: var(--text-muted);
-    font-size: 9px;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    margin-bottom: 1px;
-  }
-
-  .stat-block .value {
-    font-variant-numeric: tabular-nums;
-    font-weight: 600;
-    font-size: 13px;
-  }
-
-  .stat-block .value.best { color: var(--green); }
-
-  #hud-cp {
-    padding: 4px 12px 8px;
-    font-size: 10px;
-    color: var(--text-muted);
-  }
-
-  /* Flash animation for new best */
-  @keyframes flashGreen {
-    0%, 100% { color: #fff; }
-    50%       { color: var(--green); text-shadow: 0 0 12px var(--green); }
-  }
-  .new-best { animation: flashGreen 0.5s ease 3; }
-
-  /* Lap times mini-list */
-  #hud-laps {
-    border-top: 1px solid rgba(255,255,255,0.06);
-    max-height: 110px;
-    overflow-y: auto;
-  }
-  #hud-laps::-webkit-scrollbar { display: none; }
-
-  .lap-row {
-    display: flex;
-    align-items: center;
-    padding: 4px 12px;
-    font-size: 11px;
-    border-bottom: 1px solid rgba(255,255,255,0.03);
-    font-variant-numeric: tabular-nums;
-  }
-  .lap-row .lap-n   { color: var(--text-muted); width: 28px; font-size: 9px; }
-  .lap-row .lap-lbl { color: var(--text-muted); font-size: 9px; flex: 1; }
-  .lap-row .lap-t   { font-weight: 600; }
-  .lap-row.is-best .lap-t { color: var(--green); }
-  .lap-row.is-best::before {
-    content: "★";
-    color: var(--green);
-    font-size: 9px;
-    margin-right: 4px;
-  }
-
-  /* ════════════════════════════════════════════════════
-     RESULTS SCREEN
-  ════════════════════════════════════════════════════ */
-
-  #results-overlay {
-    display: none;
-    position: fixed;
-    inset: 0;
-    background: rgba(0,0,0,0.75);
-    backdrop-filter: blur(8px);
-    z-index: 200;
-    align-items: center;
-    justify-content: center;
-  }
-  #results-overlay.visible { display: flex; }
-
-  #results-box {
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: 14px;
-    width: 480px;
-    max-height: 80vh;
-    overflow: hidden;
-    box-shadow: 0 0 60px rgba(249,115,22,0.18);
-    display: flex;
-    flex-direction: column;
-  }
-
-  #results-header {
-    background: linear-gradient(135deg, var(--orange-dim), var(--orange));
-    padding: 18px 20px;
-    text-align: center;
-  }
-  #results-header h2 {
-    font-size: 20px;
-    font-weight: 800;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-  }
-  #results-header .track-name {
-    font-size: 12px;
-    opacity: 0.85;
-    margin-top: 2px;
-    letter-spacing: 0.05em;
-  }
-
-  #results-best {
-    padding: 16px 20px;
-    text-align: center;
-    border-bottom: 1px solid rgba(255,255,255,0.06);
-  }
-  #results-best .lbl { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.1em; }
-  #results-best .time {
-    font-size: 36px;
-    font-weight: 800;
-    font-variant-numeric: tabular-nums;
-    color: var(--green);
-    margin-top: 4px;
-  }
-
-  #results-laps {
-    overflow-y: auto;
-    flex: 1;
-    padding: 8px 0;
-  }
-  #results-laps::-webkit-scrollbar { width: 4px; }
-  #results-laps::-webkit-scrollbar-thumb { background: var(--orange-dim); border-radius: 2px; }
-
-  .result-row {
-    display: flex;
-    align-items: center;
-    padding: 9px 20px;
-    border-bottom: 1px solid rgba(255,255,255,0.04);
-    font-variant-numeric: tabular-nums;
-  }
-  .result-row .rn    { width: 32px; font-size: 12px; color: var(--text-muted); font-weight: 600; }
-  .result-row .rl    { flex: 1; font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.07em; }
-  .result-row .rt    { font-size: 15px; font-weight: 700; }
-  .result-row.is-best .rt { color: var(--green); }
-  .result-row.is-best .rn { color: var(--green); }
-
-  #results-footer {
-    padding: 14px 20px;
-    border-top: 1px solid rgba(255,255,255,0.06);
-    text-align: center;
-  }
-
-  #dismiss-btn {
-    background: var(--orange);
-    border: none;
-    border-radius: 8px;
-    color: #fff;
-    font-size: 13px;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    padding: 10px 32px;
-    cursor: pointer;
-    transition: background .15s;
-  }
-  #dismiss-btn:hover { background: var(--orange-dim); }
-
-  /* lap count chip */
-  .total-laps {
-    font-size: 11px;
-    color: var(--text-muted);
-    margin-bottom: 10px;
-  }
-
-  /* ── Restart bar (bottom of HUD) ───────────────────── */
-
-  #hud-restart-bar {
-    border-top: 1px solid rgba(255,255,255,0.06);
-    padding: 0;
-    overflow: hidden;
-  }
-
-  /* Idle state: clickable hint */
-  #restart-idle {
-    display: flex;
-    align-items: center;
-    gap: 7px;
-    padding: 7px 12px;
-    cursor: pointer;
-    transition: background .15s;
-    font-size: 11px;
-    color: var(--text-muted);
-  }
-  #restart-idle:hover { background: rgba(249,115,22,0.08); color: #fff; }
-  #restart-idle kbd {
-    background: rgba(255,255,255,0.1);
-    border: 1px solid rgba(255,255,255,0.18);
-    border-radius: 4px;
-    font-size: 9px;
-    font-family: inherit;
-    padding: 1px 5px;
-    color: #ccc;
-    letter-spacing: 0.05em;
-  }
-  #restart-idle .restart-icon { color: var(--orange); font-size: 13px; }
-
-  /* Countdown state */
-  #restart-countdown {
-    display: none;
-    flex-direction: column;
-    gap: 4px;
-    padding: 7px 12px 8px;
-  }
-  #restart-countdown.active { display: flex; }
-
-  #restart-prog-wrap {
-    height: 3px;
-    background: rgba(255,255,255,0.08);
-    border-radius: 2px;
-    overflow: hidden;
-  }
-  #restart-prog {
-    height: 100%;
-    background: var(--orange);
-    border-radius: 2px;
-    width: 100%;
-    transform-origin: left;
-    transition: width 50ms linear;
-  }
-
-  #restart-countdown-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-  }
-  #restart-countdown-text {
-    font-size: 11px;
-    font-weight: 600;
-    color: var(--orange);
-    letter-spacing: 0.05em;
-  }
-  #restart-cancel-hint {
-    font-size: 9px;
-    color: var(--text-muted);
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    cursor: pointer;
-  }
-  #restart-cancel-hint:hover { color: #fff; }
-  #restart-cancel-hint kbd {
-    background: rgba(255,255,255,0.08);
-    border: 1px solid rgba(255,255,255,0.14);
-    border-radius: 3px;
-    font-size: 8px;
-    font-family: inherit;
-    padding: 1px 4px;
-  }
-
-  /* ── New-best toast ─────────────────────────────────── */
-  #toast {
-    position: fixed;
-    top: 40px;
-    left: 50%;
-    transform: translateX(-50%) translateY(-20px);
-    background: var(--green);
-    color: #fff;
-    font-size: 13px;
-    font-weight: 700;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    padding: 8px 20px;
-    border-radius: 20px;
-    opacity: 0;
-    transition: all .3s;
-    pointer-events: none;
-    z-index: 300;
-    white-space: nowrap;
-  }
-  #toast.show {
-    opacity: 1;
-    transform: translateX(-50%) translateY(0);
-  }
+  /* ── Results ── */
+  .results-card { width: 440px; }
+  .results-best-wrap { padding: 24px; text-align: center; border-bottom: 1px solid var(--spz-line); background: var(--spz-surface-2); }
 </style>
 </head>
 <body>
+<div id="root"></div>
 
-<!-- ── Track Selection Menu ─────────────────────────────────────────────── -->
-<div id="menu-overlay">
-  <div id="menu-box">
-    <div id="menu-header">
-      <div>
-        <h1>⏱ Time Trial</h1>
-        <div class="sub">SELECT A TRACK — UNLIMITED LAPS — SOLO SESSION</div>
-      </div>
-      <button id="menu-close">✕ ESC</button>
-    </div>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" crossorigin></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" crossorigin></script>
+<script src="https://unpkg.com/lucide@latest"></script>
 
-    <div id="menu-filters">
-      <button class="filter-btn active" data-filter="all">All</button>
-      <button class="filter-btn" data-filter="circuit">Circuit</button>
-      <button class="filter-btn" data-filter="sprint">Sprint</button>
-      <input id="track-search" type="text" placeholder="Search tracks…">
-    </div>
+<script type="text/babel" src="../../spz-ui/components/Icon.jsx"></script>
+<script type="text/babel" src="../../spz-ui/components/Badge.jsx"></script>
+<script type="text/babel" src="../../spz-ui/components/Kbd.jsx"></script>
+<script type="text/babel" src="../../spz-ui/components/Button.jsx"></script>
+<script type="text/babel" src="../../spz-ui/components/Card.jsx"></script>
+<script type="text/babel" src="../../spz-ui/components/Input.jsx"></script>
+<script type="text/babel" src="../../spz-ui/components/Progress.jsx"></script>
 
-    <div id="track-list"></div>
-    <div id="track-empty">No tracks match your filter.</div>
-  </div>
-</div>
+<script type="text/babel">
+const { useState, useEffect, useRef } = React;
 
-<!-- ── Live HUD ─────────────────────────────────────────────────────────── -->
-<div id="hud">
-  <div id="hud-inner">
-    <div id="hud-track">
-      <span id="hud-track-name">—</span>
-      <span class="type-badge" id="hud-track-type"></span>
-    </div>
-    <div id="hud-lap-label">—</div>
-    <div id="hud-timer">--:--.---</div>
-    <div id="hud-divider"></div>
-    <div id="hud-stats">
-      <div class="stat-block">
-        <div class="label">Best Lap</div>
-        <div class="value best" id="hud-best">--:--.---</div>
-      </div>
-      <div class="stat-block">
-        <div class="label">Lap</div>
-        <div class="value" id="hud-lap-num">—</div>
-      </div>
-      <div class="stat-block">
-        <div class="label">Checkpoint</div>
-        <div class="value" id="hud-cp-val">—</div>
-      </div>
-    </div>
-    <div id="hud-laps"></div>
+function App() {
+  const [view, setView] = useState('none'); // 'menu', 'hud', 'results', 'none'
+  const [tracks, setTracks] = useState([]);
+  const [search, setSearch] = useState('');
+  const [filter, setFilter] = useState('all');
+  
+  const [hudData, setHudData] = useState({});
+  const [timer, setTimer] = useState('--:--.---');
+  const [restart, setRestart] = useState({ active: false, pct: 100, seconds: 3, key: 'BACK' });
+  
+  const [resultsData, setResultsData] = useState(null);
 
-    <!-- Restart bar -->
-    <div id="hud-restart-bar">
-      <div id="restart-idle">
-        <span class="restart-icon">↩</span>
-        <span>Restart to Start</span>
-        <kbd id="restart-key-label">—</kbd>
-      </div>
-      <div id="restart-countdown">
-        <div id="restart-prog-wrap"><div id="restart-prog"></div></div>
-        <div id="restart-countdown-row">
-          <span id="restart-countdown-text">Restarting in <strong id="restart-num">3</strong>…</span>
-          <span id="restart-cancel-hint"><kbd id="restart-key-cancel">—</kbd> Cancel</span>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
+  useEffect(() => {
+    const handler = (e) => {
+      const { action, data } = e.data;
+      switch (action) {
+        case 'tt_open_menu':
+          setTracks(data.tracks || []);
+          setView('menu');
+          break;
+        case 'tt_hud_show':
+          setHudData(data);
+          setView('hud');
+          break;
+        case 'tt_timer':
+          setTimer(data.formatted);
+          break;
+        case 'tt_lap_started':
+          setHudData(prev => ({ ...prev, lap: data.lap, lapLabel: data.lapLabel, bestLap: data.bestLap }));
+          setTimer('00:00.000');
+          break;
+        case 'tt_next_cp':
+          setHudData(prev => ({ ...prev, cpIndex: data.cpIndex }));
+          break;
+        case 'tt_lap_complete':
+          setHudData(prev => ({ ...prev, bestLap: data.bestLap, allLaps: data.allLaps }));
+          break;
+        case 'tt_end':
+          setResultsData(data);
+          setView('results');
+          break;
+        case 'tt_restart_start':
+          setRestart(prev => ({ ...prev, active: true, pct: 100, seconds: 3 }));
+          break;
+        case 'tt_restart_tick':
+          setRestart(prev => ({ ...prev, pct: (data.remaining / data.totalMs) * 100, seconds: data.seconds }));
+          break;
+        case 'tt_restart_cancel':
+        case 'tt_restart_done':
+          setRestart(prev => ({ ...prev, active: false, pct: 100 }));
+          if (action === 'tt_restart_done') {
+             setHudData(prev => ({ ...prev, lapLabel: data.lapLabel, bestLap: data.bestLap }));
+             setTimer('--:--.---');
+          }
+          break;
+        case 'tt_hide':
+          setView('none');
+          break;
+      }
+    };
+    window.addEventListener('message', handler);
+    return () => window.removeEventListener('message', handler);
+  }, []);
 
-<!-- ── Results Screen ───────────────────────────────────────────────────── -->
-<div id="results-overlay">
-  <div id="results-box">
-    <div id="results-header">
-      <h2>Time Trial — Finished</h2>
-      <div class="track-name" id="results-track-name"></div>
-    </div>
-    <div id="results-best">
-      <div class="lbl">Best Lap Time</div>
-      <div class="time" id="results-best-time">--:--.---</div>
-    </div>
-    <div id="results-laps"></div>
-    <div id="results-footer">
-      <div class="total-laps" id="results-total"></div>
-      <button id="dismiss-btn">Close</button>
-    </div>
-  </div>
-</div>
-
-<!-- ── New Best Toast ────────────────────────────────────────────────────── -->
-<div id="toast">★ NEW BEST LAP!</div>
-
-<script>
-'use strict';
-
-// ── State ──────────────────────────────────────────────────────────────────
-let _tracks      = [];
-let _filter      = 'all';
-let _searchQuery = '';
-
-// ── Restart elements ───────────────────────────────────────────────────────
-const restartIdle      = document.getElementById('restart-idle');
-const restartCountdown = document.getElementById('restart-countdown');
-const restartProg      = document.getElementById('restart-prog');
-const restartNum       = document.getElementById('restart-num');
-const restartCancel    = document.getElementById('restart-cancel-hint');
-const restartKeyLabel  = document.getElementById('restart-key-label');
-const restartKeyCancel = document.getElementById('restart-key-cancel');
-
-function setRestartKey(key) {
-  const label = key || 'BACK';
-  restartKeyLabel.textContent  = label;
-  restartKeyCancel.textContent = label;
-}
-
-// ── Elements ───────────────────────────────────────────────────────────────
-const menuOverlay   = document.getElementById('menu-overlay');
-const trackList     = document.getElementById('track-list');
-const trackEmpty    = document.getElementById('track-empty');
-const trackSearch   = document.getElementById('track-search');
-const hud           = document.getElementById('hud');
-const hudTimer      = document.getElementById('hud-timer');
-const hudLapLabel   = document.getElementById('hud-lap-label');
-const hudBest       = document.getElementById('hud-best');
-const hudLapNum     = document.getElementById('hud-lap-num');
-const hudCpVal      = document.getElementById('hud-cp-val');
-const hudLaps       = document.getElementById('hud-laps');
-const hudTrackName  = document.getElementById('hud-track-name');
-const hudTrackType  = document.getElementById('hud-track-type');
-const resultsOverlay = document.getElementById('results-overlay');
-const resultsTrack  = document.getElementById('results-track-name');
-const resultsBest   = document.getElementById('results-best-time');
-const resultsLaps   = document.getElementById('results-laps');
-const resultsTotal  = document.getElementById('results-total');
-const toast         = document.getElementById('toast');
-
-// ── Helpers ────────────────────────────────────────────────────────────────
-function post(action, data = {}) {
-  fetch(`https://${GetParentResourceName()}/${action}`, {
-    method:  'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body:    JSON.stringify(data),
-  });
-}
-
-let _toastTimer = null;
-function showToast(msg) {
-  toast.textContent = msg;
-  toast.classList.add('show');
-  clearTimeout(_toastTimer);
-  _toastTimer = setTimeout(() => toast.classList.remove('show'), 2500);
-}
-
-// ── Track menu ─────────────────────────────────────────────────────────────
-function renderTrackList() {
-  const q     = _searchQuery.toLowerCase();
-  const items = _tracks.filter(t => {
-    const typeOk = _filter === 'all' || t.type === _filter;
-    const nameOk = !q || t.name.toLowerCase().includes(q);
+  const filteredTracks = tracks.filter(t => {
+    const typeOk = filter === 'all' || t.type === filter;
+    const nameOk = !search || t.name.toLowerCase().includes(search.toLowerCase());
     return typeOk && nameOk;
   });
 
-  trackList.innerHTML = '';
-  trackEmpty.style.display = items.length === 0 ? 'block' : 'none';
+  const post = (action, data = {}) => {
+    fetch(`https://${GetParentResourceName()}/${action}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }).catch(() => {});
+  };
 
-  items.forEach(t => {
-    const div = document.createElement('div');
-    div.className = 'track-item';
-    div.innerHTML = `
-      <span class="name">${t.name}</span>
-      <span class="badge ${t.type}">${t.type}</span>
-      <span class="laps-label">${t.type === 'circuit' ? t.laps + ' laps' : '1 run'}</span>
-    `;
-    div.addEventListener('click', () => {
-      post('tt_selectTrack', { index: t.index });
-      menuOverlay.classList.remove('visible');
-    });
-    trackList.appendChild(div);
-  });
-}
-
-document.querySelectorAll('.filter-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    _filter = btn.dataset.filter;
-    renderTrackList();
-  });
-});
-
-trackSearch.addEventListener('input', e => {
-  _searchQuery = e.target.value;
-  renderTrackList();
-});
-
-document.getElementById('menu-close').addEventListener('click', () => {
-  menuOverlay.classList.remove('visible');
-  post('tt_closeMenu');
-});
-
-// ── HUD helpers ────────────────────────────────────────────────────────────
-function renderLapHistory(laps) {
-  hudLaps.innerHTML = '';
-  const reversed = [...laps].reverse();
-  reversed.forEach(l => {
-    const row = document.createElement('div');
-    row.className = 'lap-row' + (l.isBest ? ' is-best' : '');
-    row.innerHTML = `
-      <span class="lap-n">L${l.lapNum}</span>
-      <span class="lap-lbl">${l.label}</span>
-      <span class="lap-t">${l.time}</span>
-    `;
-    hudLaps.appendChild(row);
-  });
-}
-
-// ── Message handler ────────────────────────────────────────────────────────
-window.addEventListener('message', ({ data }) => {
-  const action = data.action;
-  const d      = data.data || {};
-
-  switch (action) {
-
-    // ── Open track menu ────────────────────────────────────────────────────
-    case 'tt_open_menu':
-      _tracks = d.tracks || [];
-      _filter = 'all';
-      _searchQuery = '';
-      trackSearch.value = '';
-      document.querySelectorAll('.filter-btn').forEach(b =>
-        b.classList.toggle('active', b.dataset.filter === 'all'));
-      renderTrackList();
-      menuOverlay.classList.add('visible');
-      break;
-
-    // ── Show HUD on session start ──────────────────────────────────────────
-    case 'tt_hud_show':
-      hudTrackName.textContent = d.track      || '—';
-      hudTrackType.textContent = (d.trackType || '').toUpperCase();
-      hudLapLabel.textContent  = d.lapLabel   || 'READY';
-      hudBest.textContent      = d.bestLap    || '--:--.---';
-      hudLapNum.textContent    = '—';
-      hudCpVal.textContent     = `1 / ${d.cpTotal || '?'}`;
-      hudLaps.innerHTML        = '';
-      hudTimer.textContent     = '--:--.---';
-      setRestartKey(d.restartKey);
-      resetRestartBar();
-      hud.classList.add('visible');
-      resultsOverlay.classList.remove('visible');
-      break;
-
-    // ── Lap started ────────────────────────────────────────────────────────
-    case 'tt_lap_started':
-      hudLapLabel.textContent = d.lapLabel || '—';
-      hudLapNum.textContent   = `${d.lap}`;
-      hudBest.textContent     = d.bestLap || '--:--.---';
-      hudTimer.textContent    = '00:00.000';
-      break;
-
-    // ── Timer tick ─────────────────────────────────────────────────────────
-    case 'tt_timer':
-      hudTimer.textContent = d.formatted || '--:--.---';
-      break;
-
-    // ── Next checkpoint ────────────────────────────────────────────────────
-    case 'tt_next_cp':
-      hudCpVal.textContent = `${d.cpIndex} / ${d.total}`;
-      break;
-
-    // ── Lap complete ───────────────────────────────────────────────────────
-    case 'tt_lap_complete':
-      hudBest.textContent  = d.bestLap  || '--:--.---';
-      hudTimer.textContent = d.lapTime  || '--:--.---';
-      if (d.allLaps) renderLapHistory(d.allLaps);
-      if (d.isNewBest) {
-        hudBest.classList.add('new-best');
-        showToast('★ NEW BEST LAP  ' + d.lapTime);
-        setTimeout(() => hudBest.classList.remove('new-best'), 1600);
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === 'Escape' && view === 'menu') {
+        post('tt_closeMenu');
+        setView('none');
       }
-      break;
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [view]);
 
-    // ── Session ended ──────────────────────────────────────────────────────
-    case 'tt_end':
-      hud.classList.remove('visible');
-      resultsTrack.textContent = d.track || '—';
-      resultsBest.textContent  = d.bestLap || '--:--.---';
-      resultsTotal.textContent = `${d.totalLaps} timed lap${d.totalLaps !== 1 ? 's' : ''} completed`;
-      resultsLaps.innerHTML    = '';
-      (d.allLaps || []).forEach(l => {
-        const row = document.createElement('div');
-        row.className = 'result-row' + (l.isBest ? ' is-best' : '');
-        row.innerHTML = `
-          <span class="rn">#${l.lapNum}</span>
-          <span class="rl">${l.label}</span>
-          <span class="rt">${l.time}</span>
-        `;
-        resultsLaps.appendChild(row);
-      });
-      resultsOverlay.classList.add('visible');
-      break;
+  useEffect(() => { if (window.lucide) window.lucide.createIcons(); });
 
-    // ── Restart: countdown started ────────────────────────────────────────
-    case 'tt_restart_start':
-      restartIdle.style.display      = 'none';
-      restartCountdown.classList.add('active');
-      restartProg.style.width        = '100%';
-      restartNum.textContent         = '3';
-      break;
+  return (
+    <>
+      {view === 'menu' && (
+        <div className="overlay-center">
+          <Card className="menu-card">
+            <CardHeader title="Time Trial Session" desc="Select a track for a solo practice run. Unlimited laps.">
+              <button className="spz-btn" data-variant="ghost" data-size="icon" onClick={() => { post('tt_closeMenu'); setView('none'); }}>
+                <Icon name="x" size={14} />
+              </button>
+            </CardHeader>
+            <div style={{ padding: '0 16px 12px', display: 'flex', gap: 10, alignItems: 'center' }}>
+              <div style={{ display: 'flex', background: 'var(--spz-surface-3)', borderRadius: 'var(--spz-radius-3)', padding: 2 }}>
+                {['all', 'circuit', 'sprint'].map(f => (
+                  <button 
+                    key={f} 
+                    className="spz-btn" 
+                    data-variant={filter === f ? 'primary' : 'ghost'} 
+                    data-size="sm"
+                    onClick={() => setFilter(f)}
+                    style={{ textTransform: 'capitalize' }}
+                  >
+                    {f}
+                  </button>
+                ))}
+              </div>
+              <div style={{ position: 'relative', flex: 1 }}>
+                 <Icon name="search" size={13} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--spz-fg-3)' }} />
+                 <Input style={{ paddingLeft: 30 }} placeholder="Search tracks..." value={search} onChange={e => setSearch(e.target.value)} autoFocus />
+              </div>
+            </div>
+            <div style={{ flex: 1, overflowY: 'auto', padding: '6px 12px 12px' }}>
+              {filteredTracks.map(t => (
+                <div key={t.index} className="track-row" onClick={() => { post('tt_selectTrack', { index: t.index }); setView('none'); }}>
+                  <div className="track-name">{t.name}</div>
+                  <Badge variant={t.type === 'circuit' ? 'purple' : 'orange'}>{t.type}</Badge>
+                  <span style={{ fontSize: 11, color: 'var(--spz-fg-3)', marginLeft: 12, width: 60 }}>{t.type === 'circuit' ? `${t.laps} LAPS` : 'POINT-B'}</span>
+                  <Icon name="chevron-right" size={14} style={{ color: 'var(--spz-fg-4)' }} />
+                </div>
+              ))}
+              {filteredTracks.length === 0 && <div style={{ padding: 40, textAlign: 'center', color: 'var(--spz-fg-4)' }}>No tracks found</div>}
+            </div>
+          </Card>
+        </div>
+      )}
 
-    // ── Restart: tick ─────────────────────────────────────────────────────
-    case 'tt_restart_tick': {
-      const pct = Math.max(0, d.remaining / d.totalMs) * 100;
-      restartProg.style.width  = pct + '%';
-      restartNum.textContent   = d.seconds;
-      break;
-    }
+      {view === 'hud' && (
+        <div className="hud-box">
+          <div className="hud-header">
+            <div className="hud-header-text">{hudData.track || 'Track'}</div>
+            <Badge variant="solid" style={{ height: 16, fontSize: 8 }}>{hudData.trackType || 'SOLO'}</Badge>
+          </div>
+          <div className="hud-timer-wrap">
+            <div className="hud-timer-label">{hudData.lapLabel || 'SESSION'}</div>
+            <div className="hud-timer-val">{timer}</div>
+          </div>
+          <div className="hud-stats-grid">
+            <div className="hud-stat-item">
+              <span className="hud-stat-label">Best Lap</span>
+              <span className="hud-stat-val" data-best="true">{hudData.bestLap || '--:--.---'}</span>
+            </div>
+            <div className="hud-stat-item">
+               <span className="hud-stat-label">Checkpoint</span>
+               <span className="hud-stat-val">{hudData.cpIndex || 1} / {hudData.cpTotal || '?'}</span>
+            </div>
+          </div>
+          {hudData.allLaps?.length > 0 && (
+            <div className="hud-laps">
+              {[...hudData.allLaps].reverse().map((l, i) => (
+                <div key={i} className="lap-row" data-best={l.isBest}>
+                  <span style={{ width: 30, opacity: 0.5 }}>L{l.lapNum}</span>
+                  <span style={{ flex: 1 }}>{l.label}</span>
+                  <span style={{ fontWeight: 600 }}>{l.time}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="restart-bar" onClick={() => post('tt_restartBtn')}>
+            {restart.active ? (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--spz-orange)' }}>RESTARTING IN {restart.seconds}...</span>
+                <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}><Kbd>{restart.key}</Kbd><span style={{ fontSize: 10, color: 'var(--spz-fg-3)' }}>cancel</span></div>
+                <div className="restart-progress" style={{ width: `${restart.pct}%` }} />
+              </div>
+            ) : (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Icon name="rotate-ccw" size={12} style={{ color: 'var(--spz-orange)' }} />
+                <span style={{ fontSize: 11, color: 'var(--spz-fg-2)' }}>Hold to Restart Session</span>
+                <Kbd style={{ marginLeft: 'auto' }}>{restart.key || 'BACK'}</Kbd>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
-    // ── Restart: cancelled ────────────────────────────────────────────────
-    case 'tt_restart_cancel':
-      restartCountdown.classList.remove('active');
-      restartIdle.style.display = '';
-      restartProg.style.width   = '100%';
-      break;
-
-    // ── Restart: executed ────────────────────────────────────────────────
-    case 'tt_restart_done':
-      restartCountdown.classList.remove('active');
-      restartIdle.style.display = '';
-      restartProg.style.width   = '100%';
-      hudLapLabel.textContent   = d.lapLabel || 'DRIVE TO THE START LINE';
-      hudBest.textContent       = d.bestLap  || '--:--.---';
-      hudTimer.textContent      = '--:--.---';
-      hudCpVal.textContent      = '1 / ' + (hudCpVal.textContent.split('/')[1] || '?').trim();
-      break;
-
-    // ── Hide everything ────────────────────────────────────────────────────
-    case 'tt_hide':
-      hud.classList.remove('visible');
-      resultsOverlay.classList.remove('visible');
-      menuOverlay.classList.remove('visible');
-      resetRestartBar();
-      break;
-  }
-});
-
-// ── Restart bar clicks ─────────────────────────────────────────────────────
-restartIdle.addEventListener('click', () => post('tt_restartBtn'));
-restartCancel.addEventListener('click', () => post('tt_restartBtn'));
-
-// Reset restart bar to idle state
-function resetRestartBar() {
-  restartCountdown.classList.remove('active');
-  restartIdle.style.display = '';
-  restartProg.style.width   = '100%';
+      {view === 'results' && resultsData && (
+        <div className="overlay-center">
+          <Card className="results-card">
+            <CardHeader title="Session Complete" desc={resultsData.track} />
+            <div className="results-best-wrap">
+              <div className="spz-eyebrow" style={{ color: 'var(--spz-orange)', marginBottom: 4 }}>Fastest Lap Time</div>
+              <div style={{ fontFamily: 'var(--panchang)', fontWeight: 800, fontSize: 42, color: 'var(--spz-success)' }}>{resultsData.bestLap || '--:--.---'}</div>
+            </div>
+            <div style={{ maxHeight: 240, overflowY: 'auto' }}>
+              {(resultsData.allLaps || []).map((l, i) => (
+                <div key={i} className="lap-row" data-best={l.isBest} style={{ padding: '10px 24px' }}>
+                  <span style={{ width: 40, opacity: 0.5 }}>#{l.lapNum}</span>
+                  <span style={{ flex: 1 }}>{l.label}</span>
+                  <span style={{ fontSize: 14, fontWeight: 700 }}>{l.time}</span>
+                </div>
+              ))}
+            </div>
+            <div style={{ padding: '16px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--spz-line)' }}>
+               <span style={{ fontSize: 12, color: 'var(--spz-fg-3)' }}>{resultsData.totalLaps} timed laps completed</span>
+               <Button variant="primary" onClick={() => { post('tt_dismissResults'); setView('none'); }}>Dismiss</Button>
+            </div>
+          </Card>
+        </div>
+      )}
+    </>
+  );
 }
 
-// ── Dismiss results ────────────────────────────────────────────────────────
-document.getElementById('dismiss-btn').addEventListener('click', () => {
-  resultsOverlay.classList.remove('visible');
-  post('tt_dismissResults');
-});
-
-// ── ESC closes menu ────────────────────────────────────────────────────────
-document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') {
-    if (menuOverlay.classList.contains('visible')) {
-      menuOverlay.classList.remove('visible');
-      post('tt_closeMenu');
-    }
-  }
-});
-
-// FiveM resource name helper
-function GetParentResourceName() {
-  return typeof window.__resource__ !== 'undefined'
-    ? window.__resource__
-    : 'spz-races';
-}
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
 </script>
 </body>
 </html>
