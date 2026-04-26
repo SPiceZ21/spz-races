@@ -68,6 +68,7 @@
 /** @jsxFrag Fragment */
 const { h, render, Fragment } = preact;
 const { useState, useEffect, useRef } = preactHooks;
+const { Card, CardHeader, Button, Input, Badge, Kbd, Icon } = window;
 
 function App() {
   const [view, setView] = useState('none'); // 'menu', 'hud', 'results', 'none'
@@ -83,7 +84,9 @@ function App() {
 
   useEffect(() => {
     const handler = (e) => {
-      const { action, data } = e.data;
+      if (!e.data || !e.data.action) return;
+      const { action, data = {} } = e.data;
+      console.log("[TimeTrial UI] Received action:", action);
       switch (action) {
         case 'tt_open_menu':
           setTracks(data.tracks || []);
