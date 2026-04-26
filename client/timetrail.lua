@@ -405,7 +405,9 @@ end
 -- ── Net events ────────────────────────────────────────────────────────────────
 
 RegisterNetEvent("SPZ:tt:OpenMenu", function(trackList)
+    print("[TimeTrial] Received OpenMenu event from server with " .. #trackList .. " tracks")
     SetNuiFocus(true, true)
+    print("[TimeTrial] Sending tt_open_menu to NUI")
     UI("tt_open_menu", { tracks = trackList })
 end)
 
