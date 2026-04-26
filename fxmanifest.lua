@@ -40,14 +40,6 @@ client_scripts {
   'client/timetrail.lua',
 }
 
-ui_page 'ui/timetrail.html'
-
-files {
-  'ui/timetrail.html',
-  'ui/spz-ui.css',
-  'ui/components.jsx',
-}
-
 dependencies {
   'spz-lib',
   'spz-core',
