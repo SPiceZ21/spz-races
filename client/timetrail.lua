@@ -415,7 +415,7 @@ RegisterNetEvent("SPZ:tt:Begin", function(payload)
     TTCpIndex   = 1
     TTLapNum    = 0
     TTBestLap   = nil
-    TTLapStart  = 0
+    TTLapStart  = GetGameTimer() -- Start timer immediately for Out Lap progress
     TTLapTimes  = {}
     TTActive    = true
 
