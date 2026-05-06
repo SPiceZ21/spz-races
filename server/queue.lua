@@ -1,18 +1,5 @@
 -- server/queue.lua
 
-local function GetPlayerState(src)
-    return exports["spz-core"]:GetPlayerState(src)
-end
-
-local function SetPlayerState(src, state)
-    exports["spz-core"]:SetPlayerState(src, state)
-end
-
-local function HasLicense(src, classId)
-    local tier = exports["spz-identity"]:GetLicenseTier(src) or 0
-    return tier >= classId
-end
-
 local function Notify(src, msg, msgType)
     TriggerClientEvent("spz-lib:Notify", src, msg, msgType or "info", 4000)
 end
@@ -27,8 +14,7 @@ function JoinQueue(src)
     end
 
     -- 2. Already in a race or queue?
-    local playerState = GetPlayerState(src)
-    if playerState == "RACING" or playerState == "QUEUED" then
+    if Player(src).state.inRace or Player(src).state.inQueue then
         Notify(src, "You are already in a race or queue")
         return false
     end
@@ -42,8 +28,9 @@ function JoinQueue(src)
     -- 4. Add to RaceSession.players[source]
     RaceSession.players[src] = CreatePlayerRaceData(src)
     
-    -- 5. SetPlayerState(source, "QUEUED")
-    SetPlayerState(src, "QUEUED")
+    -- 5. Set statebags
+    Player(src).state:set("inQueue",       true,                       true)
+    Player(src).state:set("queuePosition", GetQueueCount(),            true)
 
     -- 6. Notify and broadcast
     local count = GetQueueCount()
@@ -74,7 +61,12 @@ function LeaveQueue(src)
     end
 
     RaceSession.players[src] = nil
-    SetPlayerState(src, "FREEROAM")
+    
+    -- Clear statebags
+    Player(src).state:set("inQueue",       false, true)
+    Player(src).state:set("queuePosition", nil,   true)
+    Player(src).state:set("queueClass",    nil,   true)
+
     Notify(src, "Left the queue", "info")
     BroadcastQueueUpdate()
 

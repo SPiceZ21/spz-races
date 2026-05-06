@@ -16,7 +16,6 @@ shared_scripts {
 server_scripts {
   'data/tracks.lua',
   'server/main.lua',
-  'server/state_machine.lua',
   'server/queue.lua',
   'server/poll.lua',
   'server/world.lua',

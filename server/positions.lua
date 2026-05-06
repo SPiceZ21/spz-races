@@ -81,6 +81,15 @@ Citizen.CreateThread(function()
             _posVersion = _posVersion + 1
             -- Clients reject packets whose version is not strictly greater than their last
             TriggerClientEvent("SPZ:positionUpdate", -1, payload, _posVersion)
+
+            -- Also update statebags for reactive UI
+            for i, entry in ipairs(ranked) do
+                local src = entry.source
+                local pData = RaceSession.players[src]
+                Player(src).state:set("racePosition", i, true)
+                Player(src).state:set("raceLap", pData.current_lap, true)
+                Player(src).state:set("raceTime", GetGameTimer() - (RaceSession.startTime or 0), true)
+            end
         end
     end
 end)

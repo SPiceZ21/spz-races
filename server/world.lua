@@ -81,8 +81,15 @@ function SetupRaceWorld()
             print(string.format("[World Setup] ERROR: SpawnRaceVehicle failed for %s: %s", source, tostring(spawnErr)))
         end
         
-        -- Update identity state
-        exports["spz-core"]:SetPlayerState(source, "RACING")
+        -- Set statebags
+        Player(source).state:set("inRace",       true,    true)
+        Player(source).state:set("raceId",       RaceSession.raceId,  true)
+        Player(source).state:set("raceClass",    RaceSession.carClassId,   true)
+        Player(source).state:set("raceTrack",    RaceSession.track.name,   true)
+        Player(source).state:set("raceLap",      1,       true)
+        Player(source).state:set("racePosition", 0,       true)
+        Player(source).state:set("raceTime",     0,       true)
+        Player(source).state:set("dnf",          false,   true)
         
         -- Force competitive racing assists
         if GetResourceState("spz-physics") == "started" then
@@ -136,7 +143,11 @@ function HandleSpawnTimeout()
             -- Clean up failed player
             RaceSession.players[src] = nil
             exports["spz-core"]:AssignPlayerToBucket(src, 0) -- Return to default bucket
-            exports["spz-core"]:SetPlayerState(src, "IDLE")
+            
+            -- Clear statebags
+            Player(src).state:set("inRace", false, true)
+            Player(src).state:set("inQueue", false, true)
+
             -- Refund logic would trigger here
             failedCount = failedCount + 1
         end
