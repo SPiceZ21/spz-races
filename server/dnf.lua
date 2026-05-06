@@ -25,7 +25,16 @@ function MarkDNF(source, reason)
 
     -- Return to default bucket and clean up state
     exports["spz-core"]:AssignPlayerToBucket(source, 0)
-    exports["spz-core"]:SetPlayerState(source, "IDLE")
+
+    -- Clear race statebags
+    Player(source).state:set("inRace",       false, true)
+    Player(source).state:set("inQueue",      false, true)
+    Player(source).state:set("queueClass",   nil,   true)
+    Player(source).state:set("raceId",       nil,   true)
+    Player(source).state:set("racePosition", nil,   true)
+    Player(source).state:set("raceLap",      nil,   true)
+    Player(source).state:set("raceTime",     nil,   true)
+    Player(source).state:set("dnf",          true,  true)
 
     -- 14.3 Check if everyone is finished
     CheckAllFinished()

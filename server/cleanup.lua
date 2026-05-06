@@ -25,7 +25,17 @@ function RunRaceCleanup(results)
 
         -- Redistribution to freeroam
         exports["spz-core"]:AssignPlayerToBucket(source, 0)
-        exports["spz-core"]:SetPlayerState(source, "FREEROAM")
+        
+        -- Clear race statebags
+        Player(source).state:set("inRace",       false, true)
+        Player(source).state:set("inQueue",      false, true)
+        Player(source).state:set("queueClass",   nil,   true)
+        Player(source).state:set("raceId",       nil,   true)
+        Player(source).state:set("raceClass",    nil,   true)
+        Player(source).state:set("raceTrack",    nil,   true)
+        Player(source).state:set("raceLap",      nil,   true)
+        Player(source).state:set("racePosition", nil,   true)
+        Player(source).state:set("raceTime",     nil,   true)
 
         -- Trigger client-side teleport to safe zone
         TriggerClientEvent("SPZ:tpToSafeZone", source)

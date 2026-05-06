@@ -1,5 +1,20 @@
 -- server/main.lua
 
+-- Define SetRaceState (previously in state_machine.lua)
+function SetRaceState(state)
+    RaceSession.state = state
+    -- Trigger events or statebags for the whole race if needed
+    TriggerEvent("SPZ:raceStateChanged", state)
+    TriggerClientEvent("spz_race:state_updated", -1, state)
+end
+
+exports("SetRaceState", SetRaceState)
+exports("ResetToIdle", function()
+    SetRaceState(SPZ.RaceState.IDLE)
+    RaceSession.players = {}
+    RaceSession.pollPhase = 1
+end)
+
 -- Initialize player race data for joining players
 function CreatePlayerRaceData(src)
     local name = GetPlayerName(src)
@@ -127,7 +142,7 @@ AddEventHandler("playerDropped", function(reason)
 
         if activePhases[RaceSession.state] then
             -- Transition to a DNF state rather than just vanishing, ensuring state consistency
-            exports["spz-races"]:MarkDNF(src, "disconnect")
+            MarkDNF(src, "disconnect")
         else
             -- Standard cleanup for IDLE/POLLING states
             RaceSession.players[src] = nil
@@ -136,7 +151,7 @@ AddEventHandler("playerDropped", function(reason)
             -- If in polling, check if we still have enough players
             if RaceSession.state == SPZ.RaceState.POLLING then
                 if exports["spz-races"]:GetQueueCount() < Config.MinPlayersToStart then
-                    exports["spz-races"]:ResetToIdle()
+                    ResetToIdle()
                 end
             end
         end
