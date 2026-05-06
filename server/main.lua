@@ -1,5 +1,21 @@
 -- server/main.lua
 
+-- Initial Global Session State
+RaceSession = {
+    state        = SPZ.RaceState.IDLE, -- Use string literal if SPZ.RaceState is not yet ready, or wait for init
+    raceId       = nil,
+    raceType     = "circuit",
+    track        = nil,
+    carClass     = 1,
+    bucketId     = 0,
+    startTime    = 0,
+    players      = {},
+    pollVotes    = {},
+    pollOptions  = {},
+    pollPhase    = 1,
+    cycleCount   = 0,
+}
+
 -- Define SetRaceState (previously in state_machine.lua)
 function SetRaceState(state)
     RaceSession.state = state
