@@ -14,6 +14,9 @@ shared_scripts {
 }
 
 server_scripts {
+  '@oxmysql/lib/MySQL.lua',
+
+  -- Core race engine
   'data/tracks.lua',
   'server/main.lua',
   'server/queue.lua',
@@ -30,6 +33,16 @@ server_scripts {
   'server/intermission.lua',
   'server/timetrail.lua',
   'server/state_machine.lua',
+
+  -- Leaderboard (absorbed from spz-leaderboard)
+  'server/leaderboard/config.lua',
+  'server/leaderboard/cache.lua',
+  'server/leaderboard/utils.lua',
+  'server/leaderboard/writer.lua',
+  'server/leaderboard/records.lua',
+  'server/leaderboard/standings.lua',
+  'server/leaderboard/stats.lua',
+  'server/leaderboard/callbacks.lua',
 }
 
 client_scripts {
@@ -45,4 +58,5 @@ dependencies {
   'spz-core',
   'spz-identity',
   'spz-vehicles',
+  'oxmysql',
 }
