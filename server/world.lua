@@ -2,43 +2,32 @@
 
 local spawnConfirmed = {}
 
--- 8. Race World Setup Logic
 function SetupRaceWorld()
     if RaceSession.state ~= SPZ.RaceState.WAITING then return end
 
-    -- 8.1 Bucket Creation
     if not RaceSession.raceId then
         RaceSession.raceId = string.format("R%d", math.random(1000, 9999))
     end
-    
-    -- Ensure spz-core creates a unique routing bucket
+
     RaceSession.bucketId = exports["spz-core"]:CreateBucket(RaceSession.raceId)
-    print(string.format("[World Setup] Isolated bucket %s created for race %s", RaceSession.bucketId, RaceSession.raceId))
+    print(string.format("[World Setup] Bucket %d created for race %s",
+        RaceSession.bucketId, RaceSession.raceId))
 
-    -- 8.2 Grid Positioning
-    -- Create ordered list of participants
+    -- Build ordered player list
     local playersInOrder = {}
-    for source, _ in pairs(RaceSession.players) do
-        table.insert(playersInOrder, source)
+    for src in pairs(RaceSession.players) do
+        table.insert(playersInOrder, src)
     end
-    -- In a real scenario, sort by join time or ELO here
 
-    -- Resolve spawn heading: prefer the explicitly-authored track heading.
-    -- Circuit tracks have checkpoint[1] = start_coords, so computing from that
-    -- gives atan2(0,0)=0 (due north) regardless of the actual track direction.
-    -- Only fall back to geometry when start_heading is missing, and skip any
-    -- checkpoint that sits on (or within 5 m of) the start position.
+    -- Resolve grid heading
     local startHeading = RaceSession.track.start_heading
-
     if not startHeading then
-        -- Geometry fallback: find the first checkpoint meaningfully ahead
         local sx = RaceSession.track.start_coords.x
         local sy = RaceSession.track.start_coords.y
         if RaceSession.track.checkpoints then
             for _, cp in ipairs(RaceSession.track.checkpoints) do
                 local dx = cp.coords.x - sx
                 local dy = cp.coords.y - sy
-                -- Skip checkpoints that are basically at the start line
                 if math.sqrt(dx * dx + dy * dy) > 5.0 then
                     startHeading = math.deg(math.atan2(-dx, dy)) % 360
                     break
@@ -46,60 +35,52 @@ function SetupRaceWorld()
             end
         end
         startHeading = startHeading or 0.0
-        print(string.format("[World Setup] No start_heading in track data — computed %.1f° from geometry", startHeading))
-    else
-        print(string.format("[World Setup] Using track start_heading: %.1f°", startHeading))
+        print(string.format("[World Setup] Computed start heading: %.1f°", startHeading))
     end
 
-    local playerCount = #playersInOrder
     local grid = SPZ.Math.GridPositions(
         RaceSession.track.start_coords,
         startHeading,
-        playerCount,
+        #playersInOrder,
         Config.GridRowSpacing or 8.0,
         Config.GridColSpacing or 4.5
     )
 
-    -- 8.3 Player Placement Sequence
     spawnConfirmed = {}
-    
-    for i, source in ipairs(playersInOrder) do
+    local chosenModel = (type(RaceSession.carClass) == "table" and RaceSession.carClass.model) or "sultan"
+
+    for i, src in ipairs(playersInOrder) do
         local gridPos = grid[i]
-        local player = RaceSession.players[source]
-        
-        -- Transfer to isolated bucket
-        exports["spz-core"]:AssignPlayerToBucket(source, RaceSession.bucketId)
-        
-        -- Request vehicle spawn from dedicated vehicle manager
-        local chosenModel = RaceSession.carClass and RaceSession.carClass.model or "sultan"
-        
-        print(string.format("[World Setup] Spawning vehicle '%s' for player %s at grid %d", chosenModel, source, i))
-        local spawnOk, spawnErr = pcall(function()
-            exports["spz-vehicles"]:SpawnRaceVehicle(source, chosenModel, gridPos.coords, gridPos.heading)
+        local player  = RaceSession.players[src]
+
+        player.gridIndex = i
+
+        exports["spz-core"]:AssignPlayerToBucket(src, RaceSession.bucketId)
+
+        print(string.format("[World Setup] Spawning '%s' for player %d at grid %d", chosenModel, src, i))
+        local ok, err = pcall(function()
+            exports["spz-vehicles"]:SpawnRaceVehicle(src, chosenModel, gridPos.coords, gridPos.heading)
         end)
-        if not spawnOk then
-            print(string.format("[World Setup] ERROR: SpawnRaceVehicle failed for %s: %s", source, tostring(spawnErr)))
-        end
-        
-        -- Set statebags
-        Player(source).state:set("inRace",       true,    true)
-        Player(source).state:set("raceId",       RaceSession.raceId,  true)
-        Player(source).state:set("raceClass",    RaceSession.carClassId,   true)
-        Player(source).state:set("raceTrack",    RaceSession.track.name,   true)
-        Player(source).state:set("raceLap",      1,       true)
-        Player(source).state:set("racePosition", 0,       true)
-        Player(source).state:set("raceTime",     0,       true)
-        Player(source).state:set("dnf",          false,   true)
-        
-        -- Force competitive racing assists
-        if GetResourceState("spz-physics") == "started" then
-            exports["spz-physics"]:SetAssists(source, Config.RaceAssists)
+        if not ok then
+            print(string.format("[World Setup] SpawnRaceVehicle failed for %d: %s", src, tostring(err)))
         end
 
-        spawnConfirmed[source] = false
+        Player(src).state:set("inRace",       true,                    true)
+        Player(src).state:set("raceId",       RaceSession.raceId,      true)
+        Player(src).state:set("raceClass",    RaceSession.carClassId,  true)
+        Player(src).state:set("raceTrack",    RaceSession.track.name,  true)
+        Player(src).state:set("raceLap",      1,                       true)
+        Player(src).state:set("racePosition", 0,                       true)
+        Player(src).state:set("raceTime",     0,                       true)
+        Player(src).state:set("dnf",          false,                   true)
+
+        if GetResourceState("spz-physics") == "started" then
+            exports["spz-physics"]:SetAssists(src, Config.RaceAssists)
+        end
+
+        spawnConfirmed[src] = false
     end
 
-    -- Monitor spawn confirmations
     StartSpawnTimeoutMonitor()
 end
 
@@ -107,73 +88,56 @@ function StartSpawnTimeoutMonitor()
     Citizen.CreateThread(function()
         local startTime = GetGameTimer()
         local timeoutMs = Config.SpawnTimeout or 8000
-        
+
         while (GetGameTimer() - startTime) < timeoutMs do
             Citizen.Wait(500)
-            
-            local allReady = true
-            for src, confirmed in pairs(spawnConfirmed) do
-                if not confirmed then 
-                    allReady = false 
-                    break 
-                end
-            end
-            
-            if allReady then
-                print("[World Setup] All players ready. Applying No-Collision.")
-                
-                -- Apply ghost mode between all participants
-                exports["spz-races"]:ApplyRaceNoCollision()
 
+            local allReady = true
+            for _, confirmed in pairs(spawnConfirmed) do
+                if not confirmed then allReady = false; break end
+            end
+
+            if allReady then
+                print("[World Setup] All players spawned. Applying no-collision.")
+                ApplyRaceNoCollision()
                 print("[World Setup] Transitioning to COUNTDOWN.")
-                exports["spz-races"]:SetRaceState(SPZ.RaceState.COUNTDOWN)
+                SetRaceState(SPZ.RaceState.COUNTDOWN)
                 return
             end
         end
-        
+
         HandleSpawnTimeout()
     end)
 end
 
 function HandleSpawnTimeout()
-    print("[World Setup] WARNING: Spawn timeout reached. Reconciling grid.")
-    local failedCount = 0
+    print("[World Setup] Spawn timeout — reconciling grid.")
+
     for src, confirmed in pairs(spawnConfirmed) do
         if not confirmed then
-            -- Clean up failed player
             RaceSession.players[src] = nil
-            exports["spz-core"]:AssignPlayerToBucket(src, 0) -- Return to default bucket
-            
-            -- Clear statebags
-            Player(src).state:set("inRace", false, true)
+            exports["spz-core"]:AssignPlayerToBucket(src, 0)
+            Player(src).state:set("inRace",  false, true)
             Player(src).state:set("inQueue", false, true)
-
-            -- Refund logic would trigger here
-            failedCount = failedCount + 1
         end
     end
-    
+
     local remaining = 0
     for _ in pairs(RaceSession.players) do remaining = remaining + 1 end
-    
+
     if remaining >= (Config.MinPlayersToStart or 2) then
-        exports["spz-races"]:SetRaceState(SPZ.RaceState.COUNTDOWN)
+        SetRaceState(SPZ.RaceState.COUNTDOWN)
     else
-        print("[World Setup] ERROR: Critical player loss during setup. Cancellation required.")
-        exports["spz-races"]:ResetToIdle()
+        print("[World Setup] Critical player loss — cancelling race.")
+        ResetToIdle()
     end
 end
 
--- 11. Receive confirmation from spz-vehicles (server-to-server)
-AddEventHandler("SPZ:raceVehicleSpawned", function(src, model, entity)
-    print(string.format("[World Setup] DEBUG: Received SPZ:raceVehicleSpawned for player %s", src))
+AddEventHandler("SPZ:raceVehicleSpawned", function(src)
     if spawnConfirmed[src] ~= nil then
         spawnConfirmed[src] = true
-        print(string.format("[World Setup] Player %s confirmed ready.", src))
-    else
-        print(string.format("[World Setup] WARNING: Received confirmation for unknown player %s", src))
+        print(string.format("[World Setup] Player %d spawn confirmed.", src))
     end
 end)
 
--- Export for state machine trigger
 exports("SetupRaceWorld", SetupRaceWorld)

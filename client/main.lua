@@ -1,80 +1,66 @@
--- 9. No-Collision Handler
+-- client/main.lua
+
+-- ── No-collision ──────────────────────────────────────────────────────────────
 RegisterNetEvent("SPZ:applyNoCollision", function(targetServerId)
-    local myPed = PlayerPedId()
+    local myPed    = PlayerPedId()
     local targetId = GetPlayerFromServerId(targetServerId)
-    
-    -- Ensure the target player is actually active and resolved on this client
-    if targetId ~= -1 then
-        local targetPed = GetPlayerPed(targetId)
-        if DoesEntityExist(targetPed) then
-            -- Both directions — A ignores B and B ignores A
-            SetEntityNoCollisionEntity(myPed, targetPed, false)
-            SetEntityNoCollisionEntity(targetPed, myPed, false)
-            
-            -- Also apply to vehicles if peds are in them
-            local myVeh = GetVehiclePedIsIn(myPed, false)
-            local targetVeh = GetVehiclePedIsIn(targetPed, false)
-            
-            if DoesEntityExist(myVeh) and DoesEntityExist(targetVeh) then
-                SetEntityNoCollisionEntity(myVeh, targetVeh, false)
-                SetEntityNoCollisionEntity(targetVeh, myVeh, false)
-            end
-        end
+    if targetId == -1 then return end
+
+    local targetPed = GetPlayerPed(targetId)
+    if not DoesEntityExist(targetPed) then return end
+
+    SetEntityNoCollisionEntity(myPed, targetPed, false)
+    SetEntityNoCollisionEntity(targetPed, myPed, false)
+
+    local myVeh     = GetVehiclePedIsIn(myPed, false)
+    local targetVeh = GetVehiclePedIsIn(targetPed, false)
+    if DoesEntityExist(myVeh) and DoesEntityExist(targetVeh) then
+        SetEntityNoCollisionEntity(myVeh, targetVeh, false)
+        SetEntityNoCollisionEntity(targetVeh, myVeh, false)
     end
 end)
 
--- 10.2 Client Freeze Logic
+-- ── Freeze / unfreeze on grid ─────────────────────────────────────────────────
 RegisterNetEvent("SPZ:freezeRacer", function(freeze)
     local ped = PlayerPedId()
     local veh = GetVehiclePedIsIn(ped, false)
-    
-    -- Freeze positions to prevent any movement before green light
+
     FreezeEntityPosition(ped, freeze)
+    SetEntityInvincible(ped, freeze)
+
     if DoesEntityExist(veh) then
         FreezeEntityPosition(veh, freeze)
-    end
-    
-    -- Toggle invincibility to prevent pre-race griefing or accidental damage
-    SetEntityInvincible(ped, freeze)
-    if DoesEntityExist(veh) then
         SetEntityInvincible(veh, freeze)
-        SetVehicleTyresCanBurst(veh, not freeze) -- Prevent popped tires while frozen
-    end
-    
-    if freeze then
-        print("[Race] Frozen for countdown.")
-    else
-        print("[Race] Unfrozen - GO!")
+        SetVehicleTyresCanBurst(veh, not freeze)
     end
 end)
 
--- ── Staging phase ───────────────────────────────────────────────────────
+-- ── Staging ───────────────────────────────────────────────────────────────────
 RegisterNetEvent("SPZ:stagingPhase", function(data)
     if Config and Config.Debug then
         print(string.format("[Race] Staging: %ds remaining (track: %s)",
-              data.remaining, tostring(data.track)))
+            data.remaining, tostring(data.track)))
     end
 end)
 
 RegisterNetEvent("SPZ:stagingEnd", function()
-    print("[Race] Staging complete — countdown incoming")
+    if Config and Config.Debug then print("[Race] Staging complete — countdown incoming") end
 end)
 
 RegisterNetEvent("SPZ:countdown", function(data)
-    print("[Race] Countdown: " .. data.seconds)
+    if Config and Config.Debug then print("[Race] Countdown: " .. data.seconds) end
 end)
 
 RegisterNetEvent("SPZ:go", function()
-    print("[Race] Starting line crossed - GO GO GO!")
+    if Config and Config.Debug then print("[Race] GO!") end
 end)
 
--- ── Fallback Resync ─────────────────────────────────────────────────────────
--- If the client missed a state event (e.g. network blip), request a full truth
--- dump from the server every 12 seconds while in a live race.
-local _clientRaceState = "IDLE"
+-- ── Resync loop ───────────────────────────────────────────────────────────────
+local _clientRaceState = GlobalState.raceState or "IDLE"
 
-RegisterNetEvent("spz_race:state_updated", function(state)
-    _clientRaceState = state
+AddStateBagChangeHandler("raceState", "global", function(_, _, value)
+    if not value then return end
+    _clientRaceState = value
 end)
 
 Citizen.CreateThread(function()
@@ -86,12 +72,11 @@ Citizen.CreateThread(function()
     end
 end)
 
--- Teleport player to safe zone after race cleanup.
--- Fires server-side in cleanup.lua after the race bucket is freed.
+-- ── Safe-zone teleport ────────────────────────────────────────────────────────
 RegisterNetEvent("SPZ:tpToSafeZone", function()
     local ped = PlayerPedId()
     local veh = GetVehiclePedIsIn(ped, false)
-    local sz  = (Config and Config.SafeZone) or vector3(0.0, 0.0, 0.0)
+    local sz  = (Config and Config.SafeZone)        or vector3(0.0, 0.0, 0.0)
     local sh  = (Config and Config.SafeZoneHeading) or 0.0
 
     if DoesEntityExist(veh) then
@@ -101,6 +86,4 @@ RegisterNetEvent("SPZ:tpToSafeZone", function()
         SetEntityCoords(ped, sz.x, sz.y, sz.z, false, false, false, true)
         SetEntityHeading(ped, sh)
     end
-
-    print("[Race] Teleported to safe zone.")
 end)
