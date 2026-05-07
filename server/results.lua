@@ -7,10 +7,11 @@ function ProcessRaceResults()
     local results = {
         raceId    = RaceSession.raceId or "N/A",
         track     = RaceSession.track.name,
+        trackId   = RaceSession.track.id or RaceSession.track.name,
         type      = RaceSession.track.type,        -- "circuit" | "sprint"
         carClass  = RaceSession.carClassId,
         laps      = RaceSession.track.laps,
-        duration  = GetGameTimer() - RaceSession.startTime,
+        duration  = (GetGameTimer() - RaceSession.startTime) / 1000, -- seconds
         finishers = {},    -- ordered P1 → PN
         dnf       = {},    -- DNF players
     }
@@ -27,6 +28,8 @@ function ProcessRaceResults()
                 lap_times     = pData.lap_times or {},  -- circuit only
                 best_lap      = pData.best_lap,         -- circuit only
                 personal_best = pData.personal_best or false,
+                cleanRace     = pData.cleanRace or true, -- Placeholder: assume clean
+                collisions    = pData.collisions or {},  -- Placeholder: empty
                 points_earned = (SPZ.PointsTable and SPZ.PointsTable[pData.position]) or 0,
             })
         else
