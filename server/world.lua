@@ -78,10 +78,6 @@ function SetupRaceWorld()
         Player(src).state:set("raceTime",     0,                       true)
         Player(src).state:set("dnf",          false,                   true)
 
-        if GetResourceState("spz-physics") == "started" then
-            exports["spz-physics"]:SetAssists(src, Config.RaceAssists)
-        end
-
         spawnConfirmed[src] = false
     end
 
