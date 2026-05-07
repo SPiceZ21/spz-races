@@ -1,45 +1,43 @@
 -- server/queue.lua
 
 local function Notify(src, msg, msgType)
-    TriggerClientEvent("spz-lib:Notify", src, msg, msgType or "info", 4000)
+    SPZ.Notify(src, msg, msgType or "info", 4000)
 end
 
 function JoinQueue(src)
-    -- 6.1 JoinQueue Logic
-
-    -- 1. RaceSession.state == "IDLE"?
     if RaceSession.state ~= SPZ.RaceState.IDLE then
         Notify(src, "A race is in progress — wait for next cycle")
         return false
     end
 
-    -- 2. Already in a race or queue?
     if Player(src).state.inRace or Player(src).state.inQueue then
         Notify(src, "You are already in a race or queue")
         return false
     end
 
-    -- 3. Check Max Capacity
     if GetQueueCount() >= (Config.MaxPlayersPerRace or 16) then
         Notify(src, "The race queue is currently full")
         return false
     end
 
-    -- 4. Add to RaceSession.players[source]
     RaceSession.players[src] = CreatePlayerRaceData(src)
-    
-    -- 5. Set statebags
-    Player(src).state:set("inQueue",       true,                       true)
-    Player(src).state:set("queuePosition", GetQueueCount(),            true)
 
-    -- 6. Notify and broadcast
+    Player(src).state:set("inQueue",       true,            true)
+    Player(src).state:set("queuePosition", GetQueueCount(), true)
+
     local count = GetQueueCount()
-    Notify(src, string.format("Joined queue (%s players waiting)", count), "success")
+    Notify(src, string.format("Joined queue (%d players waiting)", count), "success")
     BroadcastQueueUpdate()
 
-    -- 7. If count >= Config.MinPlayersToStart → start poll
-    if count >= Config.MinPlayersToStart then
-        StartPolling()
+    if count >= (Config.MinPlayersToStart or 1) then
+        local delay = (Config.PollWaitTime or 2) * 1000
+        Citizen.SetTimeout(delay, function()
+            -- Re-check threshold after delay in case someone left
+            if RaceSession.state == SPZ.RaceState.IDLE
+            and GetQueueCount() >= (Config.MinPlayersToStart or 1) then
+                StartRacePoll()
+            end
+        end)
     end
 
     return true
@@ -49,20 +47,19 @@ function LeaveQueue(src)
     if not RaceSession.players[src] then return end
 
     local activePhases = {
-        [SPZ.RaceState.WAITING] = true,
+        [SPZ.RaceState.WAITING]   = true,
         [SPZ.RaceState.COUNTDOWN] = true,
-        [SPZ.RaceState.LIVE] = true
+        [SPZ.RaceState.LIVE]      = true,
     }
 
     if activePhases[RaceSession.state] then
-        exports["spz-races"]:MarkDNF(src, "Abandoned Race")
+        MarkDNF(src, "Abandoned Race")
         Notify(src, "You abandoned the race.", "error")
         return
     end
 
     RaceSession.players[src] = nil
-    
-    -- Clear statebags
+
     Player(src).state:set("inQueue",       false, true)
     Player(src).state:set("queuePosition", nil,   true)
     Player(src).state:set("queueClass",    nil,   true)
@@ -70,24 +67,21 @@ function LeaveQueue(src)
     Notify(src, "Left the queue", "info")
     BroadcastQueueUpdate()
 
-    local count = GetQueueCount()
-    if RaceSession.state == SPZ.RaceState.POLLING and count < Config.MinPlayersToStart then
-        exports["spz-races"]:ResetToIdle()
+    if RaceSession.state == SPZ.RaceState.POLLING
+    and GetQueueCount() < (Config.MinPlayersToStart or 1) then
+        ResetToIdle()
     end
 end
 
--- 6.3 Status Exports
 function GetQueueCount()
-    local count = 0
-    for _ in pairs(RaceSession.players) do
-        count = count + 1
-    end
-    return count
+    local n = 0
+    for _ in pairs(RaceSession.players) do n = n + 1 end
+    return n
 end
 
 function GetQueuePlayers()
     local players = {}
-    for src, _ in pairs(RaceSession.players) do
+    for src in pairs(RaceSession.players) do
         table.insert(players, src)
     end
     return players
@@ -97,8 +91,8 @@ function IsQueued(src)
     return RaceSession.players[src] ~= nil
 end
 
-exports("JoinQueue", JoinQueue)
-exports("LeaveQueue", LeaveQueue)
-exports("GetQueueCount", GetQueueCount)
+exports("JoinQueue",      JoinQueue)
+exports("LeaveQueue",     LeaveQueue)
+exports("GetQueueCount",  GetQueueCount)
 exports("GetQueuePlayers", GetQueuePlayers)
-exports("IsQueued", IsQueued)
+exports("IsQueued",       IsQueued)

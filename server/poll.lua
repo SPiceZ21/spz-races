@@ -1,33 +1,30 @@
 -- server/poll.lua
 
--- 7.1 Track Pool Selection (Weighted Random)
 local function GetWeightedTracks(type, count)
     local pool = {}
     for id, track in pairs(SPZ.Tracks) do
         if track.type == type then
-            table.insert(pool, {id = id, weight = track.poll_weight or 1, track = track})
+            table.insert(pool, { id = id, weight = track.poll_weight or 1, track = track })
         end
     end
 
     if #pool == 0 then return {} end
-    if #pool < count then
+    if #pool <= count then
         local result = {}
         for _, item in ipairs(pool) do table.insert(result, item.track) end
         return result
     end
 
     local selected = {}
-    for i = 1, count do
+    for _ = 1, count do
         local totalWeight = 0
-        for _, item in ipairs(pool) do
-            totalWeight = totalWeight + item.weight
-        end
+        for _, item in ipairs(pool) do totalWeight = totalWeight + item.weight end
 
         local r = math.random() * totalWeight
-        local currentWeight = 0
+        local cumWeight = 0
         for idx, item in ipairs(pool) do
-            currentWeight = currentWeight + item.weight
-            if r <= currentWeight then
+            cumWeight = cumWeight + item.weight
+            if r <= cumWeight then
                 table.insert(selected, item.track)
                 table.remove(pool, idx)
                 break
@@ -39,25 +36,25 @@ end
 
 local pollActive     = false
 local pollTimer      = 0
-local pollGeneration = 0   -- incremented each phase; threads check this to self-terminate
+local pollGeneration = 0
 
 function StartRacePoll()
-    if RaceSession.state ~= SPZ.RaceState.IDLE and RaceSession.state ~= SPZ.RaceState.POLLING then return end
-    
+    if RaceSession.state ~= SPZ.RaceState.IDLE
+    and RaceSession.state ~= SPZ.RaceState.POLLING then return end
+
     if RaceSession.state ~= SPZ.RaceState.POLLING then
-        exports["spz-races"]:SetRaceState(SPZ.RaceState.POLLING)
+        SetRaceState(SPZ.RaceState.POLLING)
     end
 
-    local phase = RaceSession.pollPhase or 1
+    local phase      = RaceSession.pollPhase or 1
     local pollOptions = {}
-    local uiOptions = {}
+    local uiOptions  = {}
 
     if phase == 1 then
-        -- PHASE 1: TRACK SELECTION
         local tracks = GetWeightedTracks(RaceSession.raceType, Config.PollOptionsPerType or 2)
         if #tracks < 1 then
-            print("[Race Poll] Error: No tracks found for type " .. RaceSession.raceType)
-            exports["spz-races"]:ResetToIdle()
+            print("[Race Poll] No tracks found for type: " .. tostring(RaceSession.raceType))
+            ResetToIdle()
             return
         end
 
@@ -72,33 +69,25 @@ function StartRacePoll()
             })
         end
 
-        -- Size votes table to actual option count (may be 1 if pool was thin)
         RaceSession.pollVotes = {}
         for i = 1, #pollOptions do RaceSession.pollVotes[i] = 0 end
     else
-        -- PHASE 2: VEHICLE SELECTION
-        -- Discover all classes that actually have race-eligible vehicles in the registry.
-        -- We use the export rather than accessing SPZ.VehicleRegistry directly, because
-        -- that table lives in spz-vehicles' Lua scope and is not visible here.
         local availableClasses = exports["spz-vehicles"]:GetRaceClasses()
-
         if not availableClasses or #availableClasses == 0 then
-            print("[Race Poll] Error: No race-eligible vehicles in any class. Resetting.")
-            exports["spz-races"]:ResetToIdle()
+            print("[Race Poll] No race-eligible vehicles. Resetting.")
+            ResetToIdle()
             return
         end
 
-        -- Shuffle classes for variety
         for i = #availableClasses, 2, -1 do
             local j = math.random(1, i)
             availableClasses[i], availableClasses[j] = availableClasses[j], availableClasses[i]
         end
 
-        local TARGET   = Config.PollOptionsPerType or 2
-        local vehicles = {}
+        local TARGET     = Config.PollOptionsPerType or 2
+        local vehicles   = {}
         local seenModels = {}
 
-        -- Pass 1: one vehicle per class (prefers class variety)
         for _, classId in ipairs(availableClasses) do
             if #vehicles >= TARGET then break end
             local pool = exports["spz-vehicles"]:GetPollPool(classId, 1)
@@ -108,11 +97,8 @@ function StartRacePoll()
             end
         end
 
-        -- Pass 2: if still short (e.g. only 1 class registered), pull more from
-        --         the same class so the poll always shows TARGET options.
         if #vehicles < TARGET then
-            local need  = TARGET - #vehicles
-            local extra = exports["spz-vehicles"]:GetPollPool(availableClasses[1], need + 1)
+            local extra = exports["spz-vehicles"]:GetPollPool(availableClasses[1], TARGET + 1)
             for _, v in ipairs(extra or {}) do
                 if #vehicles >= TARGET then break end
                 if not seenModels[v.model] then
@@ -123,8 +109,8 @@ function StartRacePoll()
         end
 
         if #vehicles == 0 then
-            print("[Race Poll] Error: GetPollPool returned nothing for any class. Resetting.")
-            exports["spz-races"]:ResetToIdle()
+            print("[Race Poll] GetPollPool returned nothing. Resetting.")
+            ResetToIdle()
             return
         end
 
@@ -139,11 +125,10 @@ function StartRacePoll()
                 stats   = {
                     { label = "Speed", value = veh.top_speed or "??" },
                     { label = "Accel", value = veh.accel or "??" },
-                }
+                },
             })
         end
 
-        -- Size votes table to actual option count
         RaceSession.pollVotes = {}
         for i = 1, #pollOptions do RaceSession.pollVotes[i] = 0 end
     end
@@ -158,7 +143,7 @@ function StartRacePoll()
         options  = uiOptions,
         duration = Config.PollDuration,
         title    = phase == 1 and "Choose Track" or "Choose Vehicle",
-        subtitle = phase == 1 and "VOTE FOR THE NEXT RACE" or "SELECT YOUR PERFORMANCE"
+        subtitle = phase == 1 and "VOTE FOR THE NEXT RACE" or "SELECT YOUR PERFORMANCE",
     })
 
     pollActive     = true
@@ -181,58 +166,51 @@ function EndRacePoll()
     if not pollActive then return end
     pollActive = false
 
-    local votes = RaceSession.pollVotes
+    local votes    = RaceSession.pollVotes
     local maxVotes = -1
-    local winners = {}
+    local winners  = {}
 
     for i, count in ipairs(votes) do
         if count > maxVotes then
             maxVotes = count
-            winners = {i}
+            winners  = { i }
         elseif count == maxVotes then
             table.insert(winners, i)
         end
     end
 
     local winnerIdx = winners[math.random(1, #winners)]
-    local phase = RaceSession.pollPhase or 1
+    local phase     = RaceSession.pollPhase or 1
 
     if phase == 1 then
-        -- Track phase ended
         RaceSession.track = RaceSession.pollOptions[winnerIdx]
-        
-        -- Transition to Vehicle Phase
-        print("[Poll] Track selected: " .. RaceSession.track.name .. ". Transitioning to vehicle selection.")
-        
-        -- Brief pause for UI transition
+        print("[Poll] Track selected: " .. RaceSession.track.name)
+
         TriggerClientEvent("SPZ:pollResult", -1, {
             winner = { index = winnerIdx },
-            phase = "track"
+            phase  = "track",
         })
 
-        -- Instant transition lets the winner highlight render on next frame, then vehicle poll fires immediately
         Citizen.SetTimeout(0, function()
             RaceSession.pollPhase = 2
             StartRacePoll()
         end)
     else
-        -- Vehicle phase ended
         local selection = RaceSession.pollOptions[winnerIdx]
         if not selection then
-            print("[Race Poll] Error: Selection was nil for winnerIdx " .. tostring(winnerIdx))
-            exports["spz-races"]:ResetToIdle()
+            print("[Race Poll] Selection nil for winnerIdx " .. tostring(winnerIdx))
+            ResetToIdle()
             return
         end
-        
-        RaceSession.selection = selection
+
+        RaceSession.selection  = selection
         RaceSession.carClassId = selection.class
-        -- Set carClass for the race engine
         local meta = exports["spz-vehicles"]:GetClassMeta(selection.class)
-        RaceSession.carClass = { 
-            name     = meta and meta.name or "Open", 
-            category = selection.label, 
+        RaceSession.carClass = {
+            name     = meta and meta.name or "Open",
+            category = selection.label,
             color    = meta and meta.color or "#FF6200",
-            model    = selection.model
+            model    = selection.model,
         }
 
         TriggerClientEvent("SPZ:pollResult", -1, {
@@ -244,51 +222,39 @@ function EndRacePoll()
             laps   = RaceSession.track.laps,
         })
 
-        exports["spz-races"]:SetRaceState(SPZ.RaceState.WAITING)
+        SetRaceState(SPZ.RaceState.WAITING)
     end
 end
 
--- 7.4 Vote Collection
 RegisterNetEvent("SPZ:pollVote", function(data, sourceOverride)
     local src = tonumber(sourceOverride or source)
     if not src then return end
-
-    if Config.Debug then
-        print(string.format("[Race Poll] DEBUG: Received vote from %s (index: %s)", src, data and data.index or "nil"))
-    end
 
     if not pollActive then return end
 
     local player = RaceSession.players[src]
     if not player or player.voted then return end
-
     if not data or not data.index then return end
+
     local index = tonumber(data.index)
     if not index or index < 1 or index > #RaceSession.pollVotes then return end
 
     player.voted = true
     RaceSession.pollVotes[index] = RaceSession.pollVotes[index] + 1
 
-    -- Early tally if everyone voted
-    local allVoted = true
+    local allVoted    = true
     local playerCount = 0
-    
-    -- Sync check with current online players
     for pSrc, pData in pairs(RaceSession.players) do
-        local onlineName = GetPlayerName(pSrc)
-        if onlineName then
+        if GetPlayerName(pSrc) then
             playerCount = playerCount + 1
-            if not pData.voted then
-                allVoted = false
-            end
+            if not pData.voted then allVoted = false end
         else
-            -- Clean up players who dropped
             RaceSession.players[pSrc] = nil
         end
     end
 
     if allVoted and playerCount > 0 then
-        print("[Race Poll] All participants have voted. Ending poll early.")
+        print("[Race Poll] All participants voted early.")
         EndRacePoll()
     end
 end)

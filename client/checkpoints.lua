@@ -355,8 +355,8 @@ RegisterNetEvent("SPZ:lapComplete", function(lapNum, lapTimeMs)
     PlaySoundFrontend(-1, "CHECKPOINT_UNDER_THE_BRIDGE_STUNT", "HUD_MINI_GAME_SOUNDSET", 1)
 end)
 
--- Race state changed
-RegisterNetEvent("spz_race:state_updated", function(newState)
+-- Race state changed (native statebag)
+local function _onRaceStateChange(newState)
     RaceState = newState
     if newState == "IDLE" or newState == "CLEANUP" then
         _clearAllBlips()
@@ -365,6 +365,17 @@ RegisterNetEvent("spz_race:state_updated", function(newState)
         CurrentCheckpoints = {}
         CurrentCPIndex     = 1
     end
+end
+
+AddStateBagChangeHandler("raceState", "global", function(_, _, value)
+    if value then _onRaceStateChange(value) end
+end)
+
+-- Seed from current GlobalState on load
+Citizen.CreateThread(function()
+    Citizen.Wait(0)
+    local s = GlobalState.raceState
+    if s then _onRaceStateChange(s) end
 end)
 
 -- ── Exports ────────────────────────────────────────────────────────────────

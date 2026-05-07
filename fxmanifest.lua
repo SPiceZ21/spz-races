@@ -29,6 +29,7 @@ server_scripts {
   'server/cleanup.lua',
   'server/intermission.lua',
   'server/timetrail.lua',
+  'server/state_machine.lua',
 }
 
 client_scripts {

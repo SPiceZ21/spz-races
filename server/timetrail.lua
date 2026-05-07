@@ -7,7 +7,7 @@ local _nextBucket = 8000      -- high range; race buckets start at 1
 -- ── Helpers ───────────────────────────────────────────────────────────────────
 
 local function _notify(src, msg, t)
-    TriggerClientEvent("spz-lib:notify", src, msg, t or "info")
+    SPZ.Notify(src, msg, t or "info")
 end
 
 local function _lapLabel(n)
