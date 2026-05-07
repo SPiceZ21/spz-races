@@ -57,9 +57,13 @@ function SetupRaceWorld()
 
         exports["spz-core"]:AssignPlayerToBucket(src, RaceSession.bucketId)
 
-        print(string.format("[World Setup] Spawning '%s' for player %d at grid %d", chosenModel, src, i))
+        local profile = Player(src).state.profile
+        local hasLicense = (profile and profile.license_tier or 0) >= (RaceSession.carClassId or 0)
+        local isRental = not hasLicense
+
+        print(string.format("[World Setup] Spawning '%s' for player %d at grid %d (Rental: %s)", chosenModel, src, i, tostring(isRental)))
         local ok, err = pcall(function()
-            exports["spz-vehicles"]:SpawnRaceVehicle(src, chosenModel, gridPos.coords, gridPos.heading)
+            exports["spz-vehicles"]:SpawnRaceVehicle(src, chosenModel, gridPos.coords, gridPos.heading, isRental)
         end)
         if not ok then
             print(string.format("[World Setup] SpawnRaceVehicle failed for %d: %s", src, tostring(err)))
