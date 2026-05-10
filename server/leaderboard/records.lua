@@ -23,7 +23,7 @@ function LB_GetTrackRecords(track, carClass, limit)
 
     local rows = MySQL.query.await(
         [[SELECT tr.best_time, tr.best_lap, tr.set_at,
-                 p.name AS player_name, p.rank AS rank_title
+                 p.username AS player_name, p.rank AS rank_title
           FROM track_records tr
           JOIN players p ON p.id = tr.player_id
           WHERE tr.track = ? AND tr.car_class = ?
@@ -60,7 +60,7 @@ function LB_GetAllTrackRecords(carClass)
     if carClass then
         rows = MySQL.query.await(
             [[SELECT tr.track, tr.car_class, tr.best_time AS lap_time_ms, tr.set_at,
-                     p.name AS player_name
+                     p.username AS player_name
               FROM track_records tr
               JOIN players p ON p.id = tr.player_id
               WHERE tr.car_class = ?
@@ -76,7 +76,7 @@ function LB_GetAllTrackRecords(carClass)
     else
         rows = MySQL.query.await(
             [[SELECT tr.track, tr.car_class, tr.best_time AS lap_time_ms, tr.set_at,
-                     p.name AS player_name
+                     p.username AS player_name
               FROM track_records tr
               JOIN players p ON p.id = tr.player_id
               WHERE (tr.track, tr.car_class, tr.best_time) IN (

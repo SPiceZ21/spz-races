@@ -8,7 +8,7 @@ function LB_GetGlobalStandings(limit)
 
     local rows = MySQL.query.await(
         [[SELECT
-            p.name          AS name,
+            p.username      AS name,
             p.rank          AS rank_title,
             p.license_tier,
             p.alltime_points AS points,
@@ -53,7 +53,7 @@ function LB_GetClassStandings(classLetter, limit)
 
     local rows = MySQL.query.await(
         [[SELECT
-            p.name           AS name,
+            p.username       AS name,
             p.rank           AS rank_title,
             p.class_points   AS points,
             p.alltime_points,
