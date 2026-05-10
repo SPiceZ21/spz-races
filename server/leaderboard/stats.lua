@@ -26,7 +26,7 @@ function LB_GetPlayerStats(source)
     local profile = exports["spz-identity"]:GetProfile(source)
     if not profile then return nil end
 
-    local agg = MySQL.Sync.fetchAll(
+    local agg = MySQL.query.await(
         [[SELECT
             COUNT(*)                                           AS total_races,
             SUM(CASE WHEN position  = 1   THEN 1 ELSE 0 END) AS wins,
@@ -47,7 +47,7 @@ function LB_GetPlayerStats(source)
     local dnfs       = tonumber(a.dnfs)    or 0
 
     -- Best lap across all track_records
-    local bestLap = MySQL.Sync.fetchAll(
+    local bestLap = MySQL.query.await(
         [[SELECT tr.best_lap, rs.track AS track_name
           FROM track_records tr
           LEFT JOIN race_sessions rs ON rs.track = tr.track
@@ -87,7 +87,7 @@ function LB_GetPlayerHistory(source, page, pageSize)
     local profile = exports["spz-identity"]:GetProfile(source)
     if not profile then return { rows = {}, hasMore = false } end
 
-    local rows = MySQL.Sync.fetchAll(
+    local rows = MySQL.query.await(
         [[SELECT
             rs.track, rs.car_class,
             rr.position, rr.finish_time, rr.best_lap,
@@ -118,7 +118,7 @@ function LB_GetActivityFeed(limit)
     local cached = LBCache.Get(cacheKey)
     if cached then return cached end
 
-    local rows = MySQL.Sync.fetchAll(
+    local rows = MySQL.query.await(
         [[SELECT p.name AS player, rs.track AS detail,
                  rr.position, rr.created_at AS timestamp
           FROM race_results rr
