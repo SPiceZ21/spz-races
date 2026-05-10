@@ -5,7 +5,7 @@ function LB_GetPersonalBest(source, track, carClass)
     local profile = exports["spz-identity"]:GetProfile(source)
     if not profile then return nil end
 
-    local result = MySQL.Sync.fetchAll(
+    local result = MySQL.query.await(
         [[SELECT best_time FROM track_records
           WHERE track = ? AND car_class = ? AND player_id = ?
           LIMIT 1]],
@@ -21,7 +21,7 @@ function LB_GetTrackRecords(track, carClass, limit)
     local cached = LBCache.Get(cacheKey)
     if cached then return cached end
 
-    local rows = MySQL.Sync.fetchAll(
+    local rows = MySQL.query.await(
         [[SELECT tr.best_time, tr.best_lap, tr.set_at,
                  p.name AS player_name, p.rank AS rank_title
           FROM track_records tr
@@ -58,7 +58,7 @@ function LB_GetAllTrackRecords(carClass)
 
     local rows
     if carClass then
-        rows = MySQL.Sync.fetchAll(
+        rows = MySQL.query.await(
             [[SELECT tr.track, tr.car_class, tr.best_time AS lap_time_ms, tr.set_at,
                      p.name AS player_name
               FROM track_records tr
@@ -74,7 +74,7 @@ function LB_GetAllTrackRecords(carClass)
             { carClass, carClass }
         )
     else
-        rows = MySQL.Sync.fetchAll(
+        rows = MySQL.query.await(
             [[SELECT tr.track, tr.car_class, tr.best_time AS lap_time_ms, tr.set_at,
                      p.name AS player_name
               FROM track_records tr
@@ -110,7 +110,7 @@ function LB_GetPersonalRecords(source)
     local profile = exports["spz-identity"]:GetProfile(source)
     if not profile then return {} end
 
-    local rows = MySQL.Sync.fetchAll(
+    local rows = MySQL.query.await(
         [[SELECT tr.track, tr.car_class, tr.best_time AS lap_time_ms, tr.set_at,
                  (SELECT COUNT(*) = 0 FROM track_records t2
                   WHERE t2.track = tr.track AND t2.car_class = tr.car_class

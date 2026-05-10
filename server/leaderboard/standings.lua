@@ -6,7 +6,7 @@ function LB_GetGlobalStandings(limit)
     local cached = LBCache.Get(cacheKey)
     if cached then return cached end
 
-    local rows = MySQL.Sync.fetchAll(
+    local rows = MySQL.query.await(
         [[SELECT
             p.name          AS name,
             p.rank          AS rank_title,
@@ -51,7 +51,7 @@ function LB_GetClassStandings(classLetter, limit)
     local cached = LBCache.Get(cacheKey)
     if cached then return cached end
 
-    local rows = MySQL.Sync.fetchAll(
+    local rows = MySQL.query.await(
         [[SELECT
             p.name           AS name,
             p.rank           AS rank_title,
