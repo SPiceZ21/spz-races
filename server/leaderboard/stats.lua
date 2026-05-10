@@ -119,7 +119,7 @@ function LB_GetActivityFeed(limit)
     if cached then return cached end
 
     local rows = MySQL.query.await(
-        [[SELECT p.name AS player, rs.track AS detail,
+        [[SELECT p.username AS player, rs.track AS detail,
                  rr.position, rr.created_at AS timestamp
           FROM race_results rr
           JOIN players p      ON p.id      = rr.player_id
