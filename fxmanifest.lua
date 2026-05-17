@@ -3,7 +3,7 @@ game 'gta5'
 
 name 'spz-races'
 description 'SPiceZ-Core — Race engine, poll, timing, checkpoints'
-version '1.8.0'
+version '1.9.0'
 author 'SPiceZ-Core'
 
 shared_scripts {
@@ -43,6 +43,7 @@ server_scripts {
   'server/leaderboard/standings.lua',
   'server/leaderboard/stats.lua',
   'server/leaderboard/callbacks.lua',
+  'server/creator.lua',
 }
 
 client_scripts {
@@ -51,6 +52,8 @@ client_scripts {
   'client/hit_detector.lua',
   'client/nui_bridge.lua',
   'client/timetrail.lua',
+  'client/creator.lua',
+  'client/editor.lua',
 }
 
 dependencies {
