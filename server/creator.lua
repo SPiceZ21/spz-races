@@ -47,12 +47,18 @@ end)
 RegisterNetEvent("SPZ:saveCustomTrack", function(payload)
     local src = source
     if not payload or not payload.checkpoints or #payload.checkpoints < 2 then
+        TriggerClientEvent("spz-lib:Notify", src, "Save failed: need at least 2 checkpoints.", "error")
         return
     end
-    
-    local trackId = string.lower(payload.name:gsub("%s+", ""):gsub("%W+", ""))
-    if trackId == "" then
-        trackId = "custom_" .. os.time()
+
+    -- If editor passes an explicit id, keep it (overwrite).
+    -- Otherwise derive from name (creator new track).
+    local trackId
+    if payload.id and payload.id ~= "" then
+        trackId = payload.id
+    else
+        trackId = string.lower(payload.name:gsub("%s+", ""):gsub("%W+", ""))
+        if trackId == "" then trackId = "custom_" .. os.time() end
     end
     
     -- Load current custom tracks
@@ -69,7 +75,7 @@ RegisterNetEvent("SPZ:saveCustomTrack", function(payload)
     local cleanTrack = {
         name          = payload.name,
         type          = payload.type or "circuit",
-        laps          = payload.type == "circuit" and 3 or 1,
+        laps          = tonumber(payload.laps) or (payload.type == "circuit" and 3 or 1),
         min_class     = 0,
         poll_weight   = 8,
         start_coords  = {
@@ -119,7 +125,7 @@ RegisterNetEvent("SPZ:saveCustomTrack", function(payload)
     
     SPZ.Tracks[trackId] = loadedTrack
     
-    TriggerClientEvent("spz-lib:Notify", src, "Track successfully saved and compiled!", "success")
+    SPZ.Notify(src, ("Track '%s' saved and live (%d gates, %d laps)!"):format(cleanTrack.name, #cleanTrack.checkpoints, cleanTrack.laps), "success")
     print(string.format("^2[spz-races] Saved custom track '%s' (ID: %s)^7", cleanTrack.name, trackId))
 end)
 
@@ -169,7 +175,7 @@ SPZ.Callbacks.Register("spz-races:deleteTrack", function(source, cb, data)
     end
 
     SPZ.Tracks[trackId] = nil
-    TriggerClientEvent("spz-lib:Notify", source, "Track deleted successfully!", "success")
+    SPZ.Notify(source, "Track deleted.", "success")
     if cb then cb(true) end
 end)
 
