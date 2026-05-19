@@ -3,28 +3,39 @@
 local function FormatHistoryRows(rows)
     local formatted = {}
     for _, row in ipairs(rows) do
-        local total = tonumber(row.total or 0)
+        -- car_class may be stored as a TINYINT tier or as a class letter string
+        local cls = row.car_class
+        if type(cls) == "number" then
+            cls = LBConfig.TierToClass[cls] or "C"
+        end
         table.insert(formatted, {
-            track          = row.track,
-            car_class      = row.car_class,
+            track           = row.track,
+            car_class       = cls,
             finish_position = row.position,
-            best_lap_ms    = row.best_lap,
-            points_earned  = row.points_earned or 0,
-            sr_delta       = row.sr_change or 0,
-            raced_at       = row.created_at,
-            dnf            = row.dnf == 1,
+            best_lap_ms     = row.best_lap,
+            points_earned   = row.points_earned or 0,
+            sr_delta        = row.sr_change or 0,
+            raced_at        = row.created_at,
+            dnf             = row.dnf == 1,
         })
     end
     return formatted
 end
+
+local EMPTY_STATS = {
+    total_races = 0, wins = 0, podiums = 0, dnfs = 0,
+    win_rate = 0, podium_rate = 0, dnf_rate = 0,
+    avg_position = 0, total_points = 0, total_xp = 0,
+    best_lap_ms = nil, best_lap_track = nil,
+}
 
 function LB_GetPlayerStats(source)
     local cacheKey = "stats:" .. tostring(source)
     local cached = LBCache.Get(cacheKey)
     if cached then return cached end
 
-    local profile = exports["spz-identity"]:GetProfile(source)
-    if not profile then return nil end
+    local ok, profile = pcall(function() return exports["spz-identity"]:GetProfile(source) end)
+    if not ok or not profile then return EMPTY_STATS end
 
     local agg = MySQL.query.await(
         [[SELECT

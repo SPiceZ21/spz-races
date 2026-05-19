@@ -3,6 +3,8 @@
 
 ---@param results table
 function LB_WriteRaceSession(results)
+    -- Convert class letter to tier integer for storage
+    local classTier = LBConfig.ClassToTier[results.carClass] or 0
     MySQL.Async.execute(
         [[INSERT IGNORE INTO race_sessions
           (race_id, track, track_type, car_class, laps, player_count, duration_ms)
@@ -10,9 +12,9 @@ function LB_WriteRaceSession(results)
         {
             results.raceId,
             results.track,
-            results.type,
-            results.carClass,
-            results.laps,
+            results.type or "circuit",
+            classTier,
+            results.laps or 1,
             #results.finishers + #results.dnf,
             results.duration,
         }

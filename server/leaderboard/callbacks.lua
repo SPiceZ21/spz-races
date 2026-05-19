@@ -25,35 +25,44 @@ end)
 
 -- ── SPZ.Callbacks (tablet data endpoints) ───────────────────────────────────
 
+local function safeCall(fn, fallback, ...)
+    local ok, result = pcall(fn, ...)
+    if not ok then
+        print("^1[spz-races] LB callback error: " .. tostring(result) .. "^7")
+        return fallback
+    end
+    return result
+end
+
 SPZ.Callbacks.Register("spz-races:getGlobalStandings", function(source, cb, data)
-    cb(LB_GetGlobalStandings(data and data.limit))
+    cb(safeCall(LB_GetGlobalStandings, {}, data and data.limit))
 end)
 
 SPZ.Callbacks.Register("spz-races:getClassStandings", function(source, cb, data)
-    cb(LB_GetClassStandings(data and (data.class or data.tier) or "D", data and data.limit))
+    cb(safeCall(LB_GetClassStandings, {}, data and (data.class or data.tier) or "D", data and data.limit))
 end)
 
 SPZ.Callbacks.Register("spz-races:getTrackRecords", function(source, cb, data)
-    cb(LB_GetTrackRecords(data and data.track, data and data.carClass, data and data.limit))
+    cb(safeCall(LB_GetTrackRecords, {}, data and data.track, data and data.carClass, data and data.limit))
 end)
 
 SPZ.Callbacks.Register("spz-races:getPlayerStats", function(source, cb, data)
     local target = (data and data.source) or source
-    cb(LB_GetPlayerStats(target))
+    cb(safeCall(LB_GetPlayerStats, nil, target))
 end)
 
 SPZ.Callbacks.Register("spz-races:getPlayerHistory", function(source, cb, data)
-    cb(LB_GetPlayerHistory(source, data and data.page, data and data.pageSize))
+    cb(safeCall(LB_GetPlayerHistory, { rows = {}, hasMore = false }, source, data and data.page, data and data.pageSize))
 end)
 
 SPZ.Callbacks.Register("spz-races:getAllTrackRecords", function(source, cb, data)
-    cb(LB_GetAllTrackRecords(data and data.carClass or nil))
+    cb(safeCall(LB_GetAllTrackRecords, {}, data and data.carClass or nil))
 end)
 
 SPZ.Callbacks.Register("spz-races:getPersonalRecords", function(source, cb)
-    cb(LB_GetPersonalRecords(source))
+    cb(safeCall(LB_GetPersonalRecords, {}, source))
 end)
 
 SPZ.Callbacks.Register("spz-races:getActivityFeed", function(source, cb, data)
-    cb(LB_GetActivityFeed(data and data.limit))
+    cb(safeCall(LB_GetActivityFeed, {}, data and data.limit))
 end)
