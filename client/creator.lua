@@ -60,11 +60,11 @@ end)
 
 -- ── Exports (called from tablet NUI bridge) ───────────────────────────────────
 
-exports("AddTrackCheckpoint", function(width)
+exports("AddTrackCheckpoint", function(width, heading)
     if not creatorActive then return false, 0 end
     local ent   = GetTargetEntity()
     local pos   = GetEntityCoords(ent)
-    local head  = GetEntityHeading(ent)
+    local head  = tonumber(heading) or GetEntityHeading(ent)
     local w     = tonumber(width) or defaultWidth
     local left, right = CalcGate(pos, head, w)
 
@@ -214,6 +214,7 @@ CreateThread(function()
                     creatorActive = false
                     checkpoints   = {}
                     PlaySoundFrontend(-1, "Save_Prop_Success", "DLC_DHE_PROP_SOUNDS", 1)
+                    TriggerEvent("spz-races:creatorDone")
                 else
                     Notify("Need at least 2 gates to save!", "error")
                 end
@@ -224,6 +225,7 @@ CreateThread(function()
                 creatorActive = false
                 checkpoints   = {}
                 Notify("Track creation canceled.", "error")
+                TriggerEvent("spz-races:creatorDone")
             end
 
             -- ── HUD ─────────────────────────────────────────────────────────
