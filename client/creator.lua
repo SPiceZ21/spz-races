@@ -312,7 +312,7 @@ RegisterCommand("trackcreator", function()
         return
     end
     TriggerEvent("SPZ:startTrackCreator", {
-        name  = "Custom_" .. os.date("%H%M%S"),
+        name  = "Custom_" .. GetGameTimer(),
         type  = "circuit",
         laps  = 3,
     })
