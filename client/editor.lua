@@ -96,8 +96,10 @@ RegisterNetEvent("SPZ:startTrackEditor", function(data)
         return
     end
 
-    -- Wait for SPZ to be available
-    while not SPZ do Wait(100) end
+    if not SPZ then
+        Notify("SPZ core not ready — try again.", "error")
+        return
+    end
 
     SPZ.Callbacks.Trigger("spz-races:getTrackDetails", { id = data.id }, function(track)
         if not track then

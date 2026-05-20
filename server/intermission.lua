@@ -2,7 +2,7 @@
 
 -- 17. Intermission logic
 -- This handles the cooldown between races and re-inviting players to the next cycle.
-function StartIntermission(results)
+function StartIntermission(results, prevPlayers)
     local lastResults = {}
     if results and results.finishers then
         for i, racer in ipairs(results.finishers) do
@@ -34,9 +34,16 @@ function StartIntermission(results)
     Citizen.SetTimeout(delayMs, function()
         print("[Race Engine] Intermission over. Queue is open — idle loop will start poll when players are ready.")
         RaceSession.intermissionActive = false
-        -- Do NOT call StartPolling() directly here — if the queue is already populated
-        -- the 5-second idle loop in state_machine.lua will pick it up within 5 seconds.
-        -- Calling it unconditionally starts a ghost race when the queue is empty.
+
+        -- Re-queue previous participants who are still connected
+        if prevPlayers then
+            for _, src in ipairs(prevPlayers) do
+                if GetPlayerName(src) then
+                    JoinQueue(src)
+                end
+            end
+        end
+
         BroadcastQueueUpdate()
     end)
 end

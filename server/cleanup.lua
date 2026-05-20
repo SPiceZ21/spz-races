@@ -70,6 +70,15 @@ function RunRaceCleanup(results)
     RaceSession.raceType = NextCycleType()
     print(string.format("[Race Engine] Next cycle (#%d) initialized as: %s", RaceSession.cycleCount, RaceSession.raceType))
 
+    -- Capture still-connected participants before clearing the session so they
+    -- can be automatically re-queued after intermission.
+    local prevPlayers = {}
+    for src in pairs(RaceSession.players) do
+        if GetPlayerName(src) then
+            table.insert(prevPlayers, src)
+        end
+    end
+
     -- Block the idle polling loop BEFORE transitioning to IDLE so the
     -- 5-second polling thread cannot sneak in between the two writes.
     RaceSession.intermissionActive = true
@@ -80,9 +89,9 @@ function RunRaceCleanup(results)
     -- Broadcast queue update so UIs reflect the reset
     if BroadcastQueueUpdate then BroadcastQueueUpdate() end
 
-    -- Trigger intermission period
+    -- Trigger intermission period (pass previous players for auto-requeue)
     if StartIntermission then
-        StartIntermission(results)
+        StartIntermission(results, prevPlayers)
     end
 end
 
