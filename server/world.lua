@@ -133,10 +133,21 @@ function HandleSpawnTimeout()
     end
 end
 
+-- Server-side TriggerEvent is resource-local in FiveM; spz-vehicles uses it so
+-- we also expose an export as the reliable cross-resource confirmation path.
+exports("ConfirmRaceSpawn", function(src)
+    src = tonumber(src)
+    if src and spawnConfirmed[src] ~= nil then
+        spawnConfirmed[src] = true
+        print(string.format("[World Setup] Player %d spawn confirmed (export).", src))
+    end
+end)
+
+-- Kept for same-resource triggers / backward compat
 AddEventHandler("SPZ:raceVehicleSpawned", function(src)
     if spawnConfirmed[src] ~= nil then
         spawnConfirmed[src] = true
-        print(string.format("[World Setup] Player %d spawn confirmed.", src))
+        print(string.format("[World Setup] Player %d spawn confirmed (event).", src))
     end
 end)
 
