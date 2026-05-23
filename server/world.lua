@@ -69,11 +69,22 @@ function SetupRaceWorld()
             print(string.format("[World Setup] SpawnRaceVehicle failed for %d: %s", src, tostring(err)))
         end
 
+        local pb = 0
+        local tb = 0
+        pcall(function()
+            pb = LB_GetPersonalBest(src, RaceSession.track.name, RaceSession.carClassId) or 0
+            local records = LB_GetTrackRecords(RaceSession.track.name, RaceSession.carClassId, 1)
+            tb = records and records[1] and records[1].lap_time_ms or 0
+        end)
+
         Player(src).state:set("inRace",       true,                    true)
         Player(src).state:set("raceId",       RaceSession.raceId,      true)
         Player(src).state:set("raceClass",    RaceSession.carClassId,  true)
         Player(src).state:set("raceTrack",    RaceSession.track.name,  true)
         Player(src).state:set("raceLap",      1,                       true)
+        Player(src).state:set("raceLaps",     RaceSession.track.laps or 1, true)
+        Player(src).state:set("personalBest", pb,                      true)
+        Player(src).state:set("allTimeBest",  tb,                      true)
         Player(src).state:set("racePosition", 0,                       true)
         Player(src).state:set("raceTime",     0,                       true)
         Player(src).state:set("dnf",          false,                   true)
