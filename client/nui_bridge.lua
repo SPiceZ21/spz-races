@@ -88,11 +88,16 @@ Citizen.CreateThread(function()
 end)
 
 -- ── Telemetry ─────────────────────────────────────────────────────────────────
+local clientBestLap = nil
+
 RegisterNetEvent("SPZ:spawnCheckpoints", function(checkpoints, currentIdx)
     if GetResourceState("spz-raceUI") ~= "started" then return end
+    clientBestLap = LocalPlayer.state.personalBest or 0
     exports["spz-raceUI"]:UpdateRaceOverlay({
         totalCheckpoints = #checkpoints,
         checkpoint       = currentIdx or 1,
+        bestLapTime      = clientBestLap,
+        allTimeBest      = LocalPlayer.state.allTimeBest or 0
     })
 end)
 
@@ -101,9 +106,16 @@ RegisterNetEvent("SPZ:nextCheckpoint", function(cpIndex)
     exports["spz-raceUI"]:UpdateRaceOverlay({ checkpoint = cpIndex })
 end)
 
-RegisterNetEvent("SPZ:lapComplete", function(lapNum)
+RegisterNetEvent("SPZ:lapComplete", function(lapNum, lapTime)
     if GetResourceState("spz-raceUI") ~= "started" then return end
-    exports["spz-raceUI"]:UpdateRaceOverlay({ lapNum = lapNum + 1, checkpoint = 1 })
+    if lapTime and (clientBestLap == nil or clientBestLap == 0 or lapTime < clientBestLap) then
+        clientBestLap = lapTime
+    end
+    exports["spz-raceUI"]:UpdateRaceOverlay({
+        lapNum      = lapNum + 1,
+        checkpoint  = 1,
+        bestLapTime = clientBestLap or 0
+    })
 end)
 
 local _lastPosBroadcast = 0
