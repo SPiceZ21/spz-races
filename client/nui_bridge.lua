@@ -197,6 +197,8 @@ RegisterNetEvent("SPZ:progressionUpdate", function(data)
         cpNewProgress       = data.cpProgress or 0.0,
         iRatingDelta        = data.irDelta or 0,
         safetyRatingDelta   = data.srDelta or 0,
+        level               = data.level or 1,
+        levelUp             = data.levelUp or false,
     })
     _pendingStats = nil
 end)
