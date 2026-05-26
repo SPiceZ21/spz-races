@@ -87,6 +87,34 @@ Citizen.CreateThread(function()
     if s then _onRaceState(s) end
 end)
 
+-- ── Distance to next checkpoint (10 Hz during LIVE) ─────────────────────────
+-- Updates the CPDistancePill in spz-raceUI without triggering a full HUD diff.
+local _distState = GlobalState.raceState or "IDLE"
+AddStateBagChangeHandler("raceState", "global", function(_, _, v)
+    if v then _distState = v end
+end)
+
+Citizen.CreateThread(function()
+    while true do
+        if _distState == "LIVE" and GetResourceState("spz-raceUI") == "started" then
+            local cp = exports["spz-races"]:GetCurrentCP()
+            if cp then
+                local pos = GetEntityCoords(PlayerPedId())
+                local dx  = pos.x - cp.coords.x
+                local dy  = pos.y - cp.coords.y
+                exports["spz-raceUI"]:UpdateCPDistance(math.floor(math.sqrt(dx*dx + dy*dy)))
+            end
+            Citizen.Wait(150)
+        else
+            if (_distState == "IDLE" or _distState == "CLEANUP")
+            and GetResourceState("spz-raceUI") == "started" then
+                exports["spz-raceUI"]:UpdateCPDistance(0)
+            end
+            Citizen.Wait(500)
+        end
+    end
+end)
+
 -- ── Telemetry ─────────────────────────────────────────────────────────────────
 local clientBestLap = nil
 

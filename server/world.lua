@@ -53,7 +53,9 @@ function SetupRaceWorld()
         local gridPos = grid[i]
         local player  = RaceSession.players[src]
 
-        player.gridIndex = i
+        player.gridIndex   = i
+        player.gridCoords  = gridPos.coords
+        player.gridHeading = gridPos.heading
 
         exports["spz-core"]:AssignPlayerToBucket(src, RaceSession.bucketId)
 
@@ -111,8 +113,11 @@ function StartSpawnTimeoutMonitor()
             if allReady then
                 print("[World Setup] All players spawned. Applying no-collision.")
                 ApplyRaceNoCollision()
-                print("[World Setup] Transitioning to COUNTDOWN.")
-                SetRaceState(SPZ.RaceState.COUNTDOWN)
+                local nextState = ((Config.WarmupTimeSeconds or 0) > 0)
+                    and SPZ.RaceState.WARMUP
+                    or  SPZ.RaceState.COUNTDOWN
+                print(string.format("[World Setup] Transitioning to %s.", nextState))
+                SetRaceState(nextState)
                 return
             end
         end
@@ -137,7 +142,10 @@ function HandleSpawnTimeout()
     for _ in pairs(RaceSession.players) do remaining = remaining + 1 end
 
     if remaining >= (Config.MinPlayersToStart or 2) then
-        SetRaceState(SPZ.RaceState.COUNTDOWN)
+        local nextState = ((Config.WarmupTimeSeconds or 0) > 0)
+            and SPZ.RaceState.WARMUP
+            or  SPZ.RaceState.COUNTDOWN
+        SetRaceState(nextState)
     else
         print("[World Setup] Critical player loss — cancelling race.")
         ResetToIdle()

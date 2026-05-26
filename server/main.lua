@@ -57,6 +57,8 @@ function CreatePlayerRaceData(src)
         voted           = false,
         race_start_time = nil,
         gridIndex       = 0,
+        gridCoords      = nil,   -- set by world.lua after spawn
+        gridHeading     = 0.0,
         last_cp_time    = nil,
     }
 end
@@ -121,6 +123,7 @@ exports("HandlePlayerDisconnect", function(src)
     if not pData then return end
     local activePhases = {
         [SPZ.RaceState.WAITING]   = true,
+        [SPZ.RaceState.WARMUP]    = true,
         [SPZ.RaceState.COUNTDOWN] = true,
         [SPZ.RaceState.LIVE]      = true,
     }
@@ -145,6 +148,7 @@ AddEventHandler("playerDropped", function()
 
     local activePhases = {
         [SPZ.RaceState.WAITING]   = true,
+        [SPZ.RaceState.WARMUP]    = true,
         [SPZ.RaceState.COUNTDOWN] = true,
         [SPZ.RaceState.LIVE]      = true,
     }

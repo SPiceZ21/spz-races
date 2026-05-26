@@ -1,5 +1,80 @@
 -- server/countdown.lua
 
+-- ── 9. Warmup Phase ──────────────────────────────────────────────────────────
+--
+-- Entered from WARMUP state.  Players are unfrozen at their grid positions;
+-- they may drive around the whole track to scout it or inspect their vehicle.
+-- After WarmupTimeSeconds the server re-teleports everyone to their grid slot,
+-- freezes them, then transitions to COUNTDOWN for the normal 3-2-1.
+
+function StartWarmupPhase()
+    if RaceSession.state ~= SPZ.RaceState.WARMUP then return end
+
+    local warmupTotal = Config.WarmupTimeSeconds or 60
+    print(string.format("[Warmup] Free-drive phase started: %d seconds", warmupTotal))
+
+    -- Unfreeze — let players drive
+    for src, _ in pairs(RaceSession.players) do
+        TriggerClientEvent("SPZ:freezeRacer", src, false)
+    end
+
+    Citizen.CreateThread(function()
+        local remaining = warmupTotal
+
+        while remaining > 0 do
+            -- Abort early if state changed externally (e.g. not-enough-players cancel)
+            if RaceSession.state ~= SPZ.RaceState.WARMUP then return end
+
+            for src, data in pairs(RaceSession.players) do
+                TriggerClientEvent("SPZ:warmupPhase", src, {
+                    remaining   = remaining,
+                    total       = warmupTotal,
+                    track       = RaceSession.track.name,
+                    class       = type(RaceSession.carClass) == "table"
+                                    and RaceSession.carClass.name
+                                    or  tostring(RaceSession.carClass),
+                    laps        = RaceSession.track.laps,
+                    gridPos     = data.gridIndex or 0,
+                })
+            end
+
+            Citizen.Wait(1000)
+            remaining = remaining - 1
+        end
+
+        if RaceSession.state ~= SPZ.RaceState.WARMUP then return end
+
+        -- Signal clients warmup is over so HUD can clear the timer
+        TriggerClientEvent("SPZ:warmupEnd", -1)
+        print("[Warmup] Phase complete — re-staging players on grid")
+
+        -- Re-teleport each player back to their grid slot
+        for src, data in pairs(RaceSession.players) do
+            if data.gridCoords then
+                TriggerClientEvent("SPZ:tpToGrid", src, {
+                    coords  = data.gridCoords,
+                    heading = data.gridHeading or 0.0,
+                })
+            end
+        end
+
+        -- Wait for client-side TP to settle before freezing
+        Citizen.Wait(1500)
+
+        -- Freeze everyone at their grid position
+        for src, _ in pairs(RaceSession.players) do
+            TriggerClientEvent("SPZ:freezeRacer", src, true)
+        end
+
+        -- Brief pause, then hand off to COUNTDOWN (staging → 3-2-1)
+        Citizen.Wait(500)
+
+        SetRaceState(SPZ.RaceState.COUNTDOWN)
+    end)
+end
+
+exports("StartWarmupPhase", StartWarmupPhase)
+
 -- ── 10. Staging + Countdown Sequence ─────────────────────────────────────
 --
 -- Flow:
