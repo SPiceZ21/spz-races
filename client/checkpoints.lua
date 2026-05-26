@@ -1,4 +1,8 @@
 -- client/checkpoints.lua
+-- Invisible checkpoints: no cylinders, no gate props.
+-- Gate positions are marked by always-on looped particle flares that appear
+-- whenever the player is within Config.FlareRange metres of a checkpoint.
+-- Active (next) checkpoint uses a larger flare scale; others use a smaller scale.
 
 local CurrentCheckpoints = {}
 local CurrentCPIndex     = 1
@@ -18,21 +22,18 @@ local COLOUR_FINISH  = 2    -- green
 local SCALE_ACTIVE   = 1.1
 local SCALE_PENDING  = 0.6
 
--- ── Gate props ─────────────────────────────────────────────────────────────
--- Physical objects spawned at the left/right lane-marker coords of every checkpoint.
--- We use a traffic cone by default; START and FINISH gates get a barrel instead.
-local GATE_PROP_DEFAULT = joaat("prop_roadcone02a")
-local GATE_PROP_FINISH  = joaat("prop_mp_barrier_02b")
-
-local GateObjects = {}   -- flat list of entity handles
-
 -- ── GPS route ──────────────────────────────────────────────────────────────
 local GpsActive = false
 
--- ── Particle asset ─────────────────────────────────────────────────────────
-local PTFX_ASSET  = "core"
-local PTFX_EFFECT = "exp_grd_flare"
-local PTFX_SCALE  = 0.9
+-- ── Proximity flares ───────────────────────────────────────────────────────
+-- Looped particle effects that stay on while the player is within range.
+-- Each entry: FlareHandles[cpIndex] = { left=handle, right=handle, scale=number }
+local FlareHandles = {}
+
+local PTFX_ASSET      = "core"
+local PTFX_EFFECT     = "exp_grd_flare"
+local PTFX_SCALE_NEXT = 1.0    -- active / next checkpoint flare size
+local PTFX_SCALE_NEAR = 0.45   -- other checkpoints within range
 
 -- ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -73,7 +74,7 @@ local function _buildBlips(checkpoints)
     local fi    = _finishIdx(total)
 
     for i, cp in ipairs(checkpoints) do
-        local blip    = AddBlipForCoord(cp.coords.x, cp.coords.y, cp.coords.z)
+        local blip     = AddBlipForCoord(cp.coords.x, cp.coords.y, cp.coords.z)
         local isFinish = (i == fi)
 
         SetBlipSprite(blip, isFinish and SPRITE_FINISH or SPRITE_PENDING)
@@ -138,76 +139,6 @@ local function _setActiveBlip(idx)
     end
 end
 
--- ── Gate props ─────────────────────────────────────────────────────────────
-
-local function _awaitModel(model)
-    while not HasModelLoaded(model) do
-        RequestModel(model)
-        Citizen.Wait(0)
-    end
-end
-
-local function _placeProp(model, pos)
-    _awaitModel(model)
-    local obj = CreateObject(model, pos.x, pos.y, pos.z, false, false, false)
-    PlaceObjectOnGroundProperly(obj)
-    FreezeEntityPosition(obj, true)
-    SetEntityCollision(obj, false, true)
-    SetEntityInvincible(obj, true)
-    SetEntityAsMissionEntity(obj, true, true)
-    return obj
-end
-
-local function _spawnGates(checkpoints)
-    local total = #checkpoints
-    local fi    = _finishIdx(total)
-
-    for i, cp in ipairs(checkpoints) do
-        if cp.left and cp.right then
-            local model = (i == 1 or i == fi) and GATE_PROP_FINISH or GATE_PROP_DEFAULT
-            GateObjects[#GateObjects + 1] = _placeProp(model, cp.left)
-            GateObjects[#GateObjects + 1] = _placeProp(model, cp.right)
-        end
-    end
-end
-
-local function _clearGates()
-    for _, obj in ipairs(GateObjects) do
-        if DoesEntityExist(obj) then
-            SetEntityAsMissionEntity(obj, false, true)
-            DeleteObject(obj)
-        end
-    end
-    GateObjects = {}
-end
-
--- ── Particle flares ────────────────────────────────────────────────────────
-
-local function _fireGateFlare(cpIndex)
-    local cp = CurrentCheckpoints[cpIndex]
-    if not cp or not cp.left or not cp.right then return end
-
-    while not HasNamedPtfxAssetLoaded(PTFX_ASSET) do
-        RequestNamedPtfxAsset(PTFX_ASSET)
-        Citizen.Wait(0)
-    end
-
-    UseParticleFxAssetNextCall(PTFX_ASSET)
-    local lh = StartParticleFxLoopedAtCoord(PTFX_EFFECT,
-        cp.left.x, cp.left.y, cp.left.z,
-        0.0, 0.0, 0.0, PTFX_SCALE, false, false, false, 0)
-
-    UseParticleFxAssetNextCall(PTFX_ASSET)
-    local rh = StartParticleFxLoopedAtCoord(PTFX_EFFECT,
-        cp.right.x, cp.right.y, cp.right.z,
-        0.0, 0.0, 0.0, PTFX_SCALE, false, false, false, 0)
-
-    SetTimeout((Config and Config.FlareDisplayMs) or 3000, function()
-        StopParticleFxLooped(lh, false)
-        StopParticleFxLooped(rh, false)
-    end)
-end
-
 -- ── GPS multi-route ────────────────────────────────────────────────────────
 
 local function _buildGpsRoute(checkpoints, fromIdx)
@@ -235,91 +166,119 @@ local function _clearGpsRoute()
     end
 end
 
--- ── World markers + 3D distance text ───────────────────────────────────────
+-- ── Proximity flares ───────────────────────────────────────────────────────
 
-local function _drawDistanceLabel(cp, idx, total)
-    local playerPos = GetEntityCoords(PlayerPedId())
-    local cpPos     = vector3(cp.coords.x, cp.coords.y, cp.coords.z)
-    local dist      = #(playerPos - cpPos)
+-- Stop and remove flare handles for a single checkpoint.
+local function _stopFlare(cpIndex)
+    local h = FlareHandles[cpIndex]
+    if not h then return end
+    if h.left  and DoesParticleFxLoopedExist(h.left)  then StopParticleFxLooped(h.left,  false) end
+    if h.right and DoesParticleFxLoopedExist(h.right) then StopParticleFxLooped(h.right, false) end
+    FlareHandles[cpIndex] = nil
+end
 
-    -- Vertical pillar above the checkpoint — height scales with distance (looks cool from afar)
-    local pillarH = math.min(80.0, math.max(2.0, dist * 0.35))
-
-    DrawMarker(1,                                       -- vertical cylinder
-        cp.coords.x, cp.coords.y, cp.coords.z,
-        0.0, 0.0, 0.0,
-        0.0, 0.0, 0.0,
-        0.4, 0.4, pillarH,
-        255, 200, 0, 180,
-        false, true, 2, false, nil, nil, false)
-
-    -- 2D screen text: label + distance (only render when player is close enough)
-    if dist < 200.0 then
-        local onScreen, sx, sy = World3dToScreen2d(
-            cp.coords.x, cp.coords.y, cp.coords.z + pillarH + 1.2)
-        if onScreen then
-            local label = _cpLabel(idx, total)
-            local distStr = string.format("%.0fm", dist)
-            SetTextScale(0.28, 0.28)
-            SetTextFont(4)
-            SetTextProportional(1)
-            SetTextColour(255, 200, 0, 240)
-            SetTextCentre(1)
-            SetTextEntry("STRING")
-            AddTextComponentString(label .. "\n" .. distStr)
-            DrawText(sx, sy)
-        end
+-- Stop all active flares (called on race end / cleanup).
+local function _clearAllFlares()
+    for idx in pairs(FlareHandles) do
+        _stopFlare(idx)
     end
 end
 
-local function DrawRaceMarkers()
-    if #CurrentCheckpoints == 0 or RaceState == "IDLE" then return end
-    local total = #CurrentCheckpoints
+-- Returns true if cpIndex already has a live flare at the expected scale.
+local function _flareOk(cpIndex, scale)
+    local h = FlareHandles[cpIndex]
+    if not h then return false end
+    if h.scale ~= scale then return false end  -- scale changed (active CP changed)
+    local leftOk  = (h.left  == nil) or DoesParticleFxLoopedExist(h.left)
+    local rightOk = (h.right == nil) or DoesParticleFxLoopedExist(h.right)
+    return leftOk and rightOk
+end
 
-    -- Active CP — bright yellow cylinder + distance label
-    local cp = CurrentCheckpoints[CurrentCPIndex]
-    if cp then
-        DrawMarker(1,
-            cp.coords.x, cp.coords.y, cp.coords.z - 1.0,
-            0.0, 0.0, 0.0,
-            0.0, 0.0, 0.0,
-            cp.radius * 2.0, cp.radius * 2.0, 2.5,
-            255, 200, 0, 120,
-            false, true, 2, false, nil, nil, false)
-        _drawDistanceLabel(cp, CurrentCPIndex, total)
+-- Start (or restart) the looped flare at a checkpoint gate.
+local function _startFlare(cpIndex, scale)
+    _stopFlare(cpIndex)   -- tear down any existing handles first
+
+    if not HasNamedPtfxAssetLoaded(PTFX_ASSET) then
+        RequestNamedPtfxAsset(PTFX_ASSET)
+        return  -- will retry next proximity tick
     end
 
-    -- Next CP — dim white preview
-    local nextCp = CurrentCheckpoints[CurrentCPIndex + 1]
-    if nextCp then
-        DrawMarker(1,
-            nextCp.coords.x, nextCp.coords.y, nextCp.coords.z - 1.0,
-            0.0, 0.0, 0.0,
-            0.0, 0.0, 0.0,
-            nextCp.radius * 2.0, nextCp.radius * 2.0, 2.0,
-            255, 255, 255, 40,
-            false, true, 2, false, nil, nil, false)
+    local cp = CurrentCheckpoints[cpIndex]
+    if not cp then return end
+
+    local lh, rh
+
+    if cp.left then
+        UseParticleFxAssetNextCall(PTFX_ASSET)
+        lh = StartParticleFxLoopedAtCoord(PTFX_EFFECT,
+            cp.left.x,  cp.left.y,  cp.left.z,
+            0.0, 0.0, 0.0, scale, false, false, false, 0)
+        if lh == 0 then lh = nil end
+    end
+
+    if cp.right then
+        UseParticleFxAssetNextCall(PTFX_ASSET)
+        rh = StartParticleFxLoopedAtCoord(PTFX_EFFECT,
+            cp.right.x, cp.right.y, cp.right.z,
+            0.0, 0.0, 0.0, scale, false, false, false, 0)
+        if rh == 0 then rh = nil end
+    end
+
+    if lh or rh then
+        FlareHandles[cpIndex] = { left = lh, right = rh, scale = scale }
     end
 end
 
--- Marker render thread
+-- Proximity thread — updates which flares are active every 500 ms.
+-- Active states: LIVE, WARMUP, COUNTDOWN, STAGING
 Citizen.CreateThread(function()
     while true do
-        if #CurrentCheckpoints > 0
-        and (RaceState == "LIVE" or RaceState == "COUNTDOWN" or RaceState == "STAGING") then
-            DrawRaceMarkers()
-            Citizen.Wait(0)
-        else
+        local active = #CurrentCheckpoints > 0
+            and (RaceState == "LIVE"
+              or RaceState == "WARMUP"
+              or RaceState == "COUNTDOWN"
+              or RaceState == "STAGING")
+
+        if active then
+            -- Ensure ptfx asset is requested (loads asynchronously)
+            if not HasNamedPtfxAssetLoaded(PTFX_ASSET) then
+                RequestNamedPtfxAsset(PTFX_ASSET)
+            end
+
+            local playerPos = GetEntityCoords(PlayerPedId())
+            local range     = (Config and Config.FlareRange) or 130.0
+            local range2    = range * range
+
+            for i, cp in ipairs(CurrentCheckpoints) do
+                local dx    = playerPos.x - cp.coords.x
+                local dy    = playerPos.y - cp.coords.y
+                local dist2 = dx*dx + dy*dy
+
+                if dist2 <= range2 then
+                    local scale = (i == CurrentCPIndex) and PTFX_SCALE_NEXT or PTFX_SCALE_NEAR
+                    if not _flareOk(i, scale) then
+                        _startFlare(i, scale)
+                    end
+                else
+                    _stopFlare(i)
+                end
+            end
+
             Citizen.Wait(500)
+        else
+            _clearAllFlares()
+            Citizen.Wait(1000)
         end
     end
 end)
 
 -- ── Net events ─────────────────────────────────────────────────────────────
 
--- Full track loaded (server sends this during COUNTDOWN / STAGING)
+-- Full track loaded (server sends this during WARMUP / COUNTDOWN)
 RegisterNetEvent("SPZ:spawnCheckpoints", function(checkpoints, startIdx, trackType)
     print(string.format("[Checkpoints] Loading %d checkpoints (type: %s)", #checkpoints, trackType or "circuit"))
+    _clearAllFlares()
+
     TrackType          = trackType or "circuit"
     CurrentCheckpoints = checkpoints
     CurrentCPIndex     = startIdx or 1
@@ -328,30 +287,30 @@ RegisterNetEvent("SPZ:spawnCheckpoints", function(checkpoints, startIdx, trackTy
     _setActiveBlip(CurrentCPIndex)
     _buildGpsRoute(checkpoints, CurrentCPIndex)
 
-    -- Spawn gate props in a thread so we don't block the net event handler
-    Citizen.CreateThread(function()
-        _spawnGates(checkpoints)
-    end)
+    -- Pre-request ptfx asset so flares start quickly once player is in range
+    if not HasNamedPtfxAssetLoaded(PTFX_ASSET) then
+        RequestNamedPtfxAsset(PTFX_ASSET)
+    end
 end)
 
--- Player hit a checkpoint — advance indicator, fire flare at the one just cleared
+-- Player hit a checkpoint — advance indicator, rebuild GPS route.
+-- No on-hit flare needed: flares are always-on within range.
 RegisterNetEvent("SPZ:nextCheckpoint", function(newIndex)
-    local prevIndex    = CurrentCPIndex
-    CurrentCPIndex     = newIndex
+    CurrentCPIndex = newIndex
 
     PlaySoundFrontend(-1, "CHECKPOINT_NORMAL", "HUD_MINI_GAME_SOUNDSET", 1)
     _setActiveBlip(CurrentCPIndex)
     _buildGpsRoute(CurrentCheckpoints, CurrentCPIndex)
 
-    -- Fire flare at the checkpoint the player just cleared
-    Citizen.CreateThread(function()
-        _fireGateFlare(prevIndex)
-    end)
+    -- Scale refresh: let proximity thread pick up new active CP on next tick.
+    -- Force it by invalidating all current flare scale entries.
+    for idx in pairs(FlareHandles) do
+        FlareHandles[idx].scale = -1   -- mark stale; _flareOk() will return false
+    end
 end)
 
--- Lap complete — route loops back from CP 1
+-- Lap complete — GPS route is rebuilt by SPZ:nextCheckpoint that fires right after.
 RegisterNetEvent("SPZ:lapComplete", function(lapNum, lapTimeMs)
-    -- GPS route is rebuilt by SPZ:nextCheckpoint (which fires right after lap complete)
     PlaySoundFrontend(-1, "CHECKPOINT_UNDER_THE_BRIDGE_STUNT", "HUD_MINI_GAME_SOUNDSET", 1)
 end)
 
@@ -359,8 +318,8 @@ end)
 local function _onRaceStateChange(newState)
     RaceState = newState
     if newState == "IDLE" or newState == "CLEANUP" then
+        _clearAllFlares()
         _clearAllBlips()
-        _clearGates()
         _clearGpsRoute()
         CurrentCheckpoints = {}
         CurrentCPIndex     = 1

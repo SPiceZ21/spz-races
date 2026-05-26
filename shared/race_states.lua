@@ -6,6 +6,7 @@ SPZ.RaceState = {
   IDLE      = "IDLE",
   POLLING   = "POLLING",
   WAITING   = "WAITING",
+  WARMUP    = "WARMUP",    -- free-drive lap before staging
   COUNTDOWN = "COUNTDOWN",
   LIVE      = "LIVE",
   ENDED     = "ENDED",

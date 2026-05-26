@@ -17,8 +17,9 @@ AddStateBagChangeHandler("raceState", "global", function(bagName, key, value)
             SetupRaceWorld()
         end)
 
-    elseif value == SPZ.RaceState.COUNTDOWN then
-        -- World ready — push checkpoint data to all clients then start 3-2-1.
+    elseif value == SPZ.RaceState.WARMUP then
+        -- Spawn just finished → push checkpoint blips/GPS so players can scout the track,
+        -- then start the free-drive warmup timer.
         Citizen.SetTimeout(0, function()
             local track = RaceSession.track
             if track and track.checkpoints then
@@ -26,6 +27,21 @@ AddStateBagChangeHandler("raceState", "global", function(bagName, key, value)
                     track.checkpoints,
                     1,
                     track.type or "circuit")
+            end
+            StartWarmupPhase()
+        end)
+
+    elseif value == SPZ.RaceState.COUNTDOWN then
+        -- Checkpoints already pushed during WARMUP.  If warmup was skipped, push now.
+        Citizen.SetTimeout(0, function()
+            if (Config.WarmupTimeSeconds or 0) == 0 then
+                local track = RaceSession.track
+                if track and track.checkpoints then
+                    TriggerClientEvent("SPZ:spawnCheckpoints", -1,
+                        track.checkpoints,
+                        1,
+                        track.type or "circuit")
+                end
             end
             StartCountdownSequence()
         end)

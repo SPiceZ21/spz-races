@@ -35,6 +35,34 @@ RegisterNetEvent("SPZ:freezeRacer", function(freeze)
     end
 end)
 
+-- ── Warmup ────────────────────────────────────────────────────────────────────
+RegisterNetEvent("SPZ:warmupPhase", function(data)
+    if Config and Config.Debug then
+        print(string.format("[Race] Warmup: %ds remaining (track: %s)",
+            data.remaining, tostring(data.track)))
+    end
+end)
+
+RegisterNetEvent("SPZ:warmupEnd", function()
+    if Config and Config.Debug then print("[Race] Warmup over — returning to grid") end
+end)
+
+-- Re-teleport to grid after warmup ends
+RegisterNetEvent("SPZ:tpToGrid", function(data)
+    local ped = PlayerPedId()
+    local veh = GetVehiclePedIsIn(ped, false)
+    local c   = data.coords
+    local h   = data.heading or 0.0
+
+    if DoesEntityExist(veh) then
+        SetEntityCoords(veh, c.x, c.y, c.z, false, false, false, true)
+        SetEntityHeading(veh, h)
+    else
+        SetEntityCoords(ped, c.x, c.y, c.z, false, false, false, true)
+        SetEntityHeading(ped, h)
+    end
+end)
+
 -- ── Staging ───────────────────────────────────────────────────────────────────
 RegisterNetEvent("SPZ:stagingPhase", function(data)
     if Config and Config.Debug then

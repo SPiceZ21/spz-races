@@ -15,9 +15,13 @@ Config.PollOptionsPerType   = 2       -- track options per poll (always 2)
 -- "circuit" = multi-lap, "sprint" = point-to-point
 Config.CycleOrder           = { "circuit", "sprint" }  -- alternates each race
 
+-- ── Warmup ─────────────────────────────────────────────────────────────────
+Config.WarmupTimeSeconds    = 60      -- free-drive after TP before countdown (0 = skip)
+                                      -- players can explore the track / check the layout
+
 -- ── Countdown ──────────────────────────────────────────────────────────────
-Config.StagingTimeSeconds   = 15      -- seconds frozen on grid before 3-2-1 starts
-                                      -- (players see full track map, inspect car)
+Config.StagingTimeSeconds   = 10      -- seconds frozen on grid before 3-2-1 starts
+                                      -- (brief freeze after warmup TP-back; keep short)
 Config.CountdownSeconds     = 3       -- 3-2-1-GO
 
 -- ── Race ───────────────────────────────────────────────────────────────────
@@ -53,8 +57,10 @@ Config.SafeZoneHeading      = 210.0
 -- automatically DNF'd for idling / going off-route.
 Config.IdleKickMs           = 120000  -- 2 minutes
 
--- Duration (ms) gate flare particle effects stay visible after a checkpoint hit.
-Config.FlareDisplayMs       = 3000
+-- Range (metres) within which checkpoint flares become visible.
+-- Active (next) checkpoint always shows at full scale within this range.
+-- Other nearby checkpoints show at reduced scale.
+Config.FlareRange           = 130.0
 
 -- GPS route colour index (GTA colour palette, 51 = bright yellow).
 Config.GpsRouteColour       = 51
