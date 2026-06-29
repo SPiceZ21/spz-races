@@ -23,7 +23,7 @@ AddEventHandler("SPZ:raceEnd", function(results)
     LBCache.Bust("stats:")
 end)
 
--- ── SPZ.Callbacks (tablet data endpoints) ───────────────────────────────────
+-- ── ox_lib callbacks (tablet data endpoints) ─────────────────────────────────
 
 local function safeCall(fn, fallback, ...)
     local ok, result = pcall(fn, ...)
@@ -34,35 +34,35 @@ local function safeCall(fn, fallback, ...)
     return result
 end
 
-SPZ.Callbacks.Register("spz-races:getGlobalStandings", function(source, cb, data)
-    cb(safeCall(LB_GetGlobalStandings, {}, data and data.limit))
+lib.callback.register("spz-races:getGlobalStandings", function(source, data)
+    return safeCall(LB_GetGlobalStandings, {}, data and data.limit)
 end)
 
-SPZ.Callbacks.Register("spz-races:getClassStandings", function(source, cb, data)
-    cb(safeCall(LB_GetClassStandings, {}, data and (data.class or data.tier) or "D", data and data.limit))
+lib.callback.register("spz-races:getClassStandings", function(source, data)
+    return safeCall(LB_GetClassStandings, {}, data and (data.class or data.tier) or "D", data and data.limit)
 end)
 
-SPZ.Callbacks.Register("spz-races:getTrackRecords", function(source, cb, data)
-    cb(safeCall(LB_GetTrackRecords, {}, data and data.track, data and data.carClass, data and data.limit))
+lib.callback.register("spz-races:getTrackRecords", function(source, data)
+    return safeCall(LB_GetTrackRecords, {}, data and data.track, data and data.carClass, data and data.limit)
 end)
 
-SPZ.Callbacks.Register("spz-races:getPlayerStats", function(source, cb, data)
+lib.callback.register("spz-races:getPlayerStats", function(source, data)
     local target = (data and data.source) or source
-    cb(safeCall(LB_GetPlayerStats, nil, target))
+    return safeCall(LB_GetPlayerStats, nil, target)
 end)
 
-SPZ.Callbacks.Register("spz-races:getPlayerHistory", function(source, cb, data)
-    cb(safeCall(LB_GetPlayerHistory, { rows = {}, hasMore = false }, source, data and data.page, data and data.pageSize))
+lib.callback.register("spz-races:getPlayerHistory", function(source, data)
+    return safeCall(LB_GetPlayerHistory, { rows = {}, hasMore = false }, source, data and data.page, data and data.pageSize)
 end)
 
-SPZ.Callbacks.Register("spz-races:getAllTrackRecords", function(source, cb, data)
-    cb(safeCall(LB_GetAllTrackRecords, {}, data and data.carClass or nil))
+lib.callback.register("spz-races:getAllTrackRecords", function(source, data)
+    return safeCall(LB_GetAllTrackRecords, {}, data and data.carClass or nil)
 end)
 
-SPZ.Callbacks.Register("spz-races:getPersonalRecords", function(source, cb)
-    cb(safeCall(LB_GetPersonalRecords, {}, source))
+lib.callback.register("spz-races:getPersonalRecords", function(source)
+    return safeCall(LB_GetPersonalRecords, {}, source)
 end)
 
-SPZ.Callbacks.Register("spz-races:getActivityFeed", function(source, cb, data)
-    cb(safeCall(LB_GetActivityFeed, {}, data and data.limit))
+lib.callback.register("spz-races:getActivityFeed", function(source, data)
+    return safeCall(LB_GetActivityFeed, {}, data and data.limit)
 end)
