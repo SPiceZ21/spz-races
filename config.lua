@@ -15,13 +15,15 @@ Config.PollOptionsPerType   = 2       -- track options per poll (always 2)
 -- "circuit" = multi-lap, "sprint" = point-to-point
 Config.CycleOrder           = { "circuit", "sprint" }  -- alternates each race
 
--- ── Warmup ─────────────────────────────────────────────────────────────────
+-- ── Warmup (60s freeroam + customization window) ────────────────────────────
 Config.WarmupTimeSeconds    = 60      -- free-drive after TP before countdown (0 = skip)
-                                      -- players can explore the track / check the layout
+                                      -- players practice-drive the track and/or open the
+                                      -- tuner menu (/savecustom etc.) to set up their car
 
 -- ── Countdown ──────────────────────────────────────────────────────────────
-Config.StagingTimeSeconds   = 10      -- seconds frozen on grid before 3-2-1 starts
-                                      -- (brief freeze after warmup TP-back; keep short)
+Config.StagingTimeSeconds   = 3       -- brief SILENT grid settle after warmup TP-back
+                                      -- (no on-screen count; keeps players frozen while
+                                      --  the TP settles, then the 3-2-1-GO plays)
 Config.CountdownSeconds     = 3       -- 3-2-1-GO
 
 -- ── Race ───────────────────────────────────────────────────────────────────

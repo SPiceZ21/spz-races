@@ -16,8 +16,17 @@ function RunRaceCleanup(results)
 
     print("[Race Engine] Initiating final sequence cleanup.")
     
+    -- Capture still-connected participants BEFORE the session is wiped, so they
+    -- can be auto-re-queued after intermission. (Previously this list was built
+    -- from the already-reset session and was always empty.)
+    local prevPlayers = {}
+
     -- ... (rest of the loop remains same)
     for source, _ in pairs(RaceSession.players) do
+        if GetPlayerName(source) then
+            table.insert(prevPlayers, source)
+        end
+
         -- Clear track entities
         if GetResourceState("spz-vehicles") == "started" then
             exports["spz-vehicles"]:DespawnVehicle(source)
@@ -72,15 +81,6 @@ function RunRaceCleanup(results)
     -- Determine next race format
     RaceSession.raceType = NextCycleType()
     print(string.format("[Race Engine] Next cycle (#%d) initialized as: %s", RaceSession.cycleCount, RaceSession.raceType))
-
-    -- Capture still-connected participants before clearing the session so they
-    -- can be automatically re-queued after intermission.
-    local prevPlayers = {}
-    for src in pairs(RaceSession.players) do
-        if GetPlayerName(src) then
-            table.insert(prevPlayers, src)
-        end
-    end
 
     -- Block the idle polling loop BEFORE transitioning to IDLE so the
     -- 5-second polling thread cannot sneak in between the two writes.
