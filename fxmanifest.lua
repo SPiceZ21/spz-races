@@ -7,6 +7,7 @@ version '1.9.0'
 author 'SPiceZ-Core'
 
 shared_scripts {
+  '@ox_lib/init.lua',
   'config.lua',
   'shared/race_states.lua',
   'shared/events.lua',
