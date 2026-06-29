@@ -18,6 +18,12 @@ SPZ.RaceType = {
   SPRINT  = "sprint",
 }
 
+if IsDuplicityVersion() then
+    function SPZ.Notify(src, msg, ntype, duration)
+        TriggerClientEvent('ox_lib:notify', src, { description = msg, type = ntype or "info", duration = duration })
+    end
+end
+
 SPZ.Math = SPZ.Math or {}
 
 function SPZ.Math.GridPositions(origin, heading, count, rowSpacing, colSpacing)
