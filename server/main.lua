@@ -119,6 +119,7 @@ end)
 
 -- ── Disconnect export ─────────────────────────────────────────────────────────
 exports("HandlePlayerDisconnect", function(src)
+    if ClearPending then ClearPending(src) end
     local pData = RaceSession and RaceSession.players and RaceSession.players[src]
     if not pData then return end
     local activePhases = {
@@ -143,6 +144,7 @@ end
 -- ── playerDropped ─────────────────────────────────────────────────────────────
 AddEventHandler("playerDropped", function()
     local src   = source
+    if ClearPending then ClearPending(src) end
     local pData = RaceSession.players[src]
     if not pData then return end
 

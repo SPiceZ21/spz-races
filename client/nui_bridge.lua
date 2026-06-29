@@ -27,18 +27,11 @@ RegisterNetEvent("SPZ:pollResult", function(data)
 end)
 
 -- ── Countdown / Staging Events ────────────────────────────────────────────────
-RegisterNetEvent("SPZ:stagingPhase", function(data)
-    if GetResourceState("spz-raceUI") ~= "started" then return end
-    exports["spz-raceUI"]:ShowCountdown({
-        number  = data.remaining,
-        isGo    = false,
-        track   = data.track,
-        class   = data.class,
-        laps    = data.laps,
-        gridPos = data.gridPos,
-        total   = data.totalRacers,
-    })
-end)
+-- Staging is a brief silent settle on the grid after the warmup TP-back.
+-- It must NOT render the giant countdown box — doing so showed a 10→1 count
+-- right before the real 3-2-1-GO (double countdown). Intentionally a no-op;
+-- only SPZ:countdown drives the on-screen 3-2-1-GO.
+RegisterNetEvent("SPZ:stagingPhase", function() end)
 
 RegisterNetEvent("SPZ:countdown", function(data)
     if GetResourceState("spz-raceUI") ~= "started" then return end

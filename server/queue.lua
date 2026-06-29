@@ -1,18 +1,30 @@
 -- server/queue.lua
 
+-- Players who tried to join while a race/break/prep was active. They freeroam
+-- until the current race ends, then are auto-enrolled into the next cycle.
+-- Kept at module scope so it survives the RaceSession reset during cleanup.
+PendingNextCycle = PendingNextCycle or {}
+
 local function Notify(src, msg, msgType)
     SPZ.Notify(src, msg, msgType or "info", 4000)
 end
 
 function JoinQueue(src)
-    if RaceSession.state ~= SPZ.RaceState.IDLE then
-        Notify(src, "A race is in progress — wait for next cycle")
-        return false
-    end
-
     if Player(src).state.inRace or Player(src).state.inQueue then
         Notify(src, "You are already in a race or queue")
         return false
+    end
+
+    -- Mid-cycle join → freeroam now, auto-join the next race.
+    if RaceSession.state ~= SPZ.RaceState.IDLE then
+        if Player(src).state.pendingRace then
+            Notify(src, "You're already set to join the next race — freeroam until it starts")
+            return false
+        end
+        PendingNextCycle[src] = true
+        Player(src).state:set("pendingRace", true, true)
+        Notify(src, "Race in progress — freeroam now, you'll auto-join the next race", "info")
+        return true
     end
 
     if GetQueueCount() >= (Config.MaxPlayersPerRace or 16) then
@@ -44,6 +56,14 @@ function JoinQueue(src)
 end
 
 function LeaveQueue(src)
+    -- Cancel a pending next-cycle enrolment (freeroaming, not yet in a queue).
+    if PendingNextCycle[src] then
+        PendingNextCycle[src] = nil
+        Player(src).state:set("pendingRace", false, true)
+        Notify(src, "Cancelled — you won't auto-join the next race", "info")
+        return
+    end
+
     if not RaceSession.players[src] then return end
 
     local activePhases = {
@@ -91,8 +111,31 @@ function IsQueued(src)
     return RaceSession.players[src] ~= nil
 end
 
+-- Enrol everyone who freeroamed during the last race into the new cycle.
+-- Called once the engine is back to IDLE (after intermission).
+function FlushPendingToQueue()
+    for src in pairs(PendingNextCycle) do
+        PendingNextCycle[src] = nil
+        if GetPlayerName(src) then
+            Player(src).state:set("pendingRace", false, true)
+            JoinQueue(src)
+        end
+    end
+end
+
+function ClearPending(src)
+    if PendingNextCycle[src] then
+        PendingNextCycle[src] = nil
+        if GetPlayerName(src) then
+            Player(src).state:set("pendingRace", false, true)
+        end
+    end
+end
+
 exports("JoinQueue",      JoinQueue)
 exports("LeaveQueue",     LeaveQueue)
 exports("GetQueueCount",  GetQueueCount)
 exports("GetQueuePlayers", GetQueuePlayers)
 exports("IsQueued",       IsQueued)
+exports("FlushPendingToQueue", FlushPendingToQueue)
+exports("ClearPending",   ClearPending)

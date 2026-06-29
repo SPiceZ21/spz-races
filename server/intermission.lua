@@ -44,6 +44,9 @@ function StartIntermission(results, prevPlayers)
             end
         end
 
+        -- Enrol everyone who joined (freeroamed) during the last race.
+        if FlushPendingToQueue then FlushPendingToQueue() end
+
         BroadcastQueueUpdate()
     end)
 end
