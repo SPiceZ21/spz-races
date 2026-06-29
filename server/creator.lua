@@ -131,7 +131,7 @@ end)
 
 -- ── Callbacks ────────────────────────────────────────────────────────────────
 
-SPZ.Callbacks.Register("spz-races:getTracks", function(source, cb)
+lib.callback.register("spz-races:getTracks", function(source)
     local list = {}
     for id, track in pairs(SPZ.Tracks) do
         table.insert(list, {
@@ -144,19 +144,17 @@ SPZ.Callbacks.Register("spz-races:getTracks", function(source, cb)
         })
     end
     table.sort(list, function(a, b) return a.name < b.name end)
-    cb(list)
+    return list
 end)
 
-SPZ.Callbacks.Register("spz-races:deleteTrack", function(source, cb, data)
+lib.callback.register("spz-races:deleteTrack", function(source, data)
     if not data or not data.id then
-        if cb then cb(false, "Invalid Track ID") end
-        return
+        return false, "Invalid Track ID"
     end
 
     local trackId = data.id
     if not SPZ.Tracks[trackId] then
-        if cb then cb(false, "Track not found") end
-        return
+        return false, "Track not found"
     end
 
     -- Load custom tracks
@@ -175,20 +173,18 @@ SPZ.Callbacks.Register("spz-races:deleteTrack", function(source, cb, data)
     end
 
     SPZ.Tracks[trackId] = nil
-    SPZ.Notify(source, "Track deleted.", "success")
-    if cb then cb(true) end
+    TriggerClientEvent('ox_lib:notify', source, { description = "Track deleted.", type = "success" })
+    return true
 end)
 
-SPZ.Callbacks.Register("spz-races:getTrackDetails", function(source, cb, data)
+lib.callback.register("spz-races:getTrackDetails", function(source, data)
     if not data or not data.id then
-        if cb then cb(nil) end
-        return
+        return nil
     end
 
     local track = SPZ.Tracks[data.id]
     if not track then
-        if cb then cb(nil) end
-        return
+        return nil
     end
 
     local cps = {}
@@ -197,11 +193,11 @@ SPZ.Callbacks.Register("spz-races:getTrackDetails", function(source, cb, data)
             coords = { x = cp.coords.x, y = cp.coords.y, z = cp.coords.z },
             left   = { x = cp.left.x, y = cp.left.y, z = cp.left.z },
             right  = { x = cp.right.x, y = cp.right.y, z = cp.right.z },
-            radius = cp.radius or cp.radius or 10.0
+            radius = cp.radius or 10.0
         })
     end
 
-    cb({
+    return {
         id = data.id,
         name = track.name,
         type = track.type or "circuit",
@@ -209,7 +205,7 @@ SPZ.Callbacks.Register("spz-races:getTrackDetails", function(source, cb, data)
         start_coords = { x = track.start_coords.x, y = track.start_coords.y, z = track.start_coords.z },
         start_heading = track.start_heading or 0.0,
         checkpoints = cps
-    })
+    }
 end)
 
 
