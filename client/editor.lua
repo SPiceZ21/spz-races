@@ -1,14 +1,6 @@
 -- client/editor.lua
 -- SPZ Track Editor — fine-tune any existing track in-world
 
-local SPZ = nil
-CreateThread(function()
-    while not SPZ do
-        pcall(function() SPZ = exports["spz-lib"]:GetCoreObject() end)
-        if not SPZ then Wait(500) end
-    end
-end)
-
 local editorActive    = false
 local editTrackId     = ""
 local editTrackName   = ""
@@ -16,12 +8,12 @@ local editTrackType   = "circuit"
 local editTrackLaps   = 3
 local editCheckpoints = {}
 local selectedIndex   = 1
-local previewMode     = false  -- P: test-drive the route without HUD
+local previewMode     = false
 
 -- ── Helpers ───────────────────────────────────────────────────────────────────
 
 local function Notify(msg, t)
-    exports["spz-lib"]:Notify(msg, t or "info")
+    lib.notify({ description = msg, type = t or "info" })
 end
 
 local function RecalcGate(cp)
@@ -96,12 +88,7 @@ RegisterNetEvent("SPZ:startTrackEditor", function(data)
         return
     end
 
-    if not SPZ then
-        Notify("SPZ core not ready — try again.", "error")
-        return
-    end
-
-    SPZ.Callbacks.Trigger("spz-races:getTrackDetails", { id = data.id }, function(track)
+    lib.callback("spz-races:getTrackDetails", false, function(track)
         if not track then
             Notify("Failed to fetch track details.", "error")
             return
@@ -136,7 +123,7 @@ RegisterNetEvent("SPZ:startTrackEditor", function(data)
 
         TriggerEvent("spz-tablet:closeTablet")
         Notify(("Editor: '%s' — %d gates loaded"):format(editTrackName, #editCheckpoints), "success")
-    end)
+    end, { id = data.id })
 end)
 
 -- ── Command shortcut ──────────────────────────────────────────────────────────

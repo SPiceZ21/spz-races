@@ -23,7 +23,7 @@ local function GetTargetEntity()
 end
 
 local function Notify(msg, t)
-    exports["spz-lib"]:Notify(msg, t or "info")
+    lib.notify({ description = msg, type = t or "info" })
 end
 
 local function DrawText3D(x, y, z, text, col)

@@ -434,7 +434,7 @@ RegisterNetEvent("SPZ:tt:Begin", function(payload)
         restartKey = TT_RESTART_KEY,
     })
 
-    exports["spz-lib"]:Notify("Time Trial — " .. track.name .. " | Drive through the start gate!", "info")
+    lib.notify({ description = "Time Trial — " .. track.name .. " | Drive through the start gate!", type = "info" })
 end)
 
 RegisterNetEvent("SPZ:tt:LapStarted", function(data)
@@ -520,7 +520,7 @@ RegisterNetEvent("SPZ:tt:End", function(data)
     SetNuiFocus(true, true)
     _cleanup()
 
-    exports["spz-lib"]:Notify("Time Trial ended — Best lap: " .. FmtTime(data.bestLap), "info")
+    lib.notify({ description = "Time Trial ended — Best lap: " .. FmtTime(data.bestLap), type = "info" })
 end)
 
 -- ── NUI callbacks ─────────────────────────────────────────────────────────────

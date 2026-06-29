@@ -47,7 +47,7 @@ end)
 RegisterNetEvent("SPZ:saveCustomTrack", function(payload)
     local src = source
     if not payload or not payload.checkpoints or #payload.checkpoints < 2 then
-        TriggerClientEvent("spz-lib:Notify", src, "Save failed: need at least 2 checkpoints.", "error")
+        TriggerClientEvent("ox_lib:notify", src, { description = "Save failed: need at least 2 checkpoints.", type = "error" })
         return
     end
 
