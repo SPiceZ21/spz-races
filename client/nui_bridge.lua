@@ -87,21 +87,38 @@ AddStateBagChangeHandler("raceState", "global", function(_, _, v)
     if v then _distState = v end
 end)
 
+-- Projects the active checkpoint into screen space every frame and feeds the
+-- raceUI "Next CP" pill so it renders as a 3D billboard anchored on the CP
+-- (with a stem line), instead of a fixed HUD pill.
 Citizen.CreateThread(function()
     while true do
         if _distState == "LIVE" and GetResourceState("spz-raceUI") == "started" then
             local cp = exports["spz-races"]:GetCurrentCP()
             if cp then
-                local pos = GetEntityCoords(PlayerPedId())
-                local dx  = pos.x - cp.coords.x
-                local dy  = pos.y - cp.coords.y
-                exports["spz-raceUI"]:UpdateCPDistance(math.floor(math.sqrt(dx*dx + dy*dy)))
+                local pos  = GetEntityCoords(PlayerPedId())
+                local dx   = pos.x - cp.coords.x
+                local dy   = pos.y - cp.coords.y
+                local dist = math.floor(math.sqrt(dx*dx + dy*dy))
+
+                -- Anchor the pill slightly above the checkpoint ground point.
+                local onScreen, sx, sy = World3dToScreen2d(
+                    cp.coords.x, cp.coords.y, cp.coords.z + 1.0)
+
+                exports["spz-raceUI"]:UpdateCPWaypoint({
+                    dist     = dist,
+                    onScreen = onScreen and true or false,
+                    x        = sx,
+                    y        = sy,
+                })
+                Citizen.Wait(0)
+            else
+                exports["spz-raceUI"]:UpdateCPWaypoint({ dist = 0, onScreen = false })
+                Citizen.Wait(200)
             end
-            Citizen.Wait(150)
         else
             if (_distState == "IDLE" or _distState == "CLEANUP")
             and GetResourceState("spz-raceUI") == "started" then
-                exports["spz-raceUI"]:UpdateCPDistance(0)
+                exports["spz-raceUI"]:UpdateCPWaypoint({ dist = 0, onScreen = false })
             end
             Citizen.Wait(500)
         end
