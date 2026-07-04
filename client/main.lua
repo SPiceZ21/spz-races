@@ -35,16 +35,58 @@ RegisterNetEvent("SPZ:freezeRacer", function(freeze)
     end
 end)
 
--- ── Warmup ────────────────────────────────────────────────────────────────────
+-- ── Warmup (60s freeroam + customization window) ───────────────────────────────
+-- Draws an on-screen HUD so players know this is the practice/setup window and
+-- NOT freeroam — the race starts when the timer hits zero.
+local Warmup = { active = false, remaining = 0, total = 0, track = "", class = "", gridPos = 0 }
+
+local function _drawWarmupText(text, x, y, scale, r, g, b, a, center)
+    SetTextFont(4)
+    SetTextScale(scale, scale)
+    SetTextColour(r, g, b, a)
+    SetTextCentre(center or false)
+    SetTextDropShadow()
+    SetTextEntry("STRING")
+    AddTextComponentString(text)
+    DrawText(x, y)
+end
+
 RegisterNetEvent("SPZ:warmupPhase", function(data)
-    if Config and Config.Debug then
-        print(string.format("[Race] Warmup: %ds remaining (track: %s)",
-            data.remaining, tostring(data.track)))
-    end
+    Warmup.active    = true
+    Warmup.remaining = data.remaining or 0
+    Warmup.total     = data.total or 0
+    Warmup.track     = data.track or ""
+    Warmup.class     = data.class or ""
+    Warmup.gridPos   = data.gridPos or 0
 end)
 
 RegisterNetEvent("SPZ:warmupEnd", function()
-    if Config and Config.Debug then print("[Race] Warmup over — returning to grid") end
+    Warmup.active = false
+end)
+
+-- Clear the HUD if the race state moves on unexpectedly
+AddStateBagChangeHandler("raceState", "global", function(_, _, value)
+    if value and value ~= "WARMUP" then Warmup.active = false end
+end)
+
+Citizen.CreateThread(function()
+    while true do
+        if Warmup.active then
+            -- Title
+            _drawWarmupText("~y~WARM-UP", 0.5, 0.045, 0.9, 255, 220, 0, 255, true)
+            -- Timer
+            _drawWarmupText(("Race starts in ~y~%ds"):format(Warmup.remaining), 0.5, 0.095, 0.55, 255, 255, 255, 255, true)
+            -- Hint
+            _drawWarmupText("~g~Practice the track~s~   •   ~b~/savecustom~s~ to tune your car", 0.5, 0.130, 0.42, 220, 220, 220, 220, true)
+            -- Context (track / class / grid)
+            _drawWarmupText(("%s   |   %s   |   Grid #%d"):format(
+                tostring(Warmup.track), tostring(Warmup.class), Warmup.gridPos or 0),
+                0.5, 0.160, 0.38, 160, 160, 160, 200, true)
+            Citizen.Wait(0)
+        else
+            Citizen.Wait(300)
+        end
+    end
 end)
 
 -- Re-teleport to grid after warmup ends
