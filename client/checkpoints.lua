@@ -285,6 +285,79 @@ Citizen.CreateThread(function()
     end
 end)
 
+-- ── 3D world waypoint on the active checkpoint ──────────────────────────────
+-- A marker locked on the next checkpoint. It shrinks as you approach and shows
+-- a live distance label floating above it.
+
+local WP_COLOUR      = { r = 255, g = 98, b = 0 }   -- SPZ orange
+local WP_MIN_RADIUS  = 2.0      -- marker radius when right on top of the CP
+local WP_MAX_RADIUS  = 9.0      -- marker radius when far away
+local WP_FAR_DIST    = 120.0    -- distance at which the marker is at max size
+local WP_NEAR_DIST   = 8.0      -- distance at which the marker is at min size
+
+local function _drawText3D(x, y, z, text)
+    local onScreen, sx, sy = World3dToScreen2d(x, y, z)
+    if not onScreen then return end
+    SetTextScale(0.0, 0.42)
+    SetTextFont(4)
+    SetTextProportional(true)
+    SetTextColour(255, 255, 255, 235)
+    SetTextDropShadow()
+    SetTextOutline()
+    SetTextCentre(true)
+    SetTextEntry("STRING")
+    AddTextComponentString(text)
+    DrawText(sx, sy)
+end
+
+Citizen.CreateThread(function()
+    while true do
+        if RaceState == "LIVE" and #CurrentCheckpoints > 0 then
+            local cp = CurrentCheckpoints[CurrentCPIndex]
+            if cp then
+                local pPos = GetEntityCoords(PlayerPedId())
+                local dx   = pPos.x - cp.coords.x
+                local dy   = pPos.y - cp.coords.y
+                local dz   = pPos.z - cp.coords.z
+                local dist = math.sqrt(dx*dx + dy*dy + dz*dz)
+
+                -- Radius scales with distance → shrinks as you approach ("lock & reduce")
+                local t = (dist - WP_NEAR_DIST) / (WP_FAR_DIST - WP_NEAR_DIST)
+                if t < 0.0 then t = 0.0 elseif t > 1.0 then t = 1.0 end
+                local radius = WP_MIN_RADIUS + (WP_MAX_RADIUS - WP_MIN_RADIUS) * t
+
+                -- Ground ring locked on the checkpoint
+                DrawMarker(1,
+                    cp.coords.x, cp.coords.y, cp.coords.z - 1.0,
+                    0.0, 0.0, 0.0,   0.0, 0.0, 0.0,
+                    radius * 2.0, radius * 2.0, 6.0,
+                    WP_COLOUR.r, WP_COLOUR.g, WP_COLOUR.b, 90,
+                    false, false, 2, false, nil, nil, false)
+
+                -- Bobbing chevron above the checkpoint (points down at the target)
+                DrawMarker(0,
+                    cp.coords.x, cp.coords.y, cp.coords.z + 3.0,
+                    0.0, 0.0, 0.0,   180.0, 0.0, 0.0,
+                    1.6, 1.6, 1.6,
+                    WP_COLOUR.r, WP_COLOUR.g, WP_COLOUR.b, 180,
+                    true, true, 2, false, nil, nil, false)
+
+                -- Floating distance label — reduces as you close in
+                local label = (dist >= 1000.0)
+                    and string.format("%.1f km", dist / 1000.0)
+                    or  string.format("%dm", math.floor(dist))
+                _drawText3D(cp.coords.x, cp.coords.y, cp.coords.z + 4.2, label)
+
+                Citizen.Wait(0)
+            else
+                Citizen.Wait(200)
+            end
+        else
+            Citizen.Wait(300)
+        end
+    end
+end)
+
 -- ── Apply active CP state ──────────────────────────────────────────────────
 
 local function _applyActive(idx)
