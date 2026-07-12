@@ -45,6 +45,7 @@ server_scripts {
   'server/leaderboard/stats.lua',
   'server/leaderboard/callbacks.lua',
   'server/creator.lua',
+  'server/dev_heading.lua',
 }
 
 client_scripts {
@@ -55,6 +56,7 @@ client_scripts {
   'client/timetrail.lua',
   'client/creator.lua',
   'client/editor.lua',
+  'client/dev_heading.lua',
 }
 
 dependencies {

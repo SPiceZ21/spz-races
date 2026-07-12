@@ -121,7 +121,6 @@ RegisterNetEvent("SPZ:startTrackEditor", function(data)
         selectedIndex = 1
         previewMode   = false
 
-        TriggerEvent("spz-tablet:closeTablet")
         Notify(("Editor: '%s' — %d gates loaded"):format(editTrackName, #editCheckpoints), "success")
     end, { id = data.id })
 end)
