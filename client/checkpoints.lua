@@ -314,6 +314,9 @@ RegisterNetEvent("SPZ:spawnCheckpoints", function(checkpoints, startIdx, trackTy
 end)
 
 RegisterNetEvent("SPZ:nextCheckpoint", function(newIndex)
+    -- Periodic resyncs re-send the CURRENT index — only chime and restyle
+    -- when the checkpoint actually advanced.
+    if newIndex == CurrentCPIndex then return end
     CurrentCPIndex = newIndex
     PlaySoundFrontend(-1, "CHECKPOINT_NORMAL", "HUD_MINI_GAME_SOUNDSET", 1)
     _applyActive(CurrentCPIndex)

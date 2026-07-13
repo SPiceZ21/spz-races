@@ -279,9 +279,18 @@ RegisterNetEvent("SPZ:intermissionStart", function(data)
     _intermissionEnd = GetGameTimer() + secs * 1000
 end)
 
--- Poll opening means the break is over
+-- Join window: armed by the first joiner, counts down for everyone
+local _joinWindowEnd = 0
+
+RegisterNetEvent("SPZ:joinWindow", function(data)
+    local secs = (data and data.seconds) or 0
+    _joinWindowEnd = secs > 0 and (GetGameTimer() + secs * 1000) or 0
+end)
+
+-- Poll opening means the break / join window is over
 RegisterNetEvent("SPZ:pollOpen", function()
     _intermissionEnd = 0
+    _joinWindowEnd   = 0
 end)
 
 local function _lobbyMode()
@@ -289,11 +298,16 @@ local function _lobbyMode()
 
     local qCount = GlobalState.queueCount or 0
 
+    -- seconds until the armed race starts (nil when no window is running)
+    local winMs   = _joinWindowEnd - GetGameTimer()
+    local winSecs = winMs > 0 and math.ceil(winMs / 1000) or nil
+
     if LocalPlayer.state.inQueue or LocalPlayer.state.pendingRace then
         return {
             mode       = "queued",
             queuePos   = LocalPlayer.state.queuePosition or 1,
             queueCount = math.max(qCount, 1),
+            seconds    = winSecs,
         }
     end
 
@@ -305,7 +319,7 @@ local function _lobbyMode()
         }
     end
 
-    return { mode = "join", queueCount = qCount }
+    return { mode = "join", queueCount = qCount, seconds = winSecs }
 end
 
 Citizen.CreateThread(function()

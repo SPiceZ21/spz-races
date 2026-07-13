@@ -23,7 +23,7 @@ AddStateBagChangeHandler("raceState", "global", function(bagName, key, value)
         Citizen.SetTimeout(0, function()
             local track = RaceSession.track
             if track and track.checkpoints then
-                TriggerClientEvent("SPZ:spawnCheckpoints", -1,
+                BroadcastToRacers("SPZ:spawnCheckpoints",
                     track.checkpoints,
                     1,
                     track.type or "circuit")
@@ -37,7 +37,7 @@ AddStateBagChangeHandler("raceState", "global", function(bagName, key, value)
             if (Config.WarmupTimeSeconds or 0) == 0 then
                 local track = RaceSession.track
                 if track and track.checkpoints then
-                    TriggerClientEvent("SPZ:spawnCheckpoints", -1,
+                    BroadcastToRacers("SPZ:spawnCheckpoints",
                         track.checkpoints,
                         1,
                         track.type or "circuit")
@@ -56,18 +56,17 @@ AddStateBagChangeHandler("raceState", "global", function(bagName, key, value)
     end
 end)
 
--- ── Idle poll loop ─────────────────────────────────────────────────────────────
--- Fires every 5 s. Starts a new poll cycle when:
---   · state is IDLE
---   · intermission has expired
---   · queue has reached minimum player threshold
+-- ── Idle watchdog ──────────────────────────────────────────────────────────────
+-- Fires every 5 s. If anyone is queued while the engine idles (e.g. players
+-- flushed in after intermission), (re)arm the join-window countdown — the
+-- window itself starts the poll when it expires. No minimum player count.
 Citizen.CreateThread(function()
     while true do
         Citizen.Wait(5000)
         if  RaceSession.state == SPZ.RaceState.IDLE
         and not RaceSession.intermissionActive
-        and GetQueueCount() >= (Config.MinPlayersToStart or 1) then
-            StartRacePoll()
+        and GetQueueCount() >= 1 then
+            ArmJoinWindow()
         end
     end
 end)

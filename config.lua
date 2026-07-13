@@ -2,8 +2,12 @@
 Config = {}
 
 -- ── Queue ──────────────────────────────────────────────────────────────────
-Config.MinPlayersToStart    = 1       -- min queue size to open poll
-Config.PollWaitTime         = 2       -- seconds after threshold before poll opens
+-- No minimum player count: the FIRST player to join arms a join window that
+-- counts down for everyone ("race starting in Ns — press E"). Whoever is in
+-- the queue when it expires races; latecomers can still join during the polls.
+Config.JoinWindowSeconds    = 30      -- countdown armed by the first joiner
+Config.MinPlayersToStart    = 1       -- legacy floor — only used as "queue empty" check
+Config.PollWaitTime         = 2       -- (legacy, unused by the join-window flow)
 Config.MaxPlayersPerRace    = 16      -- hard cap on queue size
 
 -- ── Poll ───────────────────────────────────────────────────────────────────
@@ -29,7 +33,13 @@ Config.CountdownSeconds     = 3       -- 3-2-1-GO
 -- ── Race ───────────────────────────────────────────────────────────────────
 Config.RaceTimeout          = 3600000  -- 60 minutes — DNF anyone not finished (was 5 mins)
 Config.PositionBroadcastInterval = 1000   -- ms between live position updates
-Config.SpawnTimeout         = 30000   -- ms to wait per player vehicle spawn (full chain)
+Config.SpawnTimeout         = 30000   -- ms hard ceiling when NOBODY has spawned yet
+
+-- Warmup doubles as spawn grace: once the FIRST racer is ready, the race moves
+-- on after this delay and slow clients keep spawning during the whole warmup
+-- (with automatic retries). They're only cut at warmup end.
+Config.FirstReadyGraceMs    = 5000    -- ms after first confirm before advancing
+Config.SpawnRetryIntervalMs = 8000    -- ms between respawn retries during warmup
 
 -- ── Physics ────────────────────────────────────────────────────────────────
 Config.RaceAssists = {

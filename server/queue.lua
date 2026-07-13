@@ -9,6 +9,35 @@ local function Notify(src, msg, msgType)
     SPZ.Notify(src, msg, msgType or "info", 4000)
 end
 
+-- ── Dynamic join window ──────────────────────────────────────────────────────
+-- No minimum player count. The first joiner arms a countdown that is
+-- broadcast to everyone; when it expires the poll starts with whoever queued.
+local joinWindowArmed = false
+
+function ArmJoinWindow()
+    if joinWindowArmed then return end
+    if RaceSession.state ~= SPZ.RaceState.IDLE then return end
+    if RaceSession.intermissionActive then return end
+    if GetQueueCount() < 1 then return end
+
+    joinWindowArmed = true
+    local secs = Config.JoinWindowSeconds or 30
+    TriggerClientEvent("SPZ:joinWindow", -1, { seconds = secs })
+    print(("[Race Engine] Join window armed: %ds"):format(secs))
+
+    Citizen.SetTimeout(secs * 1000, function()
+        joinWindowArmed = false
+        if RaceSession.state == SPZ.RaceState.IDLE
+        and not RaceSession.intermissionActive
+        and GetQueueCount() >= 1 then
+            StartRacePoll()
+        else
+            -- Nothing to start (everyone left / state moved on) — clear the pill
+            TriggerClientEvent("SPZ:joinWindow", -1, { seconds = 0 })
+        end
+    end)
+end
+
 function JoinQueue(src)
     if Player(src).state.inRace or Player(src).state.inQueue then
         Notify(src, "You are already in a race or queue")
@@ -46,18 +75,8 @@ function JoinQueue(src)
     Notify(src, string.format("Joined queue (%d players waiting)", count), "success")
     BroadcastQueueUpdate()
 
-    if RaceSession.state == SPZ.RaceState.IDLE
-    and count >= (Config.MinPlayersToStart or 1) then
-        local delay = (Config.PollWaitTime or 2) * 1000
-        Citizen.SetTimeout(delay, function()
-            -- Re-check after delay; never start a poll mid-intermission
-            if RaceSession.state == SPZ.RaceState.IDLE
-            and not RaceSession.intermissionActive
-            and GetQueueCount() >= (Config.MinPlayersToStart or 1) then
-                StartRacePoll()
-            end
-        end)
-    end
+    -- First joiner (or any joiner while idle) arms the shared countdown
+    ArmJoinWindow()
 
     return true
 end

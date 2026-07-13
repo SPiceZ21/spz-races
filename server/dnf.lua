@@ -17,7 +17,7 @@ function MarkDNF(source, reason)
     end
 
     -- 14.2 Notify remaining racers
-    TriggerClientEvent("SPZ:playerDNF", -1, {
+    BroadcastToRacers("SPZ:playerDNF", {
         source = source,
         name   = pData.name,
         reason = reason,

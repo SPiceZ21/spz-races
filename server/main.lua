@@ -28,6 +28,18 @@ end
 
 exports("SetRaceState", SetRaceState)
 
+-- ── BroadcastToRacers ─────────────────────────────────────────────────────────
+-- Race-scoped client events must go to race participants ONLY. A -1 broadcast
+-- leaks the race UI (countdown, checkpoints, standings, results) onto every
+-- freeroaming player on the server.
+function BroadcastToRacers(eventName, ...)
+    for src in pairs(RaceSession.players) do
+        if GetPlayerName(src) then
+            TriggerClientEvent(eventName, src, ...)
+        end
+    end
+end
+
 -- ── ResetToIdle ───────────────────────────────────────────────────────────────
 function ResetToIdle()
     SetRaceState(SPZ.RaceState.IDLE)
