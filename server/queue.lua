@@ -15,8 +15,13 @@ function JoinQueue(src)
         return false
     end
 
-    -- Mid-cycle join → freeroam now, auto-join the next race.
-    if RaceSession.state ~= SPZ.RaceState.IDLE then
+    -- Joinable while the cycle hasn't locked in: IDLE or POLLING.
+    -- Anything later (WAITING/WARMUP/COUNTDOWN/LIVE/…) → freeroam now,
+    -- auto-enrol into the next cycle.
+    local joinable = RaceSession.state == SPZ.RaceState.IDLE
+                  or RaceSession.state == SPZ.RaceState.POLLING
+
+    if not joinable then
         if Player(src).state.pendingRace then
             Notify(src, "You're already set to join the next race — freeroam until it starts")
             return false
@@ -41,11 +46,13 @@ function JoinQueue(src)
     Notify(src, string.format("Joined queue (%d players waiting)", count), "success")
     BroadcastQueueUpdate()
 
-    if count >= (Config.MinPlayersToStart or 1) then
+    if RaceSession.state == SPZ.RaceState.IDLE
+    and count >= (Config.MinPlayersToStart or 1) then
         local delay = (Config.PollWaitTime or 2) * 1000
         Citizen.SetTimeout(delay, function()
-            -- Re-check threshold after delay in case someone left
+            -- Re-check after delay; never start a poll mid-intermission
             if RaceSession.state == SPZ.RaceState.IDLE
+            and not RaceSession.intermissionActive
             and GetQueueCount() >= (Config.MinPlayersToStart or 1) then
                 StartRacePoll()
             end

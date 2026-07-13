@@ -2,7 +2,7 @@
 
 -- 17. Intermission logic
 -- This handles the cooldown between races and re-inviting players to the next cycle.
-function StartIntermission(results, prevPlayers)
+function StartIntermission(results)
     local lastResults = {}
     if results and results.finishers then
         for i, racer in ipairs(results.finishers) do
@@ -35,16 +35,9 @@ function StartIntermission(results, prevPlayers)
         print("[Race Engine] Intermission over. Queue is open — idle loop will start poll when players are ready.")
         RaceSession.intermissionActive = false
 
-        -- Re-queue previous participants who are still connected
-        if prevPlayers then
-            for _, src in ipairs(prevPlayers) do
-                if GetPlayerName(src) then
-                    JoinQueue(src)
-                end
-            end
-        end
-
-        -- Enrol everyone who joined (freeroamed) during the last race.
+        -- NO auto re-queue of last race's participants: every race requires an
+        -- explicit [E] join. Only players who pressed E during the race
+        -- (pending) are enrolled automatically — that WAS their explicit join.
         if FlushPendingToQueue then FlushPendingToQueue() end
 
         BroadcastQueueUpdate()

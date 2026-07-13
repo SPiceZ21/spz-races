@@ -16,17 +16,8 @@ function RunRaceCleanup(results)
 
     print("[Race Engine] Initiating final sequence cleanup.")
     
-    -- Capture still-connected participants BEFORE the session is wiped, so they
-    -- can be auto-re-queued after intermission. (Previously this list was built
-    -- from the already-reset session and was always empty.)
-    local prevPlayers = {}
-
     -- ... (rest of the loop remains same)
     for source, _ in pairs(RaceSession.players) do
-        if GetPlayerName(source) then
-            table.insert(prevPlayers, source)
-        end
-
         -- Clear track entities
         if GetResourceState("spz-vehicles") == "started" then
             exports["spz-vehicles"]:DespawnVehicle(source)
@@ -92,9 +83,9 @@ function RunRaceCleanup(results)
     -- Broadcast queue update so UIs reflect the reset
     if BroadcastQueueUpdate then BroadcastQueueUpdate() end
 
-    -- Trigger intermission period (pass previous players for auto-requeue)
+    -- Trigger intermission period (players re-join explicitly with [E])
     if StartIntermission then
-        StartIntermission(results, prevPlayers)
+        StartIntermission(results)
     end
 end
 
