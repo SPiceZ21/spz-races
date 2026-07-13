@@ -44,8 +44,16 @@ function StartWarmupPhase()
 
         if RaceSession.state ~= SPZ.RaceState.WARMUP then return end
 
+        -- Warmup was the spawn grace window — anyone whose vehicle still
+        -- hasn't confirmed is cut now, before staging.
+        if ReconcileUnconfirmed then ReconcileUnconfirmed() end
+        if RaceSession.state ~= SPZ.RaceState.WARMUP then return end
+
+        -- Late confirmers weren't in the initial ghosting pass
+        if ApplyRaceNoCollision then ApplyRaceNoCollision() end
+
         -- Signal clients warmup is over so HUD can clear the timer
-        TriggerClientEvent("SPZ:warmupEnd", -1)
+        BroadcastToRacers("SPZ:warmupEnd")
         print("[Warmup] Phase complete — re-staging players on grid")
 
         -- Re-teleport each player back to their grid slot
@@ -153,7 +161,7 @@ function StartCountdownSequence()
         end
 
         -- Signal clients that staging ended (HUD can clear the staging timer)
-        TriggerClientEvent("SPZ:stagingEnd", -1)
+        BroadcastToRacers("SPZ:stagingEnd")
         print("[Countdown] Staging complete — starting 3-2-1")
 
         -- ── 3-2-1 COUNTDOWN ────────────────────────────────────────────
@@ -161,7 +169,7 @@ function StartCountdownSequence()
 
         -- ── GO ─────────────────────────────────────────────────────────
         RaceSession.startTime = GetGameTimer()
-        TriggerClientEvent("SPZ:go", -1)
+        BroadcastToRacers("SPZ:go")
         print("[Countdown] RACE LIVE")
 
         -- Start timeout watchdog

@@ -63,6 +63,14 @@ function SetupRaceWorld()
         local hasLicense = (profile and profile.license_tier or 0) >= (RaceSession.carClassId or 0)
         local isRental = not hasLicense
 
+        -- Bring the player to their grid slot BEFORE the vehicle spawns.
+        -- Remote clients far from the track never get the grid vehicle into
+        -- network scope, can't resolve its netId → upgrade timeout → abort.
+        local ped = GetPlayerPed(src)
+        if ped and ped > 0 then
+            SetEntityCoords(ped, gridPos.coords.x, gridPos.coords.y, gridPos.coords.z + 1.0)
+        end
+
         print(string.format("[World Setup] Spawning '%s' for player %d at grid %d (Rental: %s)", chosenModel, src, i, tostring(isRental)))
         local ok, err = pcall(function()
             exports["spz-vehicles"]:SpawnRaceVehicle(src, chosenModel, gridPos.coords, gridPos.heading, isRental)
@@ -100,56 +108,110 @@ end
 function StartSpawnTimeoutMonitor()
     Citizen.CreateThread(function()
         local startTime = GetGameTimer()
-        local timeoutMs = Config.SpawnTimeout or 8000
+        local hardMs    = Config.SpawnTimeout or 30000
+        local graceMs   = Config.FirstReadyGraceMs or 5000
+        local firstAt   = nil
 
-        while (GetGameTimer() - startTime) < timeoutMs do
+        -- Phase 1: advance as soon as everyone is ready, OR shortly after the
+        -- FIRST racer is ready. Stragglers keep spawning through the warmup.
+        while (GetGameTimer() - startTime) < hardMs do
             Citizen.Wait(500)
 
-            local allReady = true
+            local anyReady, allReady = false, true
             for _, confirmed in pairs(spawnConfirmed) do
-                if not confirmed then allReady = false; break end
+                if confirmed then anyReady = true else allReady = false end
             end
 
-            if allReady then
-                print("[World Setup] All players spawned. Applying no-collision.")
-                ApplyRaceNoCollision()
-                local nextState = ((Config.WarmupTimeSeconds or 0) > 0)
-                    and SPZ.RaceState.WARMUP
-                    or  SPZ.RaceState.COUNTDOWN
-                print(string.format("[World Setup] Transitioning to %s.", nextState))
-                SetRaceState(nextState)
-                return
+            if allReady then break end
+            if anyReady then
+                firstAt = firstAt or GetGameTimer()
+                if (GetGameTimer() - firstAt) >= graceMs then break end
             end
         end
 
-        HandleSpawnTimeout()
+        local anyReady = false
+        for _, confirmed in pairs(spawnConfirmed) do
+            if confirmed then anyReady = true break end
+        end
+
+        if not anyReady then
+            print("[World Setup] Nobody spawned — cancelling race.")
+            ReconcileUnconfirmed()   -- clears everyone, resets to idle
+            return
+        end
+
+        ApplyRaceNoCollision()
+        local warmup    = (Config.WarmupTimeSeconds or 0) > 0
+        local nextState = warmup and SPZ.RaceState.WARMUP or SPZ.RaceState.COUNTDOWN
+        print(string.format("[World Setup] Transitioning to %s.", nextState))
+        SetRaceState(nextState)
+
+        if warmup then
+            StartWarmupSpawnGrace()   -- keep retrying stragglers during warmup
+        else
+            ReconcileUnconfirmed()    -- no warmup → cut stragglers now
+        end
     end)
 end
 
-function HandleSpawnTimeout()
-    print("[World Setup] Spawn timeout — reconciling grid.")
-
+-- Remove anyone whose vehicle never confirmed. Called at warmup end (or
+-- immediately when there is no warmup phase).
+function ReconcileUnconfirmed()
+    local cut = 0
     for src, confirmed in pairs(spawnConfirmed) do
-        if not confirmed then
+        if not confirmed and RaceSession.players[src] then
             RaceSession.players[src] = nil
             exports["spz-core"]:AssignPlayerToBucket(src, 0)
             Player(src).state:set("inRace",  false, true)
             Player(src).state:set("inQueue", false, true)
+            if GetPlayerName(src) then
+                SPZ.Notify(src, "Your vehicle failed to spawn in time — you'll auto-join the next race.", "error", 6000)
+            end
+            cut = cut + 1
         end
+    end
+    if cut > 0 then
+        print(("[World Setup] Reconciled grid — %d unspawned player(s) removed."):format(cut))
     end
 
     local remaining = 0
     for _ in pairs(RaceSession.players) do remaining = remaining + 1 end
-
-    if remaining >= (Config.MinPlayersToStart or 2) then
-        local nextState = ((Config.WarmupTimeSeconds or 0) > 0)
-            and SPZ.RaceState.WARMUP
-            or  SPZ.RaceState.COUNTDOWN
-        SetRaceState(nextState)
-    else
+    if remaining < 1 then
         print("[World Setup] Critical player loss — cancelling race.")
         ResetToIdle()
     end
+end
+
+-- Warmup = spawn grace window for slow networks / low-end PCs. Every few
+-- seconds, retry the full spawn chain for anyone still unconfirmed (their
+-- previous vehicle may have been deleted by the upgrade timeout).
+function StartWarmupSpawnGrace()
+    Citizen.CreateThread(function()
+        while RaceSession.state == SPZ.RaceState.WARMUP do
+            Citizen.Wait(Config.SpawnRetryIntervalMs or 8000)
+            if RaceSession.state ~= SPZ.RaceState.WARMUP then return end
+
+            local chosenModel = (type(RaceSession.carClass) == "table" and RaceSession.carClass.model) or "sultan"
+
+            for src, confirmed in pairs(spawnConfirmed) do
+                local pData = RaceSession.players[src]
+                if not confirmed and pData and GetPlayerName(src) then
+                    local active = exports["spz-vehicles"]:GetPlayerVehicle(src)
+                    if not active then
+                        print(("[World Setup] Warmup grace: retrying spawn for %d"):format(src))
+                        local ped = GetPlayerPed(src)
+                        if ped and ped > 0 and pData.gridCoords then
+                            SetEntityCoords(ped, pData.gridCoords.x, pData.gridCoords.y, pData.gridCoords.z + 1.0)
+                        end
+                        pcall(function()
+                            exports["spz-vehicles"]:SpawnRaceVehicle(
+                                src, chosenModel, pData.gridCoords, pData.gridHeading, true)
+                        end)
+                    end
+                end
+            end
+        end
+    end)
 end
 
 -- Server-side TriggerEvent is resource-local in FiveM; spz-vehicles uses it so

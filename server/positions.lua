@@ -80,7 +80,7 @@ Citizen.CreateThread(function()
 
             _posVersion = _posVersion + 1
             -- Clients reject packets whose version is not strictly greater than their last
-            TriggerClientEvent("SPZ:positionUpdate", -1, payload, _posVersion)
+            BroadcastToRacers("SPZ:positionUpdate", payload, _posVersion)
 
             -- Also update statebags for reactive UI
             for i, entry in ipairs(ranked) do

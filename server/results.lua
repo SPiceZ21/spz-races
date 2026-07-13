@@ -55,7 +55,7 @@ function ProcessRaceResults()
     -- 15.2 Result Broadcasts
     
     -- Client notification (for HUD results screen)
-    TriggerClientEvent("SPZ:raceEnd", -1, results)
+    BroadcastToRacers("SPZ:raceEnd", results)
 
     -- Server notification (for internal modules: spz-progression, spz-economy, leaderboard)
     TriggerEvent("SPZ:raceEnd", results)

@@ -92,6 +92,48 @@ Citizen.CreateThread(function()
     end
 end)
 
+-- ── Race ghosting (persistent no-collision) ───────────────────────────────────
+-- The server's pairwise one-shot breaks whenever an entity re-streams into
+-- scope. Re-assert no-collision against every other player each frame while
+-- the race is active — cheap for a race lobby, bulletproof.
+local GHOST_STATES = { WARMUP = true, COUNTDOWN = true, LIVE = true }
+
+Citizen.CreateThread(function()
+    while true do
+        if LocalPlayer.state.inRace and GHOST_STATES[_clientRaceState] then
+            local myPed = PlayerPedId()
+            local myVeh = GetVehiclePedIsIn(myPed, false)
+
+            for _, plr in ipairs(GetActivePlayers()) do
+                if plr ~= PlayerId() then
+                    local tPed = GetPlayerPed(plr)
+                    if tPed ~= 0 and DoesEntityExist(tPed) then
+                        local tVeh = GetVehiclePedIsIn(tPed, false)
+
+                        SetEntityNoCollisionEntity(myPed, tPed, false)
+                        SetEntityNoCollisionEntity(tPed, myPed, false)
+
+                        if myVeh ~= 0 then
+                            SetEntityNoCollisionEntity(myVeh, tPed, false)
+                            if tVeh ~= 0 then
+                                SetEntityNoCollisionEntity(myVeh, tVeh, false)
+                                SetEntityNoCollisionEntity(tVeh, myVeh, false)
+                            end
+                        end
+                        if tVeh ~= 0 then
+                            SetEntityNoCollisionEntity(tVeh, myPed, false)
+                            SetEntityNoCollisionEntity(myPed, tVeh, false)
+                        end
+                    end
+                end
+            end
+            Citizen.Wait(0)   -- must re-assert every frame
+        else
+            Citizen.Wait(500)
+        end
+    end
+end)
+
 -- ── Safe-zone teleport ────────────────────────────────────────────────────────
 RegisterNetEvent("SPZ:tpToSafeZone", function()
     local ped = PlayerPedId()
