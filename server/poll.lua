@@ -138,13 +138,18 @@ function StartRacePoll()
         player.voted = false
     end
 
-    TriggerClientEvent("SPZ:pollOpen", -1, {
+    -- Poll only appears for players who joined the queue — everyone else
+    -- keeps freeroaming undisturbed.
+    local pollPayload = {
         phase    = phase == 1 and "track" or "vehicle",
         options  = uiOptions,
         duration = Config.PollDuration,
         title    = phase == 1 and "Choose Track" or "Choose Vehicle",
         subtitle = phase == 1 and "VOTE FOR THE NEXT RACE" or "SELECT YOUR PERFORMANCE",
-    })
+    }
+    for src in pairs(RaceSession.players) do
+        TriggerClientEvent("SPZ:pollOpen", src, pollPayload)
+    end
 
     pollActive     = true
     pollTimer      = Config.PollDuration
@@ -186,10 +191,12 @@ function EndRacePoll()
         RaceSession.track = RaceSession.pollOptions[winnerIdx]
         print("[Poll] Track selected: " .. RaceSession.track.name)
 
-        TriggerClientEvent("SPZ:pollResult", -1, {
-            winner = { index = winnerIdx },
-            phase  = "track",
-        })
+        for src in pairs(RaceSession.players) do
+            TriggerClientEvent("SPZ:pollResult", src, {
+                winner = { index = winnerIdx },
+                phase  = "track",
+            })
+        end
 
         Citizen.SetTimeout(0, function()
             RaceSession.pollPhase = 2
@@ -213,14 +220,16 @@ function EndRacePoll()
             model    = selection.model,
         }
 
-        TriggerClientEvent("SPZ:pollResult", -1, {
-            winner = { index = winnerIdx },
-            phase  = "vehicle",
-            track  = RaceSession.track.name,
-            class  = RaceSession.carClass,
-            type   = RaceSession.track.type,
-            laps   = RaceSession.track.laps,
-        })
+        for src in pairs(RaceSession.players) do
+            TriggerClientEvent("SPZ:pollResult", src, {
+                winner = { index = winnerIdx },
+                phase  = "vehicle",
+                track  = RaceSession.track.name,
+                class  = RaceSession.carClass,
+                type   = RaceSession.track.type,
+                laps   = RaceSession.track.laps,
+            })
+        end
 
         SetRaceState(SPZ.RaceState.WAITING)
     end

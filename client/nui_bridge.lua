@@ -26,6 +26,23 @@ RegisterNetEvent("SPZ:pollResult", function(data)
     end
 end)
 
+-- ── Warmup panel (spz-raceUI tile HUD) ────────────────────────────────────────
+RegisterNetEvent("SPZ:warmupPhase", function(data)
+    if GetResourceState("spz-raceUI") ~= "started" then return end
+    exports["spz-raceUI"]:ShowWarmup({
+        remaining = data.remaining,
+        total     = data.total,
+        track     = data.track,
+        class     = data.class,
+        gridPos   = data.gridPos,
+    })
+end)
+
+RegisterNetEvent("SPZ:warmupEnd", function()
+    if GetResourceState("spz-raceUI") ~= "started" then return end
+    exports["spz-raceUI"]:HideWarmup()
+end)
+
 -- ── Countdown / Staging Events ────────────────────────────────────────────────
 -- Staging is a brief silent settle on the grid after the warmup TP-back.
 -- It must NOT render the giant countdown box — doing so showed a 10→1 count
@@ -66,6 +83,9 @@ local function _onRaceState(state)
     elseif state == "WAITING" or state == "COUNTDOWN" or state == "LIVE" then
         if GetResourceState("spz-poll") == "started" then
             exports["spz-poll"]:StopPoll()
+        end
+        if state ~= "WAITING" and GetResourceState("spz-raceUI") == "started" then
+            exports["spz-raceUI"]:HideWarmup()
         end
     end
 end
@@ -239,4 +259,83 @@ RegisterNetEvent("SPZ:progressionUpdate", function(data)
         levelUp             = data.levelUp or false,
     })
     _pendingStats = nil
+end)
+
+-- ── Lobby pill + [E] join ─────────────────────────────────────────────────────
+-- Small persistent HUD: "[E] JOIN RACE" while freeroaming, "IN QUEUE" once
+-- joined, "NEXT RACE IN Ns" during intermission. Every race requires an
+-- explicit join — no auto re-queue loop.
+
+local _lobbyRaceState  = GlobalState.raceState or "IDLE"
+local _intermissionEnd = 0   -- GetGameTimer() timestamp when break ends
+local _lastLobbySig    = ""
+
+AddStateBagChangeHandler("raceState", "global", function(_, _, v)
+    if v then _lobbyRaceState = v end
+end)
+
+RegisterNetEvent("SPZ:intermissionStart", function(data)
+    local secs = (data and data.seconds) or 60
+    _intermissionEnd = GetGameTimer() + secs * 1000
+end)
+
+-- Poll opening means the break is over
+RegisterNetEvent("SPZ:pollOpen", function()
+    _intermissionEnd = 0
+end)
+
+local function _lobbyMode()
+    if LocalPlayer.state.inRace then return { mode = "hidden" } end
+
+    local qCount = GlobalState.queueCount or 0
+
+    if LocalPlayer.state.inQueue or LocalPlayer.state.pendingRace then
+        return {
+            mode       = "queued",
+            queuePos   = LocalPlayer.state.queuePosition or 1,
+            queueCount = math.max(qCount, 1),
+        }
+    end
+
+    local remainMs = _intermissionEnd - GetGameTimer()
+    if remainMs > 0 then
+        return {
+            mode    = "intermission",
+            seconds = math.ceil(remainMs / 1000),
+        }
+    end
+
+    return { mode = "join", queueCount = qCount }
+end
+
+Citizen.CreateThread(function()
+    while true do
+        Citizen.Wait(500)
+        if GetResourceState("spz-raceUI") == "started" then
+            local lb  = _lobbyMode()
+            local sig = ("%s|%s|%s|%s"):format(lb.mode, lb.queueCount or "", lb.queuePos or "", lb.seconds or "")
+            if sig ~= _lastLobbySig then
+                _lastLobbySig = sig
+                exports["spz-raceUI"]:UpdateLobby(lb)
+            end
+        end
+    end
+end)
+
+-- [E] to join — active whenever the pill offers joining
+Citizen.CreateThread(function()
+    while true do
+        if not LocalPlayer.state.inRace
+        and not LocalPlayer.state.inQueue
+        and not LocalPlayer.state.pendingRace
+        and not IsPauseMenuActive() then
+            if IsControlJustPressed(0, 51) then   -- INPUT_CONTEXT (E)
+                TriggerServerEvent("SPZ:joinQueue")
+                Citizen.Wait(500)                 -- debounce
+            end
+            Citizen.Wait(0)
+        else
+            Citizen.Wait(400)
+        end
+    end
 end)

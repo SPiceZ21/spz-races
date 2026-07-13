@@ -28,7 +28,7 @@ SPZ.Tracks = {
     min_class     = 0,
     poll_weight   = 8,
     start_coords  = vector3(249.4621, -963.1885, 28.4479),
-    start_heading = 29.02,
+    start_heading = 340.54,
     checkpoints   = {
       { coords = vector3(249.4621, -963.1885, 28.4479), radius = 14.7, left = vector3(234.9405, -960.9049, 28.4519), right = vector3(263.9836, -965.4722, 28.4439) },
       { coords = vector3(309.6083, -854.782, 28.4601), radius = 15.7, left = vector3(314.919, -840.0075, 28.4637), right = vector3(304.2976, -869.5566, 28.4565) },
@@ -90,7 +90,7 @@ SPZ.Tracks = {
     min_class     = 0,
     poll_weight   = 8,
     start_coords  = vector3(-997.5739, -2452.1819, 19.6813),
-    start_heading = 186.2,
+    start_heading = 150.93,
     checkpoints   = {
       { coords = vector3(-997.5739, -2452.1819, 19.6813), radius = 7.1, left = vector3(-991.4595, -2455.7908, 19.6813), right = vector3(-1003.6882, -2448.573, 19.6813) },
       { coords = vector3(-1027.6587, -2729.1033, 19.6841), radius = 7.2, left = vector3(-1024.0098, -2722.8965, 19.6841), right = vector3(-1031.3076, -2735.3101, 19.6841) },
@@ -136,7 +136,7 @@ SPZ.Tracks = {
     min_class     = 0,
     poll_weight   = 8,
     start_coords  = vector3(70.3196, -6.8703, 68.33),
-    start_heading = 110.64,
+    start_heading = 249.36,
     checkpoints   = {
       { coords = vector3(70.3196, -6.8703, 68.33), radius = 11.1, left = vector3(74.1638, 3.5428, 68.33), right = vector3(66.4755, -17.2834, 68.33) },
       { coords = vector3(305.9482, -95.6185, 69.2003), radius = 16.8, left = vector3(311.9276, -79.9186, 69.2003), right = vector3(299.9687, -111.3183, 69.2003) },
@@ -198,7 +198,7 @@ SPZ.Tracks = {
     min_class     = 0,
     poll_weight   = 8,
     start_coords  = vector3(2074.1582, 4695.1504, 40.6746),
-    start_heading = 53.35,
+    start_heading = 313.65,
     checkpoints   = {
       { coords = vector3(2074.1582, 4695.1504, 40.6746), radius = 6.4, left = vector3(2069.7349, 4699.7759, 40.6746), right = vector3(2078.5815, 4690.5249, 40.6746) },
       { coords = vector3(2153.2356, 4753.9824, 40.6711), radius = 9.9, left = vector3(2153.5029, 4763.8789, 40.6711), right = vector3(2152.9683, 4744.0859, 40.6711) },
@@ -257,7 +257,7 @@ SPZ.Tracks = {
     min_class     = 0,
     poll_weight   = 8,
     start_coords  = vector3(987.8554, -3226.2019, 5.3721),
-    start_heading = 277.87,
+    start_heading = 89.20,
     checkpoints   = {
       { coords = vector3(987.8554, -3226.2019, 5.3721), radius = 9.3, left = vector3(987.8611, -3235.502, 5.3721), right = vector3(987.8497, -3216.9019, 5.3721) },
       { coords = vector3(883.8229, -3211.8157, 5.3717), radius = 7.0, left = vector3(876.8239, -3211.7007, 5.3717), right = vector3(890.822, -3211.9307, 5.3717) },
@@ -305,7 +305,7 @@ SPZ.Tracks = {
     min_class     = 0,
     poll_weight   = 8,
     start_coords  = vector3(-1019.3662, -2093.9636, 12.7761),
-    start_heading = 130.79,
+    start_heading = 226.21,
     checkpoints   = {
       { coords = vector3(-1019.3662, -2093.9636, 12.7761), radius = 6.7, left = vector3(-1014.705, -2089.1511, 12.834), right = vector3(-1024.0275, -2098.7761, 12.7182) },
       { coords = vector3(-920.1186, -2179.5901, 7.971), radius = 8.1, left = vector3(-923.174, -2172.0884, 7.9925), right = vector3(-917.0632, -2187.0918, 7.9495) },
@@ -362,7 +362,7 @@ SPZ.Tracks = {
     min_class     = 0,
     poll_weight   = 8,
     start_coords  = vector3(-995.7473, -366.682, 37.1662),
-    start_heading = 331.39,
+    start_heading = 28.61,
     checkpoints   = {
       { coords = vector3(-995.7473, -366.682, 37.1662), radius = 12.4, left = vector3(-1006.8619, -372.1797, 37.1689), right = vector3(-984.6326, -361.1843, 37.1636) },
       { coords = vector3(-1045.9075, -274.7297, 37.1505), radius = 13.2, left = vector3(-1055.0483, -284.2525, 37.1782), right = vector3(-1036.7666, -265.2069, 37.1228) },
@@ -464,7 +464,7 @@ SPZ.Tracks = {
     min_class     = 0,
     poll_weight   = 8,
     start_coords  = vector3(-2023.4811, -439.8803, 10.5432),
-    start_heading = 130.55,
+    start_heading = 229.45,
     checkpoints   = {
       { coords = vector3(-2023.4811, -439.8803, 10.5432), radius = 10.5, left = vector3(-2016.8671, -431.7254, 10.5091), right = vector3(-2030.0951, -448.0353, 10.5774) },
       { coords = vector3(-1683.3097, -730.9044, 9.7248), radius = 11.48, left = vector3(-1675.9915, -722.0562, 10.3603), right = vector3(-1690.6279, -739.7526, 9.0892) },
@@ -537,7 +537,7 @@ SPZ.Tracks = {
     min_class     = 0,
     poll_weight   = 8,
     start_coords  = vector3(-1303.8739, -60.1409, 47.1258),
-    start_heading = 116.53,
+    start_heading = 246.47,
     checkpoints   = {
       { coords = vector3(-1303.8739, -60.1409, 47.1258), radius = 18.3, left = vector3(-1300.2163, -42.2101, 47.1171), right = vector3(-1307.5315, -78.0716, 47.1345) },
       { coords = vector3(-1093.1597, -165.3532, 37.2886), radius = 16.8, left = vector3(-1086.1641, -150.0797, 37.1414), right = vector3(-1100.1553, -180.6267, 37.4358) },
@@ -618,7 +618,7 @@ SPZ.Tracks = {
     min_class     = 0,
     poll_weight   = 8,
     start_coords  = vector3(-205.5498, -2625.3159, 5.1725),
-    start_heading = 224.24,
+    start_heading = 88.50,
     checkpoints   = {
       { coords = vector3(-205.5498, -2625.3159, 5.1725), radius = 13.3, left = vector3(-205.8129, -2638.6133, 5.1891), right = vector3(-205.2867, -2612.0186, 5.1559) },
       { coords = vector3(-391.8641, -2816.6453, 5.1381), radius = 17.6, left = vector3(-377.0099, -2826.0852, 5.1402), right = vector3(-406.7183, -2807.2053, 5.136) },
@@ -681,7 +681,7 @@ SPZ.Tracks = {
     min_class     = 0,
     poll_weight   = 8,
     start_coords  = vector3(-1055.4877, -1915.8315, 12.6027),
-    start_heading = 43.4,
+    start_heading = 316.60,
     checkpoints   = {
       { coords = vector3(-1055.4877, -1915.8315, 12.6027), radius = 10.2, left = vector3(-1062.603, -1908.5232, 12.6027), right = vector3(-1048.3723, -1923.1399, 12.6027) },
       { coords = vector3(-739.6315, -1581.8571, 13.9673), radius = 9.2, left = vector3(-746.119, -1575.3339, 13.9673), right = vector3(-733.144, -1588.3802, 13.9673) },
@@ -800,7 +800,7 @@ SPZ.Tracks = {
     min_class     = 0,
     poll_weight   = 8,
     start_coords  = vector3(1351.7595, -2580.6602, 48.0638),
-    start_heading = 76.46,
+    start_heading = 284.79,
     checkpoints   = {
       { coords = vector3(1351.7595, -2580.6602, 48.0638), radius = 8.3, left = vector3(1349.6407, -2572.6353, 48.0638), right = vector3(1353.8783, -2588.6851, 48.0638) },
       { coords = vector3(1656.4661, -2507.2622, 77.7012), radius = 9.7, left = vector3(1646.8636, -2505.8894, 77.7012), right = vector3(1666.0685, -2508.635, 77.7012) },
@@ -838,7 +838,7 @@ SPZ.Tracks = {
     min_class     = 0,
     poll_weight   = 8,
     start_coords  = vector3(863.0984, -100.4349, 78.5641),
-    start_heading = 120.25,
+    start_heading = 241.96,
     checkpoints   = {
       { coords = vector3(863.0984, -100.4349, 78.5641), radius = 14.0, left = vector3(870.4266, -88.506, 78.5682), right = vector3(855.7703, -112.3638, 78.5601) },
       { coords = vector3(1205.7728, -300.2835, 68.2571), radius = 14.9, left = vector3(1219.4655, -294.408, 68.2543), right = vector3(1192.0802, -306.159, 68.2598) },
@@ -904,7 +904,7 @@ SPZ.Tracks = {
     min_class     = 0,
     poll_weight   = 8,
     start_coords  = vector3(-571.5985, -581.4931, 24.7803),
-    start_heading = 255.17,
+    start_heading = 91.04,
     checkpoints   = {
       { coords = vector3(-571.5985, -581.4931, 24.7803), radius = 6.6, left = vector3(-571.5688, -588.093, 24.7803), right = vector3(-571.6282, -574.8932, 24.7803) },
       { coords = vector3(-744.3378, -627.2335, 29.7827), radius = 10.5, left = vector3(-733.8384, -627.3471, 29.7827), right = vector3(-754.8372, -627.1198, 29.7827) },
@@ -962,7 +962,7 @@ SPZ.Tracks = {
     min_class     = 0,
     poll_weight   = 8,
     start_coords  = vector3(-387.1812, 1177.3583, 324.7802),
-    start_heading = 332.58,
+    start_heading = 73.59,
     checkpoints   = {
       { coords = vector3(-387.1812, 1177.3583, 324.7802), radius = 7.9, left = vector3(-389.5378, 1169.818, 324.779), right = vector3(-384.8247, 1184.8986, 324.7813) },
       { coords = vector3(-479.1649, 1354.6573, 302.9293), radius = 7.89, left = vector3(-473.6619, 1348.9994, 303.2673), right = vector3(-484.6678, 1360.3153, 302.5912) },
@@ -1026,7 +1026,7 @@ SPZ.Tracks = {
     min_class     = 0,
     poll_weight   = 8,
     start_coords  = vector3(-1142.4216, 2642.1257, 16.067),
-    start_heading = 222.1,
+    start_heading = 132.17,
     checkpoints   = {
       { coords = vector3(-1142.4216, 2642.1257, 16.067), radius = 8.9, left = vector3(-1136.4312, 2635.5437, 16.07), right = vector3(-1148.4121, 2648.7078, 16.0641) },
       { coords = vector3(-1347.0779, 2415.6223, 28.7343), radius = 13.9, left = vector3(-1333.3112, 2413.7197, 28.994), right = vector3(-1360.8446, 2417.5249, 28.4745) },
@@ -1081,7 +1081,7 @@ SPZ.Tracks = {
     min_class     = 0,
     poll_weight   = 8,
     start_coords  = vector3(948.2078, -3326.6191, 6.1483),
-    start_heading = 89.98,
+    start_heading = 270.02,
     checkpoints   = {
       { coords = vector3(948.2078, -3326.6191, 6.1483), radius = 7.2, left = vector3(947.8906, -3319.426, 6.1483), right = vector3(948.5251, -3333.8123, 6.1483) },
       { coords = vector3(1095.5082, -3326.5779, 5.3865), radius = 14.3, left = vector3(1095.5758, -3312.2781, 5.3865), right = vector3(1095.4406, -3340.8777, 5.3865) },
@@ -1121,7 +1121,7 @@ SPZ.Tracks = {
     min_class     = 0,
     poll_weight   = 8,
     start_coords  = vector3(1049.3444, -1476.946, 27.8793),
-    start_heading = 166.72,
+    start_heading = 183.72,
     checkpoints   = {
       { coords = vector3(1049.3444, -1476.946, 27.8793), radius = 15.1, left = vector3(1064.429, -1476.2642, 27.8793), right = vector3(1034.2598, -1477.6279, 27.8793) },
       { coords = vector3(1121.2666, -1781.7196, 28.6928), radius = 24.6, left = vector3(1144.4978, -1773.6283, 28.6928), right = vector3(1098.0354, -1789.8109, 28.6928) },
@@ -1184,7 +1184,7 @@ SPZ.Tracks = {
     min_class     = 0,
     poll_weight   = 8,
     start_coords  = vector3(-1559.5537, 2763.5913, 16.9239),
-    start_heading = 324.09,
+    start_heading = 42.31,
     checkpoints   = {
       { coords = vector3(-1559.5537, 2763.5913, 16.9239), radius = 6.9, left = vector3(-1564.369, 2758.6494, 16.9657), right = vector3(-1554.7384, 2768.5332, 16.8822) },
       { coords = vector3(-1898.379, 3231.4221, 32.2332), radius = 7.3, left = vector3(-1901.9926, 3225.0793, 32.2205), right = vector3(-1894.7655, 3237.7649, 32.246) },
@@ -1271,7 +1271,7 @@ SPZ.Tracks = {
     min_class     = 0,
     poll_weight   = 8,
     start_coords  = vector3(-369.5715, -843.7563, 30.9292),
-    start_heading = 47.82,
+    start_heading = 256.27,
     checkpoints   = {
       { coords = vector3(-369.5715, -843.7563, 30.9292), radius = 15.9, left = vector3(-368.3715, -827.9023, 31.0752), right = vector3(-370.7715, -859.6104, 30.7833) },
       { coords = vector3(-68.8218, -571.2234, 36.9026), radius = 20.7, left = vector3(-88.0027, -563.4413, 37.0507), right = vector3(-49.6409, -579.0055, 36.7546) },
@@ -1323,7 +1323,7 @@ SPZ.Tracks = {
     min_class     = 0,
     poll_weight   = 8,
     start_coords  = vector3(1136.5699, -1436.3947, 33.8086),
-    start_heading = 269.57,
+    start_heading = 90.43,
     checkpoints   = {
       { coords = vector3(1136.5699, -1436.3947, 33.8086), radius = 13.1, left = vector3(1136.7881, -1449.4888, 34.1344), right = vector3(1136.3518, -1423.3005, 33.4829) },
       { coords = vector3(847.0936, -1438.5604, 27.3722), radius = 14.9, left = vector3(847.5554, -1453.4532, 27.3734), right = vector3(846.6318, -1423.6676, 27.3711) },
@@ -1386,7 +1386,7 @@ SPZ.Tracks = {
     min_class     = 0,
     poll_weight   = 8,
     start_coords  = vector3(155.3501, -870.6671, 30.2357),
-    start_heading = 194.22,
+    start_heading = 159.51,
     checkpoints   = {
       { coords = vector3(155.3501, -870.6671, 30.2357), radius = 16.8, left = vector3(171.2177, -876.1861, 30.2357), right = vector3(139.4825, -865.148, 30.2357) },
       { coords = vector3(121.2871, -1005.1086, 28.8574), radius = 18.0, left = vector3(126.9023, -988.0069, 28.8574), right = vector3(115.6719, -1022.2104, 28.8574) },
@@ -1415,7 +1415,7 @@ SPZ.Tracks = {
     min_class     = 0,
     poll_weight   = 8,
     start_coords  = vector3(1897.2798, 3842.2991, 31.5235),
-    start_heading = 245.42,
+    start_heading = 120.54,
     checkpoints   = {
       { coords = vector3(1897.2798, 3842.2991, 31.5235), radius = 11.0, left = vector3(1903.2489, 3833.0637, 31.2481), right = vector3(1891.3107, 3851.5344, 31.7989) },
       { coords = vector3(1229.2993, 3536.8254, 34.3499), radius = 7.4, left = vector3(1229.2341, 3529.4258, 34.3582), right = vector3(1229.3645, 3544.2251, 34.3416) },
@@ -1468,7 +1468,7 @@ SPZ.Tracks = {
     min_class     = 0,
     poll_weight   = 8,
     start_coords  = vector3(809.9269, -63.1231, 80.0088),
-    start_heading = 293.44,
+    start_heading = 60.02,
     checkpoints   = {
       { coords = vector3(809.9269, -63.1231, 80.0088), radius = 15.5, left = vector3(801.9398, -76.4067, 80.0088), right = vector3(817.914, -49.8394, 80.0088) },
       { coords = vector3(281.9693, 165.7629, 103.6048), radius = 19.0, left = vector3(276.7252, 147.5009, 103.6048), right = vector3(287.2133, 184.0249, 103.6048) },
@@ -1526,7 +1526,7 @@ SPZ.Tracks = {
     min_class     = 0,
     poll_weight   = 8,
     start_coords  = vector3(-356.8565, -199.1906, 36.7528),
-    start_heading = 48.59,
+    start_heading = 289.32,
     checkpoints   = {
       { coords = vector3(-356.8565, -199.1906, 36.7528), radius = 17.3, left = vector3(-362.9727, -183.0086, 36.9104), right = vector3(-350.7403, -215.3726, 36.5952) },
       { coords = vector3(-275.4928, -127.4445, 43.8779), radius = 19.2, left = vector3(-294.558, -125.1924, 43.5811), right = vector3(-256.4277, -129.6967, 44.1746) },
@@ -1599,7 +1599,7 @@ SPZ.Tracks = {
     min_class     = 0,
     poll_weight   = 8,
     start_coords  = vector3(-118.7598, -255.2775, 43.3556),
-    start_heading = 27.34,
+    start_heading = 337.23,
     checkpoints   = {
       { coords = vector3(-118.7598, -255.2775, 43.3556), radius = 16.7, left = vector3(-134.3752, -249.3573, 43.4054), right = vector3(-103.1445, -261.1977, 43.3058) },
       { coords = vector3(-48.2215, -118.8598, 57.2086), radius = 16.0, left = vector3(-43.4494, -103.5881, 57.2554), right = vector3(-52.9935, -134.1315, 57.1618) },
@@ -1657,7 +1657,7 @@ SPZ.Tracks = {
     min_class     = 0,
     poll_weight   = 8,
     start_coords  = vector3(-1745.5389, 45.3328, 67.135),
-    start_heading = 311.86,
+    start_heading = 48.14,
     checkpoints   = {
       { coords = vector3(-1745.5389, 45.3328, 67.135), radius = 15.7, left = vector3(-1755.7479, 33.4052, 67.135), right = vector3(-1735.33, 57.2604, 67.135) },
       { coords = vector3(-1912.5936, 195.0236, 83.3018), radius = 12.9, left = vector3(-1923.1666, 187.633, 83.3018), right = vector3(-1902.0206, 202.4142, 83.3018) },
@@ -1705,7 +1705,7 @@ SPZ.Tracks = {
     min_class     = 0,
     poll_weight   = 8,
     start_coords  = vector3(-495.4595, 129.4382, 63.1654),
-    start_heading = 270.33,
+    start_heading = 89.67,
     checkpoints   = {
       { coords = vector3(-495.4595, 129.4382, 63.1654), radius = 9.9, left = vector3(-495.3728, 119.5386, 63.1654), right = vector3(-495.5462, 139.3378, 63.1654) },
       { coords = vector3(-636.4982, 130.2419, 56.7457), radius = 11.4, left = vector3(-636.404, 118.8423, 56.7457), right = vector3(-636.5925, 141.6415, 56.7457) },
@@ -1764,7 +1764,7 @@ SPZ.Tracks = {
     min_class     = 0,
     poll_weight   = 8,
     start_coords  = vector3(-1342.832, -266.373, 41.5643),
-    start_heading = 311.59,
+    start_heading = 35.82,
     checkpoints   = {
       { coords = vector3(-1342.832, -266.373, 41.5643), radius = 6.0, left = vector3(-1347.7531, -269.8032, 41.6956), right = vector3(-1337.911, -262.9427, 41.433) },
       { coords = vector3(-1498.516, -128.2038, 51.3093), radius = 17.4, left = vector3(-1487.7308, -141.855, 51.6005), right = vector3(-1509.3011, -114.5526, 51.018) },
@@ -1792,7 +1792,7 @@ SPZ.Tracks = {
     min_class     = 0,
     poll_weight   = 8,
     start_coords  = vector3(-1129.5431, -246.0375, 36.9494),
-    start_heading = 238.78,
+    start_heading = 121.22,
     checkpoints   = {
       { coords = vector3(-1129.5431, -246.0375, 36.9494), radius = 15.79, left = vector3(-1120.9426, -259.2785, 36.3591), right = vector3(-1138.1436, -232.7966, 37.5397) },
       { coords = vector3(-1250.4874, -319.3337, 36.502), radius = 15.2, left = vector3(-1242.9681, -332.5436, 36.5224), right = vector3(-1258.0067, -306.1239, 36.4816) },
@@ -1839,7 +1839,7 @@ SPZ.Tracks = {
     min_class     = 0,
     poll_weight   = 8,
     start_coords  = vector3(1040.6416, -2372.8999, 29.6287),
-    start_heading = 7.56,
+    start_heading = 356.10,
     checkpoints   = {
       { coords = vector3(1040.6416, -2372.8999, 29.6287), radius = 9.29, left = vector3(1031.3711, -2372.2852, 30.0412), right = vector3(1049.9121, -2373.5146, 29.2162) },
       { coords = vector3(1077.8468, -2092.6934, 33.6687), radius = 6.0, left = vector3(1074.0663, -2088.0725, 33.0721), right = vector3(1081.6273, -2097.3142, 34.2653) },
@@ -1912,7 +1912,7 @@ SPZ.Tracks = {
     min_class     = 0,
     poll_weight   = 8,
     start_coords  = vector3(-562.1721, -660.3663, 32.7541),
-    start_heading = 101.69,
+    start_heading = 271.09,
     checkpoints   = {
       { coords = vector3(-562.1721, -660.3663, 32.7541), radius = 15.5, left = vector3(-562.0657, -644.8667, 32.7541), right = vector3(-562.2784, -675.866, 32.7541) },
       { coords = vector3(132.4977, -804.0369, 30.8669), radius = 17.6, left = vector3(138.3124, -787.4252, 30.8669), right = vector3(126.6829, -820.6486, 30.8669) },
@@ -1957,7 +1957,7 @@ SPZ.Tracks = {
     min_class     = 0,
     poll_weight   = 8,
     start_coords  = vector3(501.2557, -1211.6986, 28.741),
-    start_heading = 359.99,
+    start_heading = 0.01,
     checkpoints   = {
       { coords = vector3(501.2557, -1211.6986, 28.741), radius = 8.7, left = vector3(492.5577, -1211.5133, 28.741), right = vector3(509.9537, -1211.8839, 28.741) },
       { coords = vector3(501.1645, -834.7919, 24.1406), radius = 8.7, left = vector3(492.4881, -834.1516, 24.1406), right = vector3(509.8409, -835.4323, 24.1406) },
@@ -2009,7 +2009,7 @@ SPZ.Tracks = {
     min_class     = 0,
     poll_weight   = 8,
     start_coords  = vector3(-1144.1105, -643.8718, 10.8559),
-    start_heading = 260.16,
+    start_heading = 121.29,
     checkpoints   = {
       { coords = vector3(-1144.1105, -643.8718, 10.8559), radius = 11.3, left = vector3(-1138.1331, -653.4614, 10.8559), right = vector3(-1150.0879, -634.2822, 10.8559) },
       { coords = vector3(-1614.1224, -725.3538, 10.7077), radius = 11.3, left = vector3(-1618.9622, -735.5649, 10.7077), right = vector3(-1609.2827, -715.1427, 10.7077) },
@@ -2065,7 +2065,7 @@ SPZ.Tracks = {
     min_class     = 0,
     poll_weight   = 8,
     start_coords  = vector3(297.8923, -646.9331, 28.4666),
-    start_heading = 292.54,
+    start_heading = 67.46,
     checkpoints   = {
       { coords = vector3(297.8923, -646.9331, 28.4666), radius = 9.8, left = vector3(294.4724, -656.1151, 28.277), right = vector3(301.3123, -637.7512, 28.6562) },
       { coords = vector3(126.2441, -575.7068, 30.7831), radius = 9.1, left = vector3(123.1598, -584.2681, 30.7414), right = vector3(129.3285, -567.1456, 30.8249) },
@@ -2142,7 +2142,7 @@ SPZ.Tracks = {
     min_class     = 0,
     poll_weight   = 8,
     start_coords  = vector3(-167.7185, -529.2251, 27.6904),
-    start_heading = 88.19,
+    start_heading = 271.81,
     checkpoints   = {
       { coords = vector3(-167.7185, -529.2251, 27.6904), radius = 16.8, left = vector3(-168.2594, -512.4338, 27.6904), right = vector3(-167.1776, -546.0164, 27.6904) },
       { coords = vector3(-18.5556, -524.5142, 32.8026), radius = 14.2, left = vector3(-18.7736, -510.3159, 32.8026), right = vector3(-18.3376, -538.7125, 32.8026) },
@@ -2207,7 +2207,7 @@ SPZ.Tracks = {
     min_class     = 0,
     poll_weight   = 8,
     start_coords  = vector3(-371.6463, -316.4478, 32.026),
-    start_heading = 104.5,
+    start_heading = 233.36,
     checkpoints   = {
       { coords = vector3(-371.6463, -316.4478, 32.026), radius = 9.3, left = vector3(-366.1984, -308.9106, 32.026), right = vector3(-377.0942, -323.985, 32.026) },
       { coords = vector3(-159.8931, -371.2003, 33.0298), radius = 19.4, left = vector3(-178.6205, -366.1365, 33.0298), right = vector3(-141.1656, -376.264, 33.0298) },
@@ -2247,7 +2247,7 @@ SPZ.Tracks = {
     min_class     = 0,
     poll_weight   = 8,
     start_coords  = vector3(352.7263, -1311.4069, 31.8979),
-    start_heading = 219.81,
+    start_heading = 140.19,
     checkpoints   = {
       { coords = vector3(352.7263, -1311.4069, 31.8979), radius = 6.6, left = vector3(357.5147, -1315.9491, 31.8979), right = vector3(347.938, -1306.8646, 31.8979) },
       { coords = vector3(319.6232, -1351.1296, 31.7917), radius = 10.9, left = vector3(327.7818, -1358.3578, 31.7917), right = vector3(311.4645, -1343.9015, 31.7917) },
@@ -2379,7 +2379,7 @@ SPZ.Tracks = {
     min_class     = 0,
     poll_weight   = 8,
     start_coords  = vector3(324.5253, 152.7184, 102.7186),
-    start_heading = 110.69,
+    start_heading = 249.31,
     checkpoints   = {
       { coords = vector3(324.5253, 152.7184, 102.7186), radius = 14.7, left = vector3(328.9058, 166.7505, 102.7359), right = vector3(320.1448, 138.6863, 102.7012) },
       { coords = vector3(621.8179, 40.4659, 88.3335), radius = 21.0, left = vector3(628.7369, 60.2933, 88.3695), right = vector3(614.8989, 20.6384, 88.2975) },
@@ -2440,7 +2440,7 @@ SPZ.Tracks = {
     min_class     = 0,
     poll_weight   = 8,
     start_coords  = vector3(-1294.3856, 289.8743, 64.3125),
-    start_heading = 237.8,
+    start_heading = 69.69,
     checkpoints   = {
       { coords = vector3(-1294.3856, 289.8743, 64.3125), radius = 11.2, left = vector3(-1289.0901, 299.7433, 64.3125), right = vector3(-1299.6812, 280.0053, 64.3125) },
       { coords = vector3(-1376.8884, 237.9112, 58.4482), radius = 9.8, left = vector3(-1368.3751, 233.0569, 58.4482), right = vector3(-1385.4017, 242.7654, 58.4482) },
@@ -2491,7 +2491,7 @@ SPZ.Tracks = {
     min_class     = 0,
     poll_weight   = 10,
     start_coords  = vector3(-812.229, 824.6474, 201.5054),
-    start_heading = 25.14,
+    start_heading = 279.36,
     checkpoints   = {
       { coords = vector3(-812.229, 824.6474, 201.5054), radius = 7.8, left = vector3(-813.5839, 832.3288, 201.5054), right = vector3(-810.8741, 816.966, 201.5054) },
       { coords = vector3(-725.6223, 1009.204, 238.2197), radius = 11.3, left = vector3(-736.9033, 1009.8603, 238.2197), right = vector3(-714.3414, 1008.5477, 238.2197) },
@@ -2609,7 +2609,7 @@ SPZ.Tracks = {
     min_class     = 0,
     poll_weight   = 8,
     start_coords  = vector3(-2318.322, 3398.5779, 30.2675),
-    start_heading = 105.34,
+    start_heading = 240.13,
     checkpoints   = {
       { coords = vector3(-2318.322, 3398.5779, 30.2675), radius = 6.7, left = vector3(-2314.1953, 3403.8562, 30.2675), right = vector3(-2322.4487, 3393.2996, 30.2675) },
       { coords = vector3(-2039.7468, 3322.1492, 32.3477), radius = 18.0, left = vector3(-2055.6636, 3330.5552, 32.3477), right = vector3(-2023.8302, 3313.7432, 32.3477) },
@@ -2697,7 +2697,7 @@ SPZ.Tracks = {
     min_class     = 0,
     poll_weight   = 8,
     start_coords  = vector3(518.0511, -2174.4475, 5.4582),
-    start_heading = 166.21,
+    start_heading = 175.60,
     checkpoints   = {
       { coords = vector3(518.0511, -2174.4475, 5.4582), radius = 6.6, left = vector3(524.6129, -2175.1565, 5.4582), right = vector3(511.4893, -2173.7385, 5.4582) },
       { coords = vector3(544.246, -2281.1582, 5.4544), radius = 9.7, left = vector3(543.797, -2271.4685, 5.4544), right = vector3(544.6951, -2290.8479, 5.4544) },
@@ -2798,7 +2798,7 @@ SPZ.Tracks = {
     min_class     = 0,
     poll_weight   = 8,
     start_coords  = vector3(-437.9961, -657.9357, 30.2773),
-    start_heading = 270.07,
+    start_heading = 89.93,
     checkpoints   = {
       { coords = vector3(-437.9961, -657.9357, 30.2773), radius = 16.6, left = vector3(-438.1131, -674.5352, 30.2207), right = vector3(-437.879, -641.3362, 30.3339) },
       { coords = vector3(-523.95, -657.83, 32.4241), radius = 12.5, left = vector3(-523.9058, -670.3277, 32.1903), right = vector3(-523.9943, -645.3322, 32.6578) },
@@ -2901,7 +2901,7 @@ SPZ.Tracks = {
     min_class     = 0,
     poll_weight   = 8,
     start_coords  = vector3(2571.0444, 4725.7632, 33.0145),
-    start_heading = 43.0,
+    start_heading = 314.74,
     checkpoints   = {
       { coords = vector3(2571.0444, 4725.7632, 33.0145), radius = 7.0, left = vector3(2566.0762, 4730.6943, 33.0178), right = vector3(2576.0127, 4720.832, 33.0112) },
       { coords = vector3(2787.8901, 4958.2842, 33.0139), radius = 8.0, left = vector3(2782.1453, 4952.7168, 33.0122), right = vector3(2793.635, 4963.8516, 33.0157) },
@@ -2991,7 +2991,7 @@ SPZ.Tracks = {
     min_class     = 0,
     poll_weight   = 10,
     start_coords  = vector3(1348.9266, -1627.9233, 51.8592),
-    start_heading = 335.45,
+    start_heading = 39.01,
     checkpoints   = {
       { coords = vector3(1348.9266, -1627.9233, 51.8592), radius = 12.5, left = vector3(1338.9362, -1635.436, 51.8592), right = vector3(1358.9171, -1620.4106, 51.8592) },
       { coords = vector3(1250.1521, -1411.6849, 34.5516), radius = 14.5, left = vector3(1237.0043, -1417.7992, 34.5516), right = vector3(1263.2999, -1405.5707, 34.5516) },
@@ -3106,7 +3106,7 @@ SPZ.Tracks = {
     min_class     = 0,
     poll_weight   = 8,
     start_coords  = vector3(3264.9888, 5002.1445, 21.5989),
-    start_heading = 277.06,
+    start_heading = 69.49,
     checkpoints   = {
       { coords = vector3(3264.9888, 5002.1445, 21.5989), radius = 7.5, left = vector3(3262.5139, 4995.0649, 21.6609), right = vector3(3267.4636, 5009.2241, 21.537) },
       { coords = vector3(2954.0374, 5040.646, 29.4385), radius = 8.6, left = vector3(2955.6199, 5032.1934, 29.3387), right = vector3(2952.4548, 5049.0986, 29.5383) },
@@ -3224,7 +3224,7 @@ SPZ.Tracks = {
     min_class     = 0,
     poll_weight   = 8,
     start_coords  = vector3(-223.4904, -2622.9355, 5.2596),
-    start_heading = 87.82,
+    start_heading = 272.18,
     checkpoints   = {
       { coords = vector3(-223.4904, -2622.9355, 5.2596), radius = 9.0, left = vector3(-223.5249, -2613.9355, 5.2596), right = vector3(-223.4559, -2631.9355, 5.2596) },
       { coords = vector3(85.8817, -2611.1475, 5.2596), radius = 11.0, left = vector3(85.1165, -2600.1741, 5.2596), right = vector3(86.6468, -2622.1208, 5.2596) },
@@ -3328,7 +3328,7 @@ SPZ.Tracks = {
     min_class     = 0,
     poll_weight   = 8,
     start_coords  = vector3(3026.668, 3659.1523, 71.0401),
-    start_heading = 352.17,
+    start_heading = 336.17,
     checkpoints   = {
       { coords = vector3(3026.668, 3659.1523, 71.0401), radius = 7.1, left = vector3(3020.2004, 3662.0818, 71.0422), right = vector3(3033.1355, 3656.2229, 71.038) },
       { coords = vector3(2917.8423, 4450.0151, 47.2959), radius = 8.8, left = vector3(2915.197, 4458.4082, 47.2735), right = vector3(2920.4875, 4441.6221, 47.3183) },
@@ -3529,7 +3529,7 @@ SPZ.Tracks = {
     min_class     = 0,
     poll_weight   = 8,
     start_coords  = vector3(849.1757, 1341.6755, 352.2669),
-    start_heading = 267.56,
+    start_heading = 51.67,
     checkpoints   = {
       { coords = vector3(849.1757, 1341.6755, 352.2669), radius = 9.5, left = vector3(842.4965, 1334.9199, 352.2669), right = vector3(855.8549, 1348.4312, 352.2669) },
       { coords = vector3(528.5163, 1328.0247, 289.2786), radius = 9.0, left = vector3(535.0184, 1321.8019, 289.2786), right = vector3(522.0142, 1334.2474, 289.2786) },
@@ -3626,7 +3626,7 @@ SPZ.Tracks = {
     min_class     = 0,
     poll_weight   = 8,
     start_coords  = vector3(-1091.8011, -1715.5261, 3.7863),
-    start_heading = 0.99,
+    start_heading = 308.51,
     checkpoints   = {
       { coords = vector3(-1091.8011, -1715.5261, 3.7863), radius = 6.0, left = vector3(-1094.7045, -1711.3331, 3.7863), right = vector3(-1088.8978, -1719.7191, 3.7863) },
       { coords = vector3(-1087.5297, -1467.5404, 4.6202), radius = 7.8, left = vector3(-1094.2051, -1471.5751, 4.6202), right = vector3(-1080.8542, -1463.5057, 4.6202) },
@@ -3724,7 +3724,7 @@ SPZ.Tracks = {
     min_class     = 0,
     poll_weight   = 8,
     start_coords  = vector3(267.0352, -2769.7048, 5.5301),
-    start_heading = 196.26,
+    start_heading = 163.74,
     checkpoints   = {
       { coords = vector3(267.0352, -2769.7048, 5.5301), radius = 8.7, left = vector3(275.5966, -2771.251, 5.5301), right = vector3(258.4737, -2768.1587, 5.5301) },
       { coords = vector3(181.2647, -3063.8665, 5.1904), radius = 9.3, left = vector3(190.5497, -3064.394, 5.1904), right = vector3(171.9797, -3063.3389, 5.1904) },
@@ -3822,7 +3822,7 @@ SPZ.Tracks = {
     min_class     = 0,
     poll_weight   = 8,
     start_coords  = vector3(853.7866, 1288.281, 358.09),
-    start_heading = 319.17,
+    start_heading = 344.59,
     checkpoints   = {
       { coords = vector3(853.7866, 1288.281, 358.09), radius = 8.6, left = vector3(846.1423, 1292.2209, 358.0846), right = vector3(861.431, 1284.3411, 358.0954) },
       { coords = vector3(783.3851, 1369.7443, 344.2177), radius = 8.4, left = vector3(784.1863, 1361.3828, 344.1585), right = vector3(782.5839, 1378.1057, 344.277) },
@@ -3895,7 +3895,7 @@ SPZ.Tracks = {
     min_class     = 0,
     poll_weight   = 8,
     start_coords  = vector3(-725.5507, -2397.8281, 14.2458),
-    start_heading = 41.0,
+    start_heading = 319.00,
     checkpoints   = {
       { coords = vector3(-725.5507, -2397.8281, 14.2458), radius = 7.1, left = vector3(-730.8852, -2393.1428, 14.2458), right = vector3(-720.2162, -2402.5134, 14.2458) },
       { coords = vector3(-505.7973, -2145.0542, 8.5403), radius = 8.8, left = vector3(-511.4609, -2138.3188, 8.5403), right = vector3(-500.1337, -2151.7896, 8.5403) },
