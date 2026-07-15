@@ -336,15 +336,17 @@ Citizen.CreateThread(function()
     end
 end)
 
--- [E] to join — active whenever the pill offers joining
+-- [E] toggles queue: join when free, leave when queued/pending.
+-- Disabled once actually racing (inRace) — no bailing mid-grid via E.
 Citizen.CreateThread(function()
     while true do
-        if not LocalPlayer.state.inRace
-        and not LocalPlayer.state.inQueue
-        and not LocalPlayer.state.pendingRace
-        and not IsPauseMenuActive() then
+        if not LocalPlayer.state.inRace and not IsPauseMenuActive() then
             if IsControlJustPressed(0, 51) then   -- INPUT_CONTEXT (E)
-                TriggerServerEvent("SPZ:joinQueue")
+                if LocalPlayer.state.inQueue or LocalPlayer.state.pendingRace then
+                    TriggerServerEvent("SPZ:leaveQueue")
+                else
+                    TriggerServerEvent("SPZ:joinQueue")
+                end
                 Citizen.Wait(500)                 -- debounce
             end
             Citizen.Wait(0)
