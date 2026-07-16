@@ -110,9 +110,32 @@ end)
 -- Projects the active checkpoint into screen space every frame and feeds the
 -- raceUI "Next CP" pill so it renders as a 3D billboard anchored on the CP
 -- (with a stem line), instead of a fixed HUD pill.
+-- Time Trial drives the same waypoint pill outside the race state machine
+local _ttActive = false
+RegisterNetEvent("SPZ:tt:Begin", function() _ttActive = true  end)
+RegisterNetEvent("SPZ:tt:End",   function() _ttActive = false end)
+
+-- Once *this* player is done (finished or DNF) the pill must go, even though
+-- the race stays LIVE for everyone still driving.
+local _myRaceOver = false
+
+RegisterNetEvent("SPZ:raceFinished", function() _myRaceOver = true end)
+
+RegisterNetEvent("SPZ:playerDNF", function(data)
+    if data and data.source == GetPlayerServerId(PlayerId()) then
+        _myRaceOver = true
+    end
+end)
+
+-- Fresh race / TT run → pill is live again
+RegisterNetEvent("SPZ:spawnCheckpoints", function() _myRaceOver = false end)
+RegisterNetEvent("SPZ:tt:Begin",         function() _myRaceOver = false end)
+
 Citizen.CreateThread(function()
     while true do
-        if _distState == "LIVE" and GetResourceState("spz-raceUI") == "started" then
+        if (_distState == "LIVE" or _ttActive)
+        and not _myRaceOver
+        and GetResourceState("spz-raceUI") == "started" then
             local cp = exports["spz-races"]:GetCurrentCP()
             if cp then
                 local pos  = GetEntityCoords(PlayerPedId())
@@ -136,8 +159,9 @@ Citizen.CreateThread(function()
                 Citizen.Wait(200)
             end
         else
-            if (_distState == "IDLE" or _distState == "CLEANUP")
-            and GetResourceState("spz-raceUI") == "started" then
+            -- Not driving a route (finished, DNF, idle, cleanup, TT over) →
+            -- make sure the pill is gone rather than frozen on screen.
+            if GetResourceState("spz-raceUI") == "started" then
                 exports["spz-raceUI"]:UpdateCPWaypoint({ dist = 0, onScreen = false })
             end
             Citizen.Wait(500)

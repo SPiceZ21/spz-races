@@ -69,10 +69,9 @@ Config.SafeZoneHeading      = 210.0
 -- automatically DNF'd for idling / going off-route.
 Config.IdleKickMs           = 120000  -- 2 minutes
 
--- Range (metres) within which checkpoint flares become visible.
--- Active (next) checkpoint always shows at full scale within this range.
--- Other nearby checkpoints show at reduced scale.
-Config.FlareRange           = 130.0
+-- Range (metres) within which checkpoint gate props are spawned.
+-- Beyond this the props are removed again to keep the entity count low.
+Config.GateRange            = 130.0
 
 -- GPS route colour index (GTA colour palette, 51 = bright yellow).
 Config.GpsRouteColour       = 51

@@ -2,7 +2,8 @@
 -- SPZ-Races checkpoint visualizer.
 --
 -- Visuals:
---   • Particle FLARES at every gate (left+right) when player in range
+--   • Custom GATE PROPS (start / finish / checkpoint) at every gate post
+--     (left+right) when the player is in range
 --   • Numbered MINIMAP BLIPS, shade-graded by distance from active CP
 --   • CP-controlled GPS ROUTE LINE on minimap (drawn via SetBlipRoute on the
 --     active blip — NOT via player's M-key waypoint, so player can still set
@@ -34,13 +35,6 @@ local SCALE_NEAR    = 0.85
 local SCALE_PENDING = 0.6
 local SCALE_FINISH  = 1.5
 
--- ── Proximity flares ───────────────────────────────────────────────────────
-local FlareHandles = {}   -- [cpIndex] = { left=handle, right=handle, scale=number }
-
-local PTFX_ASSET      = "core"
-local PTFX_EFFECT     = "exp_grd_flare"
-local PTFX_SCALE_NEXT = 1.0    -- flare scale at active CP
-local PTFX_SCALE_NEAR = 0.45   -- flare scale at all other in-range CPs
 
 -- ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -70,13 +64,97 @@ local function _cpLabel(idx, total)
     end
 end
 
+-- Time Trial drives the same visuals outside of the race state machine
+local TTMode = false
+
 local function _isRaceActive()
-    return RaceState == "LIVE"
+    return TTMode
+        or RaceState == "LIVE"
         or RaceState == "WARMUP"
         or RaceState == "COUNTDOWN"
         or RaceState == "STAGING"
 end
 
+-- ── Custom gate props (streamed from stream/, declared in fxmanifest) ───────
+local PROP_START      = `bzzz_start_a`
+local PROP_FINISH     = `bzzz_finish_a`
+local PROP_CHECKPOINT = `bzzz_checkpoint_a`
+
+local GateProps = {}   -- [cpIndex] = { left = handle, right = handle }
+
+local function _gateModelFor(idx, total)
+    -- Circuit: CP1 is the shared start/finish line → start post.
+    -- Sprint: CP1 = start, last CP = finish, everything else = checkpoint.
+    if idx == 1 then return PROP_START end
+    if idx == _finishIdx(total) then return PROP_FINISH end
+    return PROP_CHECKPOINT
+end
+
+local function _removeGate(idx)
+    local g = GateProps[idx]
+    if not g then return end
+    if g.left  and DoesEntityExist(g.left)  then DeleteObject(g.left)  end
+    if g.right and DoesEntityExist(g.right) then DeleteObject(g.right) end
+    GateProps[idx] = nil
+end
+
+local function _clearAllGates()
+    for idx in pairs(GateProps) do _removeGate(idx) end
+    GateProps = {}
+end
+
+local function _gateHeading(idx, cp)
+    -- Heading is stored per checkpoint by the creator/editor; fall back to
+    -- aiming at the next checkpoint.
+    if cp.heading then return cp.heading end
+    local nxt = CurrentCheckpoints[_nearIdx(idx, #CurrentCheckpoints) or idx]
+    if nxt and nxt ~= cp then
+        return math.deg(math.atan(-(nxt.coords.x - cp.coords.x), nxt.coords.y - cp.coords.y)) % 360
+    end
+    return 0.0
+end
+
+local function _placeGateProp(model, pos, heading)
+    local obj = CreateObject(model, pos.x, pos.y, pos.z, false, false, false)
+    if obj == 0 then return nil end
+    SetEntityHeading(obj, heading)
+    PlaceObjectOnGroundProperly(obj)
+    FreezeEntityPosition(obj, true)
+    SetEntityCollision(obj, false, false)   -- drive straight through the gate
+    SetEntityAsMissionEntity(obj, true, true)
+    return obj
+end
+
+local function _spawnGate(idx)
+    if GateProps[idx] then return end
+
+    local cp = CurrentCheckpoints[idx]
+    if not cp then return end
+
+    local model = _gateModelFor(idx, #CurrentCheckpoints)
+    if not IsModelInCdimage(model) then return end   -- prop not streamed yet
+
+    if not HasModelLoaded(model) then
+        RequestModel(model)
+        return   -- retry next proximity tick
+    end
+
+    local heading = _gateHeading(idx, cp)
+
+    -- Posts sit at the gate edges, not the centre. The right-hand post is
+    -- flipped 180° so both banners face the oncoming driver.
+    local left  = cp.left  and _placeGateProp(model, cp.left,  heading) or nil
+    local right = cp.right and _placeGateProp(model, cp.right, (heading + 180.0) % 360.0) or nil
+
+    -- Gates without left/right data (older tracks) fall back to the centre.
+    if not left and not right then
+        left = _placeGateProp(model, cp.coords, heading)
+    end
+
+    if left or right then
+        GateProps[idx] = { left = left, right = right }
+    end
+end
 -- ── Minimap blips ──────────────────────────────────────────────────────────
 
 local function _clearAllBlips()
@@ -190,76 +268,13 @@ Citizen.CreateThread(function()
     end
 end)
 
--- ── Particle flares (per-gate looped ptfx) ─────────────────────────────────
-
-local function _stopFlare(cpIndex)
-    local h = FlareHandles[cpIndex]
-    if not h then return end
-    if h.left  and DoesParticleFxLoopedExist(h.left)  then StopParticleFxLooped(h.left,  false) end
-    if h.right and DoesParticleFxLoopedExist(h.right) then StopParticleFxLooped(h.right, false) end
-    FlareHandles[cpIndex] = nil
-end
-
-local function _clearAllFlares()
-    for idx in pairs(FlareHandles) do
-        _stopFlare(idx)
-    end
-end
-
-local function _flareOk(cpIndex, scale)
-    local h = FlareHandles[cpIndex]
-    if not h then return false end
-    if h.scale ~= scale then return false end
-    local leftOk  = (h.left  == nil) or DoesParticleFxLoopedExist(h.left)
-    local rightOk = (h.right == nil) or DoesParticleFxLoopedExist(h.right)
-    return leftOk and rightOk
-end
-
-local function _startFlare(cpIndex, scale)
-    _stopFlare(cpIndex)
-
-    if not HasNamedPtfxAssetLoaded(PTFX_ASSET) then
-        RequestNamedPtfxAsset(PTFX_ASSET)
-        return   -- retry next proximity tick
-    end
-
-    local cp = CurrentCheckpoints[cpIndex]
-    if not cp then return end
-
-    local lh, rh
-
-    if cp.left then
-        UseParticleFxAssetNextCall(PTFX_ASSET)
-        lh = StartParticleFxLoopedAtCoord(PTFX_EFFECT,
-            cp.left.x, cp.left.y, cp.left.z,
-            0.0, 0.0, 0.0, scale, false, false, false, 0)
-        if lh == 0 then lh = nil end
-    end
-
-    if cp.right then
-        UseParticleFxAssetNextCall(PTFX_ASSET)
-        rh = StartParticleFxLoopedAtCoord(PTFX_EFFECT,
-            cp.right.x, cp.right.y, cp.right.z,
-            0.0, 0.0, 0.0, scale, false, false, false, 0)
-        if rh == 0 then rh = nil end
-    end
-
-    if lh or rh then
-        FlareHandles[cpIndex] = { left = lh, right = rh, scale = scale }
-    end
-end
-
--- Proximity thread — every 500 ms, ensure flares are lit at every CP within
--- Config.FlareRange, with the active CP at full scale and others at near scale.
+-- Proximity thread — every 500 ms, keep gate props spawned at every CP within
+-- Config.GateRange and removed beyond it.
 Citizen.CreateThread(function()
     while true do
         if _isRaceActive() and #CurrentCheckpoints > 0 then
-            if not HasNamedPtfxAssetLoaded(PTFX_ASSET) then
-                RequestNamedPtfxAsset(PTFX_ASSET)
-            end
-
             local playerPos = GetEntityCoords(PlayerPedId())
-            local range     = (Config and Config.FlareRange) or 130.0
+            local range     = (Config and Config.GateRange) or 130.0
             local range2    = range * range
 
             for i, cp in ipairs(CurrentCheckpoints) do
@@ -268,18 +283,15 @@ Citizen.CreateThread(function()
                 local dist2 = dx*dx + dy*dy
 
                 if dist2 <= range2 then
-                    local scale = (i == CurrentCPIndex) and PTFX_SCALE_NEXT or PTFX_SCALE_NEAR
-                    if not _flareOk(i, scale) then
-                        _startFlare(i, scale)
-                    end
+                    _spawnGate(i)      -- custom start / finish / checkpoint prop
                 else
-                    _stopFlare(i)
+                    _removeGate(i)
                 end
             end
 
             Citizen.Wait(500)
         else
-            _clearAllFlares()
+            _clearAllGates()
             Citizen.Wait(1000)
         end
     end
@@ -289,17 +301,13 @@ end)
 
 local function _applyActive(idx)
     _styleBlips(idx)
-    -- Invalidate flare scales so proximity thread rebuilds at new active CP
-    for k in pairs(FlareHandles) do
-        FlareHandles[k].scale = -1
-    end
 end
 
 -- ── Net events ─────────────────────────────────────────────────────────────
 
 RegisterNetEvent("SPZ:spawnCheckpoints", function(checkpoints, startIdx, trackType)
     print(string.format("[Checkpoints] Loading %d checkpoints (type: %s)", #checkpoints, trackType or "circuit"))
-    _clearAllFlares()
+    _clearAllGates()   -- drop the previous track's gate props
 
     TrackType          = trackType or "circuit"
     CurrentCheckpoints = checkpoints
@@ -307,10 +315,6 @@ RegisterNetEvent("SPZ:spawnCheckpoints", function(checkpoints, startIdx, trackTy
 
     _buildBlips(checkpoints)
     _applyActive(CurrentCPIndex)
-
-    if not HasNamedPtfxAssetLoaded(PTFX_ASSET) then
-        RequestNamedPtfxAsset(PTFX_ASSET)
-    end
 end)
 
 RegisterNetEvent("SPZ:nextCheckpoint", function(newIndex)
@@ -331,7 +335,7 @@ end)
 local function _onRaceStateChange(newState)
     RaceState = newState
     if newState == "IDLE" or newState == "CLEANUP" then
-        _clearAllFlares()
+            _clearAllGates()
         _clearAllBlips()
         CurrentCheckpoints = {}
         CurrentCPIndex     = 1
@@ -350,7 +354,7 @@ end)
 
 AddEventHandler("onResourceStop", function(res)
     if res == GetCurrentResourceName() then
-        _clearAllFlares()
+            _clearAllGates()
         _clearAllBlips()
     end
 end)
@@ -363,4 +367,36 @@ end)
 
 exports("GetRaceState", function()
     return RaceState
+end)
+
+-- ── Time Trial reuse ───────────────────────────────────────────────────────
+-- Lets spz-races/client/timetrail.lua drive the exact same visuals (custom
+-- gate props + numbered blips + GPS route) without the race state machine.
+
+exports("StartCheckpointVisuals", function(checkpoints, startIdx, trackType)
+    _clearAllGates()
+    TrackType          = trackType or "circuit"
+    CurrentCheckpoints = checkpoints or {}
+    CurrentCPIndex     = startIdx or 1
+    TTMode             = true
+    _buildBlips(CurrentCheckpoints)
+    _applyActive(CurrentCPIndex)
+end)
+
+exports("SetActiveCheckpoint", function(idx)
+    if not idx then return end
+    CurrentCPIndex = idx
+    _applyActive(CurrentCPIndex)
+end)
+
+exports("StopCheckpointVisuals", function()
+    TTMode = false
+    _clearAllGates()
+    _clearAllBlips()
+    CurrentCheckpoints = {}
+    CurrentCPIndex     = 1
+end)
+
+exports("IsCheckpointVisualsActive", function()
+    return _isRaceActive() and #CurrentCheckpoints > 0
 end)

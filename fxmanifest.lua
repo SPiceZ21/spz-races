@@ -59,6 +59,15 @@ client_scripts {
   'client/dev_heading.lua',
 }
 
+-- Custom checkpoint / start / finish props.
+-- The .ydr + .ytd stream automatically from stream/, but the .ytyp must be
+-- declared and requested as a DLC ITYP so the models resolve.
+files {
+  'stream/bzzz_checkpoint_package.ytyp',
+}
+
+data_file 'DLC_ITYP_REQUEST' 'stream/bzzz_checkpoint_package.ytyp'
+
 dependencies {
   'ox_lib',
   'spz-core',

@@ -32,6 +32,14 @@ RegisterNetEvent("SPZ:freezeRacer", function(freeze)
         FreezeEntityPosition(veh, freeze)
         SetEntityInvincible(veh, freeze)
         SetVehicleTyresCanBurst(veh, not freeze)
+        if freeze then
+            -- Kill any carried momentum while held on the grid
+            SetEntityVelocity(veh, 0.0, 0.0, 0.0)
+            SetVehicleForwardSpeed(veh, 0.0)
+        else
+            -- Release the staging handbrake at GO
+            SetVehicleHandbrake(veh, false)
+        end
     end
 end)
 
@@ -47,11 +55,20 @@ RegisterNetEvent("SPZ:tpToGrid", function(data)
     local h   = data.heading or 0.0
 
     if DoesEntityExist(veh) then
+        -- Unfreeze to move it, reposition, then kill all momentum and re-freeze
+        -- so nobody carries warmup speed onto the grid.
+        FreezeEntityPosition(veh, false)
         SetEntityCoords(veh, c.x, c.y, c.z, false, false, false, true)
         SetEntityHeading(veh, h)
+        SetEntityVelocity(veh, 0.0, 0.0, 0.0)
+        SetEntityRotation(veh, 0.0, 0.0, h, 2, true)
+        SetVehicleForwardSpeed(veh, 0.0)
+        SetVehicleHandbrake(veh, true)
+        FreezeEntityPosition(veh, true)
     else
         SetEntityCoords(ped, c.x, c.y, c.z, false, false, false, true)
         SetEntityHeading(ped, h)
+        FreezeEntityPosition(ped, true)
     end
 end)
 
