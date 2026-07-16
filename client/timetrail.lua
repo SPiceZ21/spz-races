@@ -406,7 +406,36 @@ end
 
 RegisterNetEvent("SPZ:tt:OpenMenu", function(trackList)
     print("[TimeTrial] Received OpenMenu event from server with " .. #trackList .. " tracks")
-    exports["spz-raceUI"]:TT_ShowMenu(trackList)
+
+    -- Split by type into ox_lib context submenus
+    local circuit, sprint = {}, {}
+    for _, t in ipairs(trackList) do
+        local ttype = t.type or "circuit"
+        local lapTxt = t.laps and (" · " .. t.laps .. " lap" .. (t.laps > 1 and "s" or "")) or ""
+        local opt = {
+            title       = t.name,
+            description = ttype:gsub("^%l", string.upper) .. lapTxt,
+            icon        = ttype == "sprint" and "route" or "flag-checkered",
+            onSelect    = function()
+                TriggerServerEvent("SPZ:tt:SelectTrack", t.index)
+            end,
+        }
+        if ttype == "sprint" then sprint[#sprint + 1] = opt else circuit[#circuit + 1] = opt end
+    end
+
+    lib.registerContext({ id = "tt_circuit", title = "Circuit Tracks", menu = "tt_main", options = circuit })
+    lib.registerContext({ id = "tt_sprint",  title = "Sprint Tracks",  menu = "tt_main", options = sprint })
+
+    local main = {}
+    if #circuit > 0 then
+        main[#main + 1] = { title = "Circuit", description = #circuit .. " tracks", icon = "flag-checkered", arrow = true, menu = "tt_circuit" }
+    end
+    if #sprint > 0 then
+        main[#main + 1] = { title = "Sprint", description = #sprint .. " tracks", icon = "route", arrow = true, menu = "tt_sprint" }
+    end
+
+    lib.registerContext({ id = "tt_main", title = "Time Trial — Select Track", options = main })
+    lib.showContext("tt_main")
 end)
 
 RegisterNetEvent("SPZ:tt:Begin", function(payload)
@@ -526,14 +555,8 @@ end)
 -- ── NUI callbacks ─────────────────────────────────────────────────────────────
 
 -- ── Relay events from spz-raceUI ──────────────────────────────────────────────
-
-AddEventHandler("SPZ:tt:nuiSelectTrack", function(index)
-    TriggerServerEvent("SPZ:tt:SelectTrack", index)
-end)
-
-AddEventHandler("SPZ:tt:nuiCloseMenu", function()
-    -- handled locally in raceUI for focus
-end)
+-- (track selection now uses ox_lib → SPZ:tt:SelectTrack directly; the NUI
+--  select/close relays were removed)
 
 AddEventHandler("SPZ:tt:nuiDismissResults", function()
     UI("tt_hide", {})
