@@ -535,21 +535,17 @@ RegisterNetEvent("SPZ:tt:Restarted", function(data)
 end)
 
 RegisterNetEvent("SPZ:tt:End", function(data)
-    local formatted = {}
-    for i, t in ipairs(data.lapTimes or {}) do
-        formatted[i] = { lapNum = i, label = _lapLabel(i), time = FmtTime(t), isBest = (t == data.bestLap) }
-    end
-
-    UI("tt_end", {
-        track     = data.track,
-        bestLap   = FmtTime(data.bestLap),
-        allLaps   = formatted,
-        totalLaps = data.totalLaps or 0,
-    })
-    SetNuiFocus(true, true)
+    -- Fully tear down the TT HUD/overlay (raceUI shows nothing for TT anymore)
+    exports["spz-raceUI"]:TT_Hide()
+    exports["spz-raceUI"]:SetRaceOverlayVisible(false)
+    SetNuiFocus(false, false)
     _cleanup()
 
-    lib.notify({ description = "Time Trial ended — Best lap: " .. FmtTime(data.bestLap), type = "info" })
+    local best = (data.bestLap and data.bestLap > 0) and FmtTime(data.bestLap) or "—"
+    lib.notify({
+        description = ("Time Trial ended · Best lap: %s"):format(best),
+        type = "info",
+    })
 end)
 
 -- ── NUI callbacks ─────────────────────────────────────────────────────────────
