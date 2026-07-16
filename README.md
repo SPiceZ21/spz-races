@@ -37,10 +37,17 @@
 | Client | `client/timetrail.lua`      | Time trial mode client logic                          |
 
 ## Dependencies
-- spz-lib
+- ox_lib
 - spz-core
 - spz-identity
 - spz-vehicles
+
+## Credits
+
+Checkpoint prop models by BzZzi
+
+Original release:
+https://forum.cfx.re/t/props-checkpoints/5267670
 
 ## CI
 Built and released via `.github/workflows/release.yml` on push to `main`.

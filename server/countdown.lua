@@ -56,7 +56,13 @@ function StartWarmupPhase()
         BroadcastToRacers("SPZ:warmupEnd")
         print("[Warmup] Phase complete — re-staging players on grid")
 
-        -- Re-teleport each player back to their grid slot
+        -- Freeze FIRST: freezing only after the TP left a ~2s window where
+        -- players could drive off the grid before the countdown started.
+        for src, _ in pairs(RaceSession.players) do
+            TriggerClientEvent("SPZ:freezeRacer", src, true)
+        end
+
+        -- Re-teleport each player back to their grid slot (still frozen)
         for src, data in pairs(RaceSession.players) do
             if data.gridCoords then
                 TriggerClientEvent("SPZ:tpToGrid", src, {
@@ -66,10 +72,9 @@ function StartWarmupPhase()
             end
         end
 
-        -- Wait for client-side TP to settle before freezing
+        -- Wait for the client-side TP to settle, then re-assert the freeze
+        -- (the teleport can knock the vehicle loose on some clients)
         Citizen.Wait(1500)
-
-        -- Freeze everyone at their grid position
         for src, _ in pairs(RaceSession.players) do
             TriggerClientEvent("SPZ:freezeRacer", src, true)
         end
