@@ -1,9 +1,10 @@
 -- server/cleanup.lua
 
--- 16.2 Cycle Logic
-local function NextCycleType()
+-- 16.2 Cycle Logic (global: intermission.lua announces the next type before
+-- cleanup has bumped the cycle counter, so it passes the count explicitly)
+function NextCycleType(count)
     local cycleOrder = Config.CycleOrder or { "circuit", "sprint" }
-    local index = (RaceSession.cycleCount % #cycleOrder) + 1
+    local index = ((count or RaceSession.cycleCount) % #cycleOrder) + 1
     return cycleOrder[index]
 end
 
@@ -83,10 +84,8 @@ function RunRaceCleanup(results)
     -- Broadcast queue update so UIs reflect the reset
     if BroadcastQueueUpdate then BroadcastQueueUpdate() end
 
-    -- Trigger intermission period (players re-join explicitly with [E])
-    if StartIntermission then
-        StartIntermission(results)
-    end
+    -- Intermission is NOT started here: it runs overlapped with the results
+    -- screen and was already started by the ENDED handler in state_machine.lua.
 end
 
 -- Export for state machine integration

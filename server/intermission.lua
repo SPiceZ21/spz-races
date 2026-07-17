@@ -1,7 +1,11 @@
 -- server/intermission.lua
 
 -- 17. Intermission logic
--- This handles the cooldown between races and re-inviting players to the next cycle.
+-- Runs OVERLAPPED with the post-race results screen: StartIntermission is
+-- called by the ENDED handler the moment results are broadcast, so the
+-- between-races countdown ticks while finishers are still reading their stats.
+-- Cleanup (TP back, bucket teardown) happens mid-intermission at the
+-- ResultsDisplayTime mark — see state_machine.lua.
 function StartIntermission(results)
     local lastResults = {}
     if results and results.finishers then
@@ -15,24 +19,38 @@ function StartIntermission(results)
         end
     end
 
+    -- Cleanup hasn't bumped the cycle counter yet — announce the next type
+    -- from the upcoming count so the HUD matches what cleanup will pick.
+    local nextType = NextCycleType and NextCycleType((RaceSession.cycleCount or 0) + 1) or "circuit"
+
+    -- Block the idle polling loop for the whole window. Cleanup re-asserts
+    -- this after it resets RaceSession; the end of the timer clears it.
+    RaceSession.intermissionActive = true
+
     local playersInQueue = exports["spz-races"]:GetQueueCount()
 
-    print(string.format("[Race Engine] Starting %ds intermission. Next race type: %s", 
-        Config.IntermissionTime or 60, RaceSession.raceType or "unknown"))
+    -- The countdown must outlive the results screen, or the end-callback would
+    -- unblock the idle loop before cleanup re-blocks it and wedge the engine.
+    local seconds = math.max(
+        Config.IntermissionTime or 30,
+        math.ceil((Config.ResultsDisplayTime or 12000) / 1000) + 5
+    )
+
+    print(string.format("[Race Engine] Starting %ds intermission (overlapped with results). Next race type: %s",
+        seconds, nextType))
 
     -- 17.1 Broadcast start event to all clients for HUD countdowns
     TriggerClientEvent("SPZ:intermissionStart", -1, {
-        seconds        = Config.IntermissionTime or 60,
-        nextType       = RaceSession.raceType or "circuit",
+        seconds        = seconds,
+        nextType       = nextType,
         lastResults    = lastResults,
         playersInQueue = playersInQueue
     })
 
-    -- 17.2 Wait for intermission duration before re-showing the choice screen
-    local delayMs = (Config.IntermissionTime or 60) * 1000
-    
-    Citizen.SetTimeout(delayMs, function()
-        print("[Race Engine] Intermission over. Queue is open — idle loop will start poll when players are ready.")
+    -- 17.2 When the window ends, reopen the queue and arm the join window
+    -- immediately — no waiting for the 5s idle-loop watchdog.
+    Citizen.SetTimeout(seconds * 1000, function()
+        print("[Race Engine] Intermission over. Queue is open.")
         RaceSession.intermissionActive = false
 
         -- NO auto re-queue of last race's participants: every race requires an
@@ -41,8 +59,12 @@ function StartIntermission(results)
         if FlushPendingToQueue then FlushPendingToQueue() end
 
         BroadcastQueueUpdate()
+
+        if GetQueueCount() >= 1 then
+            ArmJoinWindow()
+        end
     end)
 end
 
--- Exported for internal engine use during the cleanup phase
+-- Called by the ENDED handler in state_machine.lua (overlapped with results)
 exports("StartIntermission", StartIntermission)

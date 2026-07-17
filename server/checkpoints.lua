@@ -21,6 +21,18 @@ local function HandleFinish(source, pData)
 
     TriggerClientEvent("SPZ:raceFinished", source, pData.finish_time, pData.personal_best)
 
+    -- First finisher arms the finish window for everyone still driving
+    if not RaceSession.finishWindowArmed then
+        RaceSession.finishWindowArmed = true
+        StartFinishWindow()
+    end
+
+    -- Sprints have no laps — the whole run is the "lap" for raceline storage.
+    -- (Circuit laps were already handed over at each lap boundary.)
+    if track.type ~= "circuit" and GetResourceState("spz-raceline") == "started" then
+        TriggerEvent("spz-raceline:lapCompleted", source, track.name, pData.finish_time)
+    end
+
     if UpdateAllPositions then UpdateAllPositions() end
     CheckAllFinished()
 end
@@ -49,6 +61,12 @@ local function HandleCheckpointAdvance(source, pData)
 
             print(string.format("[Race] %s lap %d done in %d ms", pData.name, pData.current_lap - 1, lapTime))
             TriggerClientEvent("SPZ:lapComplete", source, pData.current_lap - 1, lapTime)
+
+            -- spz-raceline stores the driven line iff this lap beats the
+            -- player's stored best for the track (server-measured time).
+            if GetResourceState("spz-raceline") == "started" then
+                TriggerEvent("spz-raceline:lapCompleted", source, track.name, lapTime)
+            end
 
             if pData.current_lap > track.laps then
                 -- All laps done — wait for the start/finish cross
