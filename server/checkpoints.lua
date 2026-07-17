@@ -40,6 +40,7 @@ local function HandleCheckpointAdvance(source, pData)
             pData.current_cp      = 1
             pData.current_lap     = pData.current_lap + 1
             pData.lap_start_time  = now
+            StartSectorClock(pData, now)
 
             table.insert(pData.lap_times, lapTime)
             if not pData.best_lap or lapTime < pData.best_lap then
@@ -88,7 +89,11 @@ RegisterNetEvent("SPZ:checkpointHit", function(cpIndex)
     end
 
     -- Record the time this CP was hit (used by the idle-kick watchdog below)
-    pData.last_cp_time = GetGameTimer()
+    local now = GetGameTimer()
+    pData.last_cp_time = now
+
+    -- Must run before current_cp advances: sectors close on the CP just hit.
+    RecordSectorHit(src, pData, cpIndex, now)
 
     pData.current_cp = pData.current_cp + 1
     HandleCheckpointAdvance(src, pData)

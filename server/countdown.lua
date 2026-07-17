@@ -174,6 +174,14 @@ function StartCountdownSequence()
 
         -- ── GO ─────────────────────────────────────────────────────────
         RaceSession.startTime = GetGameTimer()
+
+        -- Sector clocks start with the race clock, not on the first CP hit.
+        ResetSessionSectors()
+        for source, pData in pairs(RaceSession.players) do
+            InitPlayerSectors(source, pData, RaceSession.track.name, RaceSession.carClassId)
+            StartSectorClock(pData, RaceSession.startTime)
+        end
+
         BroadcastToRacers("SPZ:go")
         print("[Countdown] RACE LIVE")
 

@@ -27,6 +27,8 @@ function ProcessRaceResults()
                 finish_time   = pData.finish_time,
                 lap_times     = pData.lap_times or {},  -- circuit only
                 best_lap      = pData.best_lap,         -- circuit only
+                sector_times  = pData.sector_times or {},
+                best_sectors  = pData.best_sectors or {},
                 personal_best = pData.personal_best or false,
                 cleanRace     = pData.cleanRace or true, -- Placeholder: assume clean
                 collisions    = pData.collisions or {},  -- Placeholder: empty
