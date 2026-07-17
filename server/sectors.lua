@@ -129,5 +129,77 @@ function RecordSectorHit(source, pData, cpIndex, now)
     })
 end
 
+-- ── Time-trial sectors ────────────────────────────────────────────────────────
+-- TT runs outside RaceSession (own routing bucket, own session table in
+-- timetrail.lua), so it gets its own entry points operating on that table.
+-- Sector PBs are stored under car class -1: TT allows any car, so its times
+-- must not pollute the class-scoped race sector bests.
+
+local TT_CLASS = -1
+
+function TT_InitSectors(source, s)
+    s.best_sectors = {}   -- fastest this TT session, per sector
+    s.pb_sectors   = {}
+    s.sector_start = nil
+
+    local trackName = s.track and s.track.name
+    if not trackName then return end
+    CreateThread(function()
+        local pbs = LoadSectorPBs(source, trackName, TT_CLASS)
+        for sector, ms in pairs(pbs) do
+            if s.pb_sectors[sector] == nil then
+                s.pb_sectors[sector] = ms
+            end
+        end
+    end)
+end
+
+function TT_StartSectorClock(s, atTime)
+    s.sector_start = atTime
+end
+
+function TT_RecordSectorHit(source, s, cpIndex, now)
+    local track = s.track
+    if not track or not s.best_sectors then return end
+
+    local sector = SPZ.IsSectorEnd(track, cpIndex)
+    if not sector then return end
+
+    local startedAt = s.sector_start or s.lapStart
+    if not startedAt then return end
+
+    local ms = now - startedAt
+    s.sector_start = now
+
+    local ownBest = s.best_sectors[sector]
+    local pb      = s.pb_sectors[sector]
+    local isOwnBest = (ownBest == nil) or (ms < ownBest)
+    local isPB      = (pb == nil) or (ms < pb)
+
+    if isOwnBest then s.best_sectors[sector] = ms end
+
+    -- Solo context: purple = beats the stored all-time PB, green = best of
+    -- this TT session, yellow = slower than both.
+    local colour = isPB and "purple" or (isOwnBest and "green" or "yellow")
+
+    local ref   = ownBest or pb
+    local delta = ref and (ms - ref) or nil
+
+    if isPB then
+        s.pb_sectors[sector] = ms
+        CreateThread(function()
+            SaveSectorPB(source, track.name, TT_CLASS, sector, ms)
+        end)
+    end
+
+    TriggerClientEvent("SPZ:sectorComplete", source, {
+        sector   = sector,
+        time     = ms,
+        colour   = colour,
+        delta    = delta,
+        personal = s.best_sectors[sector],
+    })
+end
+
 exports("RecordSectorHit", RecordSectorHit)
 exports("GetSessionBestSectors", function() return SessionBest end)

@@ -49,10 +49,17 @@ Config.RaceAssists = {
   lc  = true,
 }
 -- ── Post-race ──────────────────────────────────────────────────────────────
-Config.ResultsDisplayTime   = 15000   -- ms stats screen shown before TP back
+Config.ResultsDisplayTime   = 12000   -- ms stats screen shown before TP back
+
+-- Armed by the FIRST finisher: everyone still driving gets this long to cross
+-- the line, then they're force-DNF'd and results fire. Stops the podium from
+-- waiting minutes on cruisers (the 120s idle-kick only catches AFK, not slow).
+Config.FinishWindowSeconds  = 180
 
 -- ── Intermission ───────────────────────────────────────────────────────────
-Config.IntermissionTime     = 60      -- seconds between races
+-- Runs OVERLAPPED with the results screen: the countdown starts the moment
+-- results appear, not after they close.
+Config.IntermissionTime     = 30      -- seconds between races
 
 -- ── Grid ───────────────────────────────────────────────────────────────────
 -- Passed to SPZ.Math.GridPositions

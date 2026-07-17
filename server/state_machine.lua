@@ -47,10 +47,13 @@ AddStateBagChangeHandler("raceState", "global", function(bagName, key, value)
         end)
 
     elseif value == SPZ.RaceState.ENDED then
-        -- All racers finished or DNF → process results, show screen, then clean up.
+        -- All racers finished or DNF → results and intermission start TOGETHER
+        -- (the between-races countdown ticks while finishers read their stats);
+        -- cleanup TPs everyone back when the results screen closes.
         Citizen.CreateThread(function()
             local results = ProcessRaceResults()
-            Citizen.Wait(Config.ResultsDisplayTime or 15000)
+            StartIntermission(results)
+            Citizen.Wait(Config.ResultsDisplayTime or 12000)
             RunRaceCleanup(results)
         end)
     end

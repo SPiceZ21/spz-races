@@ -68,6 +68,50 @@ function CheckAllFinished()
     end
 end
 
+-- ── Finish window ─────────────────────────────────────────────────────────────
+-- Armed by the first finisher. Stragglers get Config.FinishWindowSeconds to
+-- cross the line; when it expires they're DNF'd so results never wait on them.
+
+local function NotifyUnfinished(msg, ntype)
+    for src, p in pairs(RaceSession.players) do
+        if not p.finished and not p.dnf then
+            TriggerClientEvent("ox_lib:notify", src, {
+                title = "Race", description = msg, type = ntype or "warning",
+            })
+        end
+    end
+end
+
+function StartFinishWindow()
+    local raceId = RaceSession.raceId
+    local total  = Config.FinishWindowSeconds or 180
+
+    NotifyUnfinished(("Leader finished — cross the line within %d:%02d or DNF")
+        :format(math.floor(total / 60), total % 60))
+
+    CreateThread(function()
+        local remaining = total
+        while remaining > 0 do
+            Wait(1000)
+            -- Race ended naturally or a new session started: stand down
+            if RaceSession.raceId ~= raceId or RaceSession.state ~= SPZ.RaceState.LIVE then
+                return
+            end
+            remaining = remaining - 1
+            if remaining == 60 or remaining == 30 or remaining == 10 then
+                NotifyUnfinished(("%d seconds left to finish!"):format(remaining), "error")
+            end
+        end
+
+        print("[Race Engine] Finish window expired — DNF'ing stragglers.")
+        for src, p in pairs(RaceSession.players) do
+            if not p.finished and not p.dnf then
+                MarkDNF(src, "finish_timeout")
+            end
+        end
+    end)
+end
+
 -- mid-race disconnects are handled in server/main.lua to centralized drop events
 -- but we export MarkDNF for it to use.
 

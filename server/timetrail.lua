@@ -74,6 +74,8 @@ RegisterNetEvent("SPZ:tt:SelectTrack", function(trackIndex)
         lastCpTime = GetGameTimer(),
     }
 
+    TT_InitSectors(src, TT[src])
+
     TriggerClientEvent("SPZ:tt:Begin", src, {
         track      = track,
         trackIndex = trackIndex,
@@ -99,6 +101,7 @@ RegisterNetEvent("SPZ:tt:cpHit", function(cpIndex)
         s.lapStart   = now
         s.currentCp  = totalCPs > 1 and 2 or 1  -- single-CP edge-case guard
         s.phase      = "ACTIVE"
+        TT_StartSectorClock(s, now)
 
         local label = _lapLabel(s.currentLap)
         TriggerClientEvent("SPZ:tt:LapStarted", src, { lap = s.currentLap, label = label })
@@ -110,6 +113,12 @@ RegisterNetEvent("SPZ:tt:cpHit", function(cpIndex)
     if cpIndex == 1 and s.phase == "ACTIVE" then
         -- player is going the wrong way or shortcutting — silently ignore
         return
+    end
+
+    -- Sector close check on every mid-lap CP (incl. the final one). Runs
+    -- before the advance so the sector clock stops at the CP just hit.
+    if s.phase == "ACTIVE" then
+        TT_RecordSectorHit(src, s, cpIndex, now)
     end
 
     -- ── Intermediate / final CP advance ──────────────────────────────────────
@@ -126,7 +135,7 @@ RegisterNetEvent("SPZ:tt:cpHit", function(cpIndex)
         -- Hand the lap to spz-raceline: it stores the driven line iff this
         -- server-measured time beats the player's stored best for the track.
         if GetResourceState("spz-raceline") == "started" then
-            TriggerEvent("spz-raceline:tt:lapCompleted", src, track.name, lapTime)
+            TriggerEvent("spz-raceline:lapCompleted", src, track.name, lapTime)
         end
 
         TriggerClientEvent("SPZ:tt:LapComplete", src, {

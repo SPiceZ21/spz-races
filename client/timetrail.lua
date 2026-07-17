@@ -281,6 +281,9 @@ RegisterNetEvent("SPZ:tt:LapStarted", function(data)
         lapLabel = data.label,
         bestLap  = FmtTime(TTBestLap),
     })
+    if GetResourceState("spz-raceUI") == "started" then
+        exports["spz-raceUI"]:ResetSectors()
+    end
     PlaySoundFrontend(-1, "CHECKPOINT_UNDER_THE_BRIDGE_STUNT", "HUD_MINI_GAME_SOUNDSET", 1)
 end)
 

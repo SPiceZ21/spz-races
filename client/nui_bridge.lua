@@ -67,6 +67,7 @@ RegisterNetEvent("SPZ:go", function()
     if GetResourceState("spz-raceUI") ~= "started" then return end
     exports["spz-raceUI"]:ShowCountdown({ isGo = true })
     exports["spz-raceUI"]:SetRaceOverlayVisible(true)
+    exports["spz-raceUI"]:ResetSectors()
 end)
 
 RegisterNetEvent("SPZ:stagingEnd", function() end)
