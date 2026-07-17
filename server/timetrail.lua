@@ -123,6 +123,12 @@ RegisterNetEvent("SPZ:tt:cpHit", function(cpIndex)
         table.insert(s.lapTimes, lapTime)
         if not s.bestLap or lapTime < s.bestLap then s.bestLap = lapTime end
 
+        -- Hand the lap to spz-raceline: it stores the driven line iff this
+        -- server-measured time beats the player's stored best for the track.
+        if GetResourceState("spz-raceline") == "started" then
+            TriggerEvent("spz-raceline:tt:lapCompleted", src, track.name, lapTime)
+        end
+
         TriggerClientEvent("SPZ:tt:LapComplete", src, {
             lapNum    = completedN,
             label     = _lapLabel(completedN),
