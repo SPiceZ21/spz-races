@@ -12,6 +12,7 @@ shared_scripts {
   'shared/race_states.lua',
   'shared/events.lua',
   'shared/points.lua',
+  'shared/sectors.lua',
 }
 
 server_scripts {
@@ -25,6 +26,7 @@ server_scripts {
   'server/world.lua',
   'server/no_collision.lua',
   'server/countdown.lua',
+  'server/sectors.lua',
   'server/checkpoints.lua',
   -- 'server/timing.lua',
   'server/positions.lua',

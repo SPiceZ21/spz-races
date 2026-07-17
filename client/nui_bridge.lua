@@ -188,11 +188,17 @@ RegisterNetEvent("SPZ:nextCheckpoint", function(cpIndex)
     exports["spz-raceUI"]:UpdateRaceOverlay({ checkpoint = cpIndex })
 end)
 
+RegisterNetEvent("SPZ:sectorComplete", function(data)
+    if GetResourceState("spz-raceUI") ~= "started" then return end
+    exports["spz-raceUI"]:UpdateSector(data)
+end)
+
 RegisterNetEvent("SPZ:lapComplete", function(lapNum, lapTime)
     if GetResourceState("spz-raceUI") ~= "started" then return end
     if lapTime and (clientBestLap == nil or clientBestLap == 0 or lapTime < clientBestLap) then
         clientBestLap = lapTime
     end
+    exports["spz-raceUI"]:ResetSectors()
     exports["spz-raceUI"]:UpdateRaceOverlay({
         lapNum      = lapNum + 1,
         checkpoint  = 1,
