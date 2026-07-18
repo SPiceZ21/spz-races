@@ -65,7 +65,10 @@ RegisterNetEvent("SPZ:tt:SelectTrack", function(trackIndex)
         source     = src,
         track      = track,
         bucketId   = bid,
-        phase      = "PRE_START",  -- PRE_START → ACTIVE → BETWEEN_LAPS → ACTIVE …
+        -- AWAIT_READY → (player presses E) → PRE_START → ACTIVE → BETWEEN_LAPS …
+        -- The spawn point sits inside CP1's radius, so without the ready gate
+        -- the lap would arm the instant the teleport lands.
+        phase      = "AWAIT_READY",
         currentLap = 0,
         currentCp  = 1,
         lapStart   = nil,
@@ -88,6 +91,7 @@ RegisterNetEvent("SPZ:tt:cpHit", function(cpIndex)
     local src = source
     local s   = TT[src]
     if not s then return end
+    if s.phase == "AWAIT_READY" then return end -- gate: nothing counts until ready
     if cpIndex ~= s.currentCp then return end  -- order validation
 
     local track    = s.track
@@ -148,9 +152,10 @@ RegisterNetEvent("SPZ:tt:cpHit", function(cpIndex)
         })
 
         if track.type == "sprint" then
-            -- Sprint: reset back to start for next attempt
+            -- Sprint: reset back to start for next attempt (ready gate again —
+            -- the TP-back lands inside CP1's radius)
             s.currentCp = 1
-            s.phase     = "PRE_START"
+            s.phase     = "AWAIT_READY"
             TriggerClientEvent("SPZ:tt:SprintReset", src, {
                 lap   = s.currentLap + 1,
                 label = _lapLabel(s.currentLap + 1),
@@ -176,8 +181,8 @@ RegisterNetEvent("SPZ:tt:Restart", function()
     local s   = TT[src]
     if not s then return end
 
-    -- Abandon current in-progress lap, reset to pre-start
-    s.phase     = "PRE_START"
+    -- Abandon current in-progress lap, back behind the ready gate
+    s.phase     = "AWAIT_READY"
     s.currentCp = 1
     s.lapStart  = nil
 
@@ -185,6 +190,18 @@ RegisterNetEvent("SPZ:tt:Restart", function()
         lapsDone = #s.lapTimes,
         bestLap  = s.bestLap,
     })
+end)
+
+-- ── Net: player is ready — arm the run ───────────────────────────────────────
+
+RegisterNetEvent("SPZ:tt:Ready", function()
+    local src = source
+    local s   = TT[src]
+    if not s or s.phase ~= "AWAIT_READY" then return end
+
+    s.phase      = "PRE_START"
+    s.lastCpTime = GetGameTimer()
+    TriggerClientEvent("SPZ:tt:Armed", src)
 end)
 
 -- ── /quittt ───────────────────────────────────────────────────────────────────

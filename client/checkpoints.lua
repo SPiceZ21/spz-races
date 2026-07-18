@@ -76,18 +76,30 @@ local function _isRaceActive()
 end
 
 -- ── Custom gate props (streamed from stream/, declared in fxmanifest) ───────
-local PROP_START      = `bzzz_start_a`
-local PROP_FINISH     = `bzzz_finish_a`
-local PROP_CHECKPOINT = `bzzz_checkpoint_a`
+-- Each gate has two variants: "_a" while the checkpoint is still ahead of you,
+-- "_b" once you have crossed it. Swapping the prop is the visual confirmation
+-- that the checkpoint registered.
+local PROP_START      = { pending = `bzzz_start_a`,      cleared = `bzzz_start_b`      }
+local PROP_FINISH     = { pending = `bzzz_finish_a`,     cleared = `bzzz_finish_b`     }
+local PROP_CHECKPOINT = { pending = `bzzz_checkpoint_a`, cleared = `bzzz_checkpoint_b` }
 
-local GateProps = {}   -- [cpIndex] = { left = handle, right = handle }
+local GateProps = {}   -- [cpIndex] = { left = handle, right = handle, cleared = bool }
 
-local function _gateModelFor(idx, total)
+local function _gateModelFor(idx, total, cleared)
     -- Circuit: CP1 is the shared start/finish line → start post.
     -- Sprint: CP1 = start, last CP = finish, everything else = checkpoint.
-    if idx == 1 then return PROP_START end
-    if idx == _finishIdx(total) then return PROP_FINISH end
-    return PROP_CHECKPOINT
+    local set
+    if idx == 1 then set = PROP_START
+    elseif idx == _finishIdx(total) then set = PROP_FINISH
+    else set = PROP_CHECKPOINT end
+    return cleared and set.cleared or set.pending
+end
+
+-- A checkpoint is "cleared" once the active index has moved past it. On
+-- circuits CurrentCPIndex resets to 1 each lap, so every gate flips back to
+-- its pending variant for the new lap automatically.
+local function _isCleared(idx)
+    return idx < CurrentCPIndex
 end
 
 local function _removeGate(idx)
@@ -126,18 +138,35 @@ local function _placeGateProp(model, pos, heading)
 end
 
 local function _spawnGate(idx)
-    if GateProps[idx] then return end
+    local cleared  = _isCleared(idx)
+    local existing = GateProps[idx]
+
+    -- Already spawned in the correct variant? Nothing to do.
+    if existing and existing.cleared == cleared then return end
 
     local cp = CurrentCheckpoints[idx]
     if not cp then return end
 
-    local model = _gateModelFor(idx, #CurrentCheckpoints)
-    if not IsModelInCdimage(model) then return end   -- prop not streamed yet
+    local model = _gateModelFor(idx, #CurrentCheckpoints, cleared)
+
+    -- Validate BEFORE tearing down the old prop. If the requested variant is
+    -- missing from the .ytyp (e.g. the "_b" archetypes were never declared),
+    -- keep whatever is standing rather than leaving an empty gate.
+    if not IsModelInCdimage(model) then
+        if cleared and existing then
+            existing.cleared = true   -- stop retrying every tick
+            print(("[Checkpoints] Gate variant missing from .ytyp: %s — keeping current prop"):format(model))
+        end
+        return
+    end
 
     if not HasModelLoaded(model) then
         RequestModel(model)
         return   -- retry next proximity tick
     end
+
+    -- Model is confirmed available: safe to swap now.
+    if existing then _removeGate(idx) end
 
     local heading = _gateHeading(idx, cp)
 
@@ -152,8 +181,21 @@ local function _spawnGate(idx)
     end
 
     if left or right then
-        GateProps[idx] = { left = left, right = right }
+        GateProps[idx] = { left = left, right = right, cleared = cleared }
     end
+end
+
+-- Re-evaluate every spawned gate against the active checkpoint index. Called
+-- the moment the index changes so the prop swaps immediately behind the player
+-- instead of waiting for the next 500 ms proximity tick.
+local function _refreshGates()
+    -- Collect first: _spawnGate removes and re-adds the key, and adding keys
+    -- during a pairs() traversal is undefined in Lua.
+    local stale = {}
+    for idx, g in pairs(GateProps) do
+        if g.cleared ~= _isCleared(idx) then stale[#stale + 1] = idx end
+    end
+    for _, idx in ipairs(stale) do _spawnGate(idx) end
 end
 -- ── Minimap blips ──────────────────────────────────────────────────────────
 
@@ -301,6 +343,7 @@ end)
 
 local function _applyActive(idx)
     _styleBlips(idx)
+    _refreshGates()   -- swap crossed gates to their "_b" (cleared) variant
 end
 
 -- ── Net events ─────────────────────────────────────────────────────────────
@@ -400,3 +443,21 @@ end)
 exports("IsCheckpointVisualsActive", function()
     return _isRaceActive() and #CurrentCheckpoints > 0
 end)
+
+-- ── Diagnostics ────────────────────────────────────────────────────────────
+-- Verifies every gate archetype resolves. If a "_b" variant reports MISSING,
+-- it is not declared in stream/bzzz_checkpoint_package.ytyp and the gate will
+-- stay on its "_a" prop after being crossed.
+RegisterCommand("checkgateprops", function()
+    local models = {
+        "bzzz_start_a",      "bzzz_start_b",
+        "bzzz_finish_a",     "bzzz_finish_b",
+        "bzzz_checkpoint_a", "bzzz_checkpoint_b",
+    }
+    print("[Checkpoints] Gate prop availability:")
+    for _, name in ipairs(models) do
+        local hash = GetHashKey(name)
+        print(("  %-20s %s"):format(name,
+            IsModelInCdimage(hash) and "^2OK^7" or "^1MISSING from .ytyp^7"))
+    end
+end, false)

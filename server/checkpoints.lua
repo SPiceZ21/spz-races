@@ -128,7 +128,9 @@ Citizen.CreateThread(function()
             local cutoff = GetGameTimer() - (Config.IdleKickMs or 120000)
 
             for src, pData in pairs(RaceSession.players) do
-                if not pData.finished and not pData.dnf then
+                -- .disconnected racers are managed by the reconnect window,
+                -- not the idle kick (their CP clock is legitimately stalled)
+                if not pData.finished and not pData.dnf and not pData.disconnected then
                     local lastHit = pData.last_cp_time or RaceSession.startTime or 0
                     if lastHit < cutoff then
                         print(string.format("[Idle-Kick] %s (%d) timed out — no CP in %d s",

@@ -91,6 +91,75 @@ local function _tpToStart(gracePeriodMs)
     TTReadyAt = GetGameTimer() + (gracePeriodMs or 1500)
 end
 
+-- ── Ready gate ────────────────────────────────────────────────────────────────
+-- The TP lands inside CP1's radius, so runs must not arm until the player says
+-- so: freeze at the line, wait for E, then a 3-2-1 standing start.
+
+local TTAwaitReady = false
+local TTGateGen    = 0     -- invalidates stale gate threads on re-entry
+
+local function _setFrozen(on)
+    local ped = PlayerPedId()
+    local veh = GetVehiclePedIsIn(ped)
+    FreezeEntityPosition(veh ~= 0 and veh or ped, on)
+    if not on and veh ~= 0 then
+        SetVehicleEngineOn(veh, true, true, false)
+    end
+end
+
+local function _enterReadyGate()
+    TTAwaitReady = true
+    TTGateGen    = TTGateGen + 1
+    local gen    = TTGateGen
+
+    _setFrozen(true)
+    UI("tt_lap_started", {
+        lap      = TTLapNum,
+        lapLabel = "PRESS [E] WHEN READY",
+        bestLap  = FmtTime(TTBestLap),
+    })
+
+    CreateThread(function()
+        while TTAwaitReady and TTActive and gen == TTGateGen do
+            if IsControlJustPressed(0, 38) then   -- E
+                TTAwaitReady = false
+                TriggerServerEvent("SPZ:tt:Ready")
+                break
+            end
+            Wait(0)
+        end
+    end)
+end
+
+local function _leaveReadyGate()
+    TTAwaitReady = false
+    TTGateGen    = TTGateGen + 1
+    _setFrozen(false)
+end
+
+-- Server armed the run: 3-2-1, then release. Standing on the line means CP1
+-- registers the moment the car moves — a proper standing start.
+RegisterNetEvent("SPZ:tt:Armed", function()
+    CreateThread(function()
+        for i = 3, 1, -1 do
+            UI("tt_lap_started", {
+                lap      = TTLapNum,
+                lapLabel = tostring(i),
+                bestLap  = FmtTime(TTBestLap),
+            })
+            PlaySoundFrontend(-1, "3_2_1", "HUD_MINI_GAME_SOUNDSET", 1)
+            Wait(1000)
+        end
+        UI("tt_lap_started", {
+            lap      = TTLapNum,
+            lapLabel = "GO!",
+            bestLap  = FmtTime(TTBestLap),
+        })
+        PlaySoundFrontend(-1, "GO", "HUD_MINI_GAME_SOUNDSET", 1)
+        _setFrozen(false)
+    end)
+end)
+
 -- ── Restart logic ─────────────────────────────────────────────────────────────
 
 local function _cancelRestart()
@@ -109,9 +178,10 @@ local function _executeRestart()
 
     TriggerServerEvent("SPZ:tt:Restart")
     UI("tt_restart_done", {
-        lapLabel = "DRIVE TO THE START LINE",
+        lapLabel = "PRESS [E] WHEN READY",
         bestLap  = FmtTime(TTBestLap),
     })
+    SetTimeout(600, _enterReadyGate)
     PlaySoundFrontend(-1, "BACK", "HUD_FRONTEND_DEFAULT_SOUNDSET", 1)
 end
 
@@ -157,7 +227,8 @@ end)
 
 Citizen.CreateThread(function()
     while true do
-        if TTActive and TTTrack and not TTRestartActive and GetGameTimer() >= TTReadyAt then
+        if TTActive and TTTrack and not TTRestartActive and not TTAwaitReady
+        and GetGameTimer() >= TTReadyAt then
             local cp = TTTrack.checkpoints[TTCpIndex]
             if cp then
                 local pos   = GetEntityCoords(PlayerPedId())
@@ -197,6 +268,7 @@ end)
 -- ── Full cleanup ──────────────────────────────────────────────────────────────
 
 local function _cleanup()
+    _leaveReadyGate()   -- unfreeze + kill any pending gate thread
     TTActive        = false
     TTTrack         = nil
     TTCpIndex       = 1
@@ -261,14 +333,17 @@ RegisterNetEvent("SPZ:tt:Begin", function(payload)
     UI("tt_hud_show", {
         track      = track.name,
         trackType  = track.type,
-        lapLabel   = "DRIVE TO THE START LINE",
+        lapLabel   = "PRESS [E] WHEN READY",
         bestLap    = nil,
         cpIndex    = 1,
         cpTotal    = #track.checkpoints,
         restartKey = TT_RESTART_KEY,
     })
 
-    lib.notify({ description = "Time Trial — " .. track.name .. " | Drive through the start gate!", type = "info" })
+    -- Let the TP settle before freezing at the line
+    SetTimeout(600, _enterReadyGate)
+
+    lib.notify({ description = "Time Trial — " .. track.name .. " | Press E to start", type = "info" })
 end)
 
 RegisterNetEvent("SPZ:tt:LapStarted", function(data)
@@ -326,6 +401,7 @@ RegisterNetEvent("SPZ:tt:SprintReset", function()
     Citizen.Wait(2500)
     _tpToStart(1500)
     _startVisuals(TTTrack.checkpoints, 1, TTTrack.type)
+    SetTimeout(600, _enterReadyGate)
 end)
 
 -- Server confirmed the restart reset
