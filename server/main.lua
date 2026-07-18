@@ -55,6 +55,7 @@ function CreatePlayerRaceData(src)
     return {
         source          = src,
         name            = GetPlayerName(src),
+        identifier      = GetPlayerIdentifierByType(src, 'license'),  -- reconnect matching
         crew_tag        = nil,
         license_tier    = 1,
         current_lap     = 1,
@@ -67,6 +68,7 @@ function CreatePlayerRaceData(src)
         finished        = false,
         dnf             = false,
         voted           = false,
+        incidents       = {},    -- world impacts reported by the client during LIVE
         race_start_time = nil,
         gridIndex       = 0,
         gridCoords      = nil,   -- set by world.lua after spawn
@@ -166,6 +168,13 @@ AddEventHandler("playerDropped", function()
         [SPZ.RaceState.COUNTDOWN] = true,
         [SPZ.RaceState.LIVE]      = true,
     }
+
+    if RaceSession.state == SPZ.RaceState.LIVE
+    and HoldForReconnect and HoldForReconnect(src, pData) then
+        -- Slot held: the reconnect window in server/reconnect.lua either
+        -- restores them or DNFs them when it expires.
+        return
+    end
 
     if activePhases[RaceSession.state] then
         MarkDNF(src, "disconnect")

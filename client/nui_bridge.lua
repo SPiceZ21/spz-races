@@ -189,6 +189,20 @@ RegisterNetEvent("SPZ:nextCheckpoint", function(cpIndex)
     exports["spz-raceUI"]:UpdateRaceOverlay({ checkpoint = cpIndex })
 end)
 
+RegisterNetEvent("SPZ:racerDisconnected", function(data)
+    lib.notify({
+        title = "Race", type = "warning",
+        description = ("%s disconnected — slot held for %ds"):format(data.name or "A racer", data.window or 60),
+    })
+end)
+
+RegisterNetEvent("SPZ:racerReconnected", function(data)
+    lib.notify({
+        title = "Race", type = "success",
+        description = ("%s reconnected and is back in the race"):format(data.name or "A racer"),
+    })
+end)
+
 RegisterNetEvent("SPZ:sectorComplete", function(data)
     if GetResourceState("spz-raceUI") ~= "started" then return end
     exports["spz-raceUI"]:UpdateSector(data)
@@ -268,6 +282,8 @@ RegisterNetEvent("SPZ:raceEnd", function(results)
                 math.floor(myResult.best_lap / 60000),
                 (myResult.best_lap % 60000) / 1000)
             or "N/A",
+        incidents  = myResult.collisions and #myResult.collisions or 0,
+        cleanRace  = myResult.cleanRace or false,
     }
 end)
 
@@ -288,6 +304,8 @@ RegisterNetEvent("SPZ:progressionUpdate", function(data)
         safetyRatingDelta   = data.srDelta or 0,
         level               = data.level or 1,
         levelUp             = data.levelUp or false,
+        incidents           = _pendingStats.incidents,
+        cleanRace           = _pendingStats.cleanRace,
     })
     _pendingStats = nil
 end)

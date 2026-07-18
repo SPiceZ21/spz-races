@@ -30,8 +30,12 @@ function ProcessRaceResults()
                 sector_times  = pData.sector_times or {},
                 best_sectors  = pData.best_sectors or {},
                 personal_best = pData.personal_best or false,
-                cleanRace     = pData.cleanRace or true, -- Placeholder: assume clean
-                collisions    = pData.collisions or {},  -- Placeholder: empty
+                -- Real incident data (client-detected world impacts, server-
+                -- validated). Clean race = zero incidents. The old code was
+                -- `pData.cleanRace or true`, which is ALWAYS true — every racer
+                -- got the clean bonus regardless of how they drove.
+                collisions    = pData.incidents or {},
+                cleanRace     = (#(pData.incidents or {}) == 0),
                 points_earned = (SPZ.PointsTable and SPZ.PointsTable[pData.position]) or 0,
             })
         else

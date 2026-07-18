@@ -41,6 +41,27 @@ Config.SpawnTimeout         = 30000   -- ms hard ceiling when NOBODY has spawned
 Config.FirstReadyGraceMs    = 5000    -- ms after first confirm before advancing
 Config.SpawnRetryIntervalMs = 8000    -- ms between respawn retries during warmup
 
+-- ── Mid-race reconnect ──────────────────────────────────────────────────────
+-- A crash/timeout during a LIVE race no longer means instant DNF: the grid
+-- slot is held this long, and rejoining restores lap/checkpoint/time at the
+-- last crossed checkpoint. Must be shorter than IdleKickMs.
+Config.ReconnectWindowMs    = 60000
+
+-- ── Incidents (clean-race / SR) ─────────────────────────────────────────────
+-- Racers are ghosted from each other, so a tracked incident is a hard impact
+-- with the world (walls, barriers, props). The client detects these and
+-- reports them; spz-progression converts the count into an SR penalty and
+-- gates the clean-race bonus. Kept lenient so light kerb-hopping is ignored.
+Config.Incidents = {
+  enabled           = true,
+  minImpactSpeed    = 30,     -- km/h below which an impact is ignored
+  minSpeedDropKmh   = 22,     -- sudden speed loss in one frame that counts as a hit
+  minBodyDamage     = 45.0,   -- body-health drop that counts as a hit
+  cooldownMs        = 1500,   -- ignore repeat hits within this window (one crash = one incident)
+  startBufferMs     = 3000,   -- ignore impacts in the first N ms after GO (grid shuffle)
+  maxPerRace        = 20,     -- hard cap on reported incidents (anti-spam)
+}
+
 -- ── Physics ────────────────────────────────────────────────────────────────
 Config.RaceAssists = {
   tcs = true,
