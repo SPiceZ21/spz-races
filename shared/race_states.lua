@@ -34,13 +34,14 @@ function SPZ.Math.GridPositions(origin, heading, count, rowSpacing, colSpacing)
     -- out on a tiny ring around the point — visually "all at the point",
     -- physically non-overlapping.
     if Config and Config.SpawnMode == "point" then
-        local rad    = math.rad(heading)
-        local radius = Config.PointSpawnRadius or 3.0
+        -- radius 0 = literally everyone on the same spot. Safe because
+        -- the race ghost group is assigned before any vehicle spawns,
+        -- so overlapping cars never exchange collision impulses.
+        local radius = Config.PointSpawnRadius or 0.0
         for i = 1, count do
-            if i == 1 then
+            if i == 1 or radius <= 0.0 then
                 grid[i] = { coords = origin, heading = heading }
             else
-                -- distribute the rest evenly on the ring
                 local a  = (i - 1) * (2 * math.pi / math.max(count - 1, 1))
                 local dx = math.cos(a) * radius
                 local dy = math.sin(a) * radius

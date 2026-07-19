@@ -59,6 +59,10 @@ function SetupRaceWorld()
 
         exports["spz-core"]:AssignPlayerToBucket(src, RaceSession.bucketId)
 
+        -- Ghost BEFORE any vehicle exists: with one-point spawning every car
+        -- overlaps, so collision must already be off on the very first frame
+        -- each remote vehicle streams in.
+
         local profile = Player(src).state.profile
         local hasLicense = (profile and profile.license_tier or 0) >= (RaceSession.carClassId or 0)
         local isRental = not hasLicense
@@ -140,7 +144,6 @@ function StartSpawnTimeoutMonitor()
             return
         end
 
-        ApplyRaceNoCollision()
         local warmup    = (Config.WarmupTimeSeconds or 0) > 0
         local nextState = warmup and SPZ.RaceState.WARMUP or SPZ.RaceState.COUNTDOWN
         print(string.format("[World Setup] Transitioning to %s.", nextState))
