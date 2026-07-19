@@ -28,6 +28,28 @@ SPZ.Math = SPZ.Math or {}
 
 function SPZ.Math.GridPositions(origin, heading, count, rowSpacing, colSpacing)
     local grid = {}
+
+    -- Point mode: everyone spawns at the start point instead of a staggered
+    -- grid. Vehicles at the EXACT same coords explode on spawn, so slots fan
+    -- out on a tiny ring around the point — visually "all at the point",
+    -- physically non-overlapping.
+    if Config and Config.SpawnMode == "point" then
+        local rad    = math.rad(heading)
+        local radius = Config.PointSpawnRadius or 3.0
+        for i = 1, count do
+            if i == 1 then
+                grid[i] = { coords = origin, heading = heading }
+            else
+                -- distribute the rest evenly on the ring
+                local a  = (i - 1) * (2 * math.pi / math.max(count - 1, 1))
+                local dx = math.cos(a) * radius
+                local dy = math.sin(a) * radius
+                grid[i] = { coords = origin + vec3(dx, dy, 0.0), heading = heading }
+            end
+        end
+        return grid
+    end
+
     rowSpacing = rowSpacing or (Config and Config.GridRowSpacing) or 10.0
     colSpacing = colSpacing or (Config and Config.GridColSpacing) or 5.0
 

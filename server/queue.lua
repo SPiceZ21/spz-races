@@ -92,16 +92,30 @@ function LeaveQueue(src)
 
     if not RaceSession.players[src] then return end
 
-    local activePhases = {
-        [SPZ.RaceState.WAITING]   = true,
-        [SPZ.RaceState.COUNTDOWN] = true,
-        [SPZ.RaceState.LIVE]      = true,
-    }
-
-    if activePhases[RaceSession.state] then
+    -- LIVE / COUNTDOWN: the race is (about to be) running → abandoning is a DNF.
+    if RaceSession.state == SPZ.RaceState.LIVE
+    or RaceSession.state == SPZ.RaceState.COUNTDOWN then
         MarkDNF(src, "Abandoned Race")
         Notify(src, "You abandoned the race.", "error")
         return
+    end
+
+    -- WARMUP / WAITING: player is spawned in the race world but the race has
+    -- not started → full teardown (car, bucket, statebags, TP out), no DNF.
+    if RaceSession.state == SPZ.RaceState.WARMUP
+    or RaceSession.state == SPZ.RaceState.WAITING then
+        if GetResourceState("spz-vehicles") == "started" then
+            exports["spz-vehicles"]:DespawnVehicle(src)
+        end
+        exports["spz-core"]:AssignPlayerToBucket(src, 0)
+        for _, key in ipairs({
+            "inRace", "raceId", "raceClass", "raceTrack", "raceLap", "raceLaps",
+            "personalBest", "allTimeBest", "racePosition", "raceTime", "dnf",
+        }) do
+            Player(src).state:set(key, nil, true)
+        end
+        TriggerClientEvent("SPZ:tpToSafeZone", src)
+        TriggerClientEvent("SPZ:warmupEnd", src)   -- tear down warmup HUD
     end
 
     RaceSession.players[src] = nil
@@ -110,10 +124,13 @@ function LeaveQueue(src)
     Player(src).state:set("queuePosition", nil,   true)
     Player(src).state:set("queueClass",    nil,   true)
 
-    Notify(src, "Left the queue", "info")
+    Notify(src, "Left the race", "info")
     BroadcastQueueUpdate()
 
-    if RaceSession.state == SPZ.RaceState.POLLING
+    -- If leaving emptied an in-progress cycle, reset the engine to idle.
+    if (RaceSession.state == SPZ.RaceState.POLLING
+        or RaceSession.state == SPZ.RaceState.WARMUP
+        or RaceSession.state == SPZ.RaceState.WAITING)
     and GetQueueCount() < (Config.MinPlayersToStart or 1) then
         ResetToIdle()
     end
