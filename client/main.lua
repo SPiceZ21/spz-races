@@ -113,11 +113,15 @@ end)
 -- The server's pairwise one-shot breaks whenever an entity re-streams into
 -- scope. Re-assert no-collision against every other player each frame while
 -- the race is active — cheap for a race lobby, bulletproof.
-local GHOST_STATES = { WARMUP = true, COUNTDOWN = true, LIVE = true }
-
+--
+-- Gated ONLY on LocalPlayer.state.inRace (a per-player bag the server sets on
+-- spawn and clears on teardown). It used to also require the GLOBAL raceState
+-- bag to read WARMUP/COUNTDOWN/LIVE — but if a client's global statebag
+-- handler missed that change, ghosting never ran for THAT client and it
+-- collided with everyone else. inRace covers exactly the ghost window.
 Citizen.CreateThread(function()
     while true do
-        if LocalPlayer.state.inRace and GHOST_STATES[_clientRaceState] then
+        if LocalPlayer.state.inRace then
             local myPed = PlayerPedId()
             local myVeh = GetVehiclePedIsIn(myPed, false)
 
@@ -164,5 +168,11 @@ RegisterNetEvent("SPZ:tpToSafeZone", function()
     else
         SetEntityCoords(ped, sz.x, sz.y, sz.z, false, false, false, true)
         SetEntityHeading(ped, sh)
+    end
+
+    -- Any teleport-out means the race is over for us — clear all race UI.
+    if GetResourceState("spz-raceUI") == "started" then
+        exports["spz-raceUI"]:HideWarmup()
+        exports["spz-raceUI"]:SetRaceOverlayVisible(false)
     end
 end)

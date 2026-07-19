@@ -270,6 +270,7 @@ end)
 local function _cleanup()
     _leaveReadyGate()   -- unfreeze + kill any pending gate thread
     TTActive        = false
+    _G.SPZ_InTimeTrial = false
     TTTrack         = nil
     TTCpIndex       = 1
     TTLapNum        = 0
@@ -326,6 +327,7 @@ RegisterNetEvent("SPZ:tt:Begin", function(payload)
     TTLapStart  = GetGameTimer() -- Start timer immediately for Out Lap progress
     TTLapTimes  = {}
     TTActive    = true
+    _G.SPZ_InTimeTrial = true   -- suppress the race lobby pill + E-to-join
 
     _tpToStart(2500)
     _startVisuals(track.checkpoints, 1, track.type)

@@ -55,6 +55,36 @@ function CalculatePositions()
     return ranked
 end
 
+-- Human-readable gap to the leader. We don't have per-CP timestamps for every
+-- racer, so time gaps are only exact when two racers are on the same lap AND
+-- checkpoint (compare their last-CP crossing times). Otherwise fall back to a
+-- lap/checkpoint delta, which is honest and still useful.
+function _gapToLeader(leader, pData, entry, leadEntry)
+    if not leader or not leadEntry then return "" end
+    if entry.source == leadEntry.source then return "LEADER" end
+    if pData.finished then
+        local d = (pData.finish_time or 0) - (leader.finish_time or 0)
+        return d > 0 and ("+" .. string.format("%.2f", d / 1000)) or "+0.00"
+    end
+
+    local lapDiff = (leadEntry.lap or 1) - (entry.lap or 1)
+    if lapDiff > 0 then
+        return ("+%d L"):format(lapDiff)
+    end
+
+    local cpDiff = (leadEntry.cp or 1) - (entry.cp or 1)
+    if cpDiff > 0 then
+        return ("+%d CP"):format(cpDiff)
+    end
+
+    -- Same lap and CP: compare when each last crossed a checkpoint.
+    if leader.last_cp_time and pData.last_cp_time then
+        local d = pData.last_cp_time - leader.last_cp_time
+        if d > 0 then return "+" .. string.format("%.2f", d / 1000) end
+    end
+    return "+0.00"
+end
+
 -- 13.2 Periodic Broadcast
 local _posVersion = 0
 
@@ -66,6 +96,8 @@ Citizen.CreateThread(function()
             local ranked = CalculatePositions()
             local payload = {}
 
+            local leader = ranked[1] and RaceSession.players[ranked[1].source] or nil
+
             for i, entry in ipairs(ranked) do
                 local pData = RaceSession.players[entry.source]
                 table.insert(payload, {
@@ -75,6 +107,7 @@ Citizen.CreateThread(function()
                     position = i,
                     lap      = pData.current_lap,
                     finished = pData.finished,
+                    gap      = _gapToLeader(leader, pData, entry, ranked[1]),
                 })
             end
 

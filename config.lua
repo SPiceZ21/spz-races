@@ -84,8 +84,11 @@ Config.IntermissionTime     = 30      -- seconds between races
 
 -- ── Grid ───────────────────────────────────────────────────────────────────
 -- Passed to SPZ.Math.GridPositions
-Config.GridRowSpacing       = 8.0     -- metres front-to-back
-Config.GridColSpacing       = 4.5     -- metres side-to-side
+-- "grid" = staggered F1 grid · "point" = everyone clustered at the start point
+Config.SpawnMode            = "point"
+Config.PointSpawnRadius     = 3.0     -- ring radius in point mode (avoids overlap)
+Config.GridRowSpacing       = 8.0     -- metres front-to-back (grid mode)
+Config.GridColSpacing       = 4.5     -- metres side-to-side (grid mode)
 
 -- ── Safe Zone ──────────────────────────────────────────────────────────────
 -- Location players are sent after race cleanup. Set to your paddock / lobby spawn.
