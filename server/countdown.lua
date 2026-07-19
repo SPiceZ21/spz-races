@@ -50,7 +50,6 @@ function StartWarmupPhase()
         if RaceSession.state ~= SPZ.RaceState.WARMUP then return end
 
         -- Late confirmers weren't in the initial ghosting pass
-        if ApplyRaceNoCollision then ApplyRaceNoCollision() end
 
         -- Signal clients warmup is over so HUD can clear the timer
         BroadcastToRacers("SPZ:warmupEnd")

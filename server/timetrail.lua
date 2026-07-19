@@ -65,7 +65,7 @@ RegisterNetEvent("SPZ:tt:SelectTrack", function(trackIndex)
         source     = src,
         track      = track,
         bucketId   = bid,
-        -- AWAIT_READY → (player presses E) → PRE_START → ACTIVE → BETWEEN_LAPS …
+        -- AWAIT_READY → (player presses E) → PRE_START → ACTIVE → AWAIT_READY …
         -- The spawn point sits inside CP1's radius, so without the ready gate
         -- the lap would arm the instant the teleport lands.
         phase      = "AWAIT_READY",
@@ -99,8 +99,8 @@ RegisterNetEvent("SPZ:tt:cpHit", function(cpIndex)
     local now      = GetGameTimer()
     s.lastCpTime   = now
 
-    -- ── CP[1] crossing: begins a new lap (PRE_START or BETWEEN_LAPS) ──────────
-    if cpIndex == 1 and (s.phase == "PRE_START" or s.phase == "BETWEEN_LAPS") then
+    -- ── CP[1] crossing: starts the lap clock (leaving the start line) ────────
+    if cpIndex == 1 and s.phase == "PRE_START" then
         s.currentLap = s.currentLap + 1
         s.lapStart   = now
         s.currentCp  = totalCPs > 1 and 2 or 1  -- single-CP edge-case guard
@@ -151,22 +151,17 @@ RegisterNetEvent("SPZ:tt:cpHit", function(cpIndex)
             isNewBest = (lapTime == s.bestLap),
         })
 
-        if track.type == "sprint" then
-            -- Sprint: reset back to start for next attempt (ready gate again —
-            -- the TP-back lands inside CP1's radius)
-            s.currentCp = 1
-            s.phase     = "AWAIT_READY"
-            TriggerClientEvent("SPZ:tt:SprintReset", src, {
-                lap   = s.currentLap + 1,
-                label = _lapLabel(s.currentLap + 1),
-            })
-            TriggerClientEvent("SPZ:tt:NextCp", src, 1)
-        else
-            -- Circuit: wait for CP[1] crossing to start next lap
-            s.currentCp = 1
-            s.phase     = "BETWEEN_LAPS"
-            TriggerClientEvent("SPZ:tt:NextCp", src, 1)
-        end
+        -- Every attempt is a standalone hotlap, circuit and sprint alike:
+        -- finish the lap -> teleport back to the start -> ready gate -> 3-2-1.
+        -- (Rolling circuit laps are gone: a flying start made the first lap's
+        -- time incomparable to the rest.)
+        s.currentCp = 1
+        s.phase     = "AWAIT_READY"
+        TriggerClientEvent("SPZ:tt:AttemptReset", src, {
+            lap   = s.currentLap + 1,
+            label = _lapLabel(s.currentLap + 1),
+        })
+        TriggerClientEvent("SPZ:tt:NextCp", src, 1)
     else
         -- Normal intermediate checkpoint
         s.currentCp = nextCp

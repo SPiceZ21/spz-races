@@ -84,9 +84,10 @@ Config.IntermissionTime     = 30      -- seconds between races
 
 -- ── Grid ───────────────────────────────────────────────────────────────────
 -- Passed to SPZ.Math.GridPositions
--- "grid" = staggered F1 grid · "point" = everyone clustered at the start point
+-- "grid" = staggered F1 grid · "point" = everyone at the start point
 Config.SpawnMode            = "point"
-Config.PointSpawnRadius     = 3.0     -- ring radius in point mode (avoids overlap)
+Config.PointSpawnRadius     = 0.0     -- 0 = exact same spot (safe: ghosting is
+                                      -- armed before vehicles spawn); >0 = ring
 Config.GridRowSpacing       = 8.0     -- metres front-to-back (grid mode)
 Config.GridColSpacing       = 4.5     -- metres side-to-side (grid mode)
 

@@ -24,7 +24,6 @@ server_scripts {
   'server/queue.lua',
   'server/poll.lua',
   'server/world.lua',
-  'server/no_collision.lua',
   'server/countdown.lua',
   'server/sectors.lua',
   'server/checkpoints.lua',

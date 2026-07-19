@@ -72,7 +72,7 @@ local function _gateR2(cp)
     return r * r
 end
 
--- ── Teleport to start (shared by Begin, SprintReset, and Restart) ─────────────
+-- ── Teleport to start (shared by Begin, AttemptReset, and Restart) ───────────
 
 local function _tpToStart(gracePeriodMs)
     if not TTTrack then return end
@@ -398,11 +398,26 @@ RegisterNetEvent("SPZ:tt:LapComplete", function(data)
     PlaySoundFrontend(-1, "CHECKPOINT_UNDER_THE_BRIDGE_STUNT", "HUD_MINI_GAME_SOUNDSET", 1)
 end)
 
-RegisterNetEvent("SPZ:tt:SprintReset", function()
+-- Lap finished (circuit or sprint): let the result register, then teleport
+-- back to the start line and re-arm the ready gate for the next attempt.
+RegisterNetEvent("SPZ:tt:AttemptReset", function(data)
     if not TTActive or not TTTrack then return end
-    Citizen.Wait(2500)
+
+    TTCpIndex  = 1
+    TTLapStart = 0
+
+    Citizen.Wait(2000)                 -- let the lap-time toast land first
+    if not TTActive or not TTTrack then return end
+
     _tpToStart(1500)
     _startVisuals(TTTrack.checkpoints, 1, TTTrack.type)
+
+    UI("tt_lap_started", {
+        lap      = (data and data.lap) or TTLapNum + 1,
+        lapLabel = "PRESS [E] WHEN READY",
+        bestLap  = FmtTime(TTBestLap),
+    })
+
     SetTimeout(600, _enterReadyGate)
 end)
 
