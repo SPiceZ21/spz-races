@@ -1,15 +1,22 @@
 -- client/timetrail.lua
--- Time Trial client: visuals, hit detection, restart, NUI bridge.
+-- Time Trial client: car selection, head-start teleport, rolling hotlaps.
+--
+-- Flow: /timetrail -> pick class -> pick car -> pick track -> car spawns at the
+-- LAST checkpoint (the corner before the start/finish line) -> you drive -> the
+-- line crossing starts the clock -> full lap -> crossing the line again banks
+-- the lap AND immediately starts the next one. No stopping, no ready gate, no
+-- countdown: it is a permanent rolling hotlap session.
 
 local TTActive     = false
 local TTTrack      = nil
-local TTCpIndex    = 1
+local TTCpIndex    = 1       -- LOGICAL checkpoint index (matches server)
 local TTLapNum     = 0
 local TTLapLabel   = ""
 local TTLapStart   = 0
 local TTBestLap    = nil
 local TTLapTimes   = {}
-local TTReadyAt    = 0        -- grace period: detector sleeps until this time
+local TTReadyAt    = 0       -- grace period: detector sleeps until this time
+local TTHeadStart  = nil     -- { coords = vec3, heading = number }
 
 -- Restart state
 local TTRestartActive = false
@@ -57,7 +64,6 @@ local function _stopVisuals()
     exports["spz-races"]:StopCheckpointVisuals()
 end
 
-
 -- ── Gate-width radius helper ──────────────────────────────────────────────────
 
 local function _gateR2(cp)
@@ -72,93 +78,43 @@ local function _gateR2(cp)
     return r * r
 end
 
--- ── Teleport to start (shared by Begin, AttemptReset, and Restart) ───────────
+-- ── Logical → Physical CP index ──────────────────────────────────────────────
+-- Server uses logical indexing for circuits: a lap runs 1, 2, ..., n where
+-- crossing the start/finish line IS logical CP n. Physical CP 1 is the line.
+--   logical i → physical (i % total) + 1   (circuits)
+--   logical i → physical i                 (sprints)
 
-local function _tpToStart(gracePeriodMs)
-    if not TTTrack then return end
-    local ped     = PlayerPedId()
-    local veh     = GetVehiclePedIsIn(ped)
-    local sp      = TTTrack.start_coords
-    local heading = TTTrack.start_heading or 0.0
-    if veh ~= 0 then
-        SetEntityCoords(veh, sp.x, sp.y, sp.z, false, false, false, true)
-        SetEntityHeading(veh, heading)
-        SetVehicleEngineOn(veh, true, true, false)
-    else
-        SetEntityCoords(ped, sp.x, sp.y, sp.z, false, false, false, true)
-        SetEntityHeading(ped, heading)
+local function _physIdx(logical)
+    if not TTTrack then return logical end
+    local total = #TTTrack.checkpoints
+    if TTTrack.type == "circuit" then
+        return (logical % total) + 1
     end
+    return logical
+end
+
+-- ── Teleport to head start ───────────────────────────────────────────────────
+-- Head start = last physical checkpoint (the corner before the start/finish
+-- line). Player arrives at the line already at speed.
+
+local function _tpToHeadStart(gracePeriodMs)
+    if not TTHeadStart then return end
+    exports["spz-core"]:FadeTransition(function()
+        local ped     = PlayerPedId()
+        local veh     = GetVehiclePedIsIn(ped)
+        local sp      = TTHeadStart.coords
+        local heading = TTHeadStart.heading or 0.0
+        if veh ~= 0 then
+            SetEntityCoords(veh, sp.x, sp.y, sp.z, false, false, false, true)
+            SetEntityHeading(veh, heading)
+            SetVehicleEngineOn(veh, true, true, false)
+        else
+            SetEntityCoords(ped, sp.x, sp.y, sp.z, false, false, false, true)
+            SetEntityHeading(ped, heading)
+        end
+    end, 400, 300, 600)
     TTReadyAt = GetGameTimer() + (gracePeriodMs or 1500)
 end
-
--- ── Ready gate ────────────────────────────────────────────────────────────────
--- The TP lands inside CP1's radius, so runs must not arm until the player says
--- so: freeze at the line, wait for E, then a 3-2-1 standing start.
-
-local TTAwaitReady = false
-local TTGateGen    = 0     -- invalidates stale gate threads on re-entry
-
-local function _setFrozen(on)
-    local ped = PlayerPedId()
-    local veh = GetVehiclePedIsIn(ped)
-    FreezeEntityPosition(veh ~= 0 and veh or ped, on)
-    if not on and veh ~= 0 then
-        SetVehicleEngineOn(veh, true, true, false)
-    end
-end
-
-local function _enterReadyGate()
-    TTAwaitReady = true
-    TTGateGen    = TTGateGen + 1
-    local gen    = TTGateGen
-
-    _setFrozen(true)
-    UI("tt_lap_started", {
-        lap      = TTLapNum,
-        lapLabel = "PRESS [E] WHEN READY",
-        bestLap  = FmtTime(TTBestLap),
-    })
-
-    CreateThread(function()
-        while TTAwaitReady and TTActive and gen == TTGateGen do
-            if IsControlJustPressed(0, 38) then   -- E
-                TTAwaitReady = false
-                TriggerServerEvent("SPZ:tt:Ready")
-                break
-            end
-            Wait(0)
-        end
-    end)
-end
-
-local function _leaveReadyGate()
-    TTAwaitReady = false
-    TTGateGen    = TTGateGen + 1
-    _setFrozen(false)
-end
-
--- Server armed the run: 3-2-1, then release. Standing on the line means CP1
--- registers the moment the car moves — a proper standing start.
-RegisterNetEvent("SPZ:tt:Armed", function()
-    CreateThread(function()
-        for i = 3, 1, -1 do
-            UI("tt_lap_started", {
-                lap      = TTLapNum,
-                lapLabel = tostring(i),
-                bestLap  = FmtTime(TTBestLap),
-            })
-            PlaySoundFrontend(-1, "3_2_1", "HUD_MINI_GAME_SOUNDSET", 1)
-            Wait(1000)
-        end
-        UI("tt_lap_started", {
-            lap      = TTLapNum,
-            lapLabel = "GO!",
-            bestLap  = FmtTime(TTBestLap),
-        })
-        PlaySoundFrontend(-1, "GO", "HUD_MINI_GAME_SOUNDSET", 1)
-        _setFrozen(false)
-    end)
-end)
 
 -- ── Restart logic ─────────────────────────────────────────────────────────────
 
@@ -170,18 +126,20 @@ end
 
 local function _executeRestart()
     TTRestartActive = false
-    TTCpIndex       = 1
+    local total     = TTTrack and #TTTrack.checkpoints or 1
+    TTCpIndex       = total   -- logical last = start/finish crossing
     TTLapStart      = 0
 
-    _tpToStart(1500)
-    _startVisuals(TTTrack.checkpoints, 1, TTTrack.type)
+    _tpToHeadStart(1500)
+    if TTTrack then
+        _startVisuals(TTTrack.checkpoints, _physIdx(TTCpIndex), TTTrack.type)
+    end
 
     TriggerServerEvent("SPZ:tt:Restart")
     UI("tt_restart_done", {
-        lapLabel = "PRESS [E] WHEN READY",
+        lapLabel = "DRIVE TO THE START LINE",
         bestLap  = FmtTime(TTBestLap),
     })
-    SetTimeout(600, _enterReadyGate)
     PlaySoundFrontend(-1, "BACK", "HUD_FRONTEND_DEFAULT_SOUNDSET", 1)
 end
 
@@ -224,20 +182,22 @@ Citizen.CreateThread(function()
 end)
 
 -- ── Hit detection thread ──────────────────────────────────────────────────────
+-- Uses the PHYSICAL CP index for proximity checks but sends the LOGICAL
+-- index to the server (the server validates order against its logical counter).
 
 Citizen.CreateThread(function()
     while true do
-        if TTActive and TTTrack and not TTRestartActive and not TTAwaitReady
+        if TTActive and TTTrack and not TTRestartActive
         and GetGameTimer() >= TTReadyAt then
-            local cp = TTTrack.checkpoints[TTCpIndex]
-            if cp then
+            local physCp = TTTrack.checkpoints[_physIdx(TTCpIndex)]
+            if physCp then
                 local pos   = GetEntityCoords(PlayerPedId())
-                local dx    = pos.x - cp.coords.x
-                local dy    = pos.y - cp.coords.y
+                local dx    = pos.x - physCp.coords.x
+                local dy    = pos.y - physCp.coords.y
                 local dist2 = dx*dx + dy*dy
 
-                if dist2 < _gateR2(cp) and math.abs(pos.z - cp.coords.z) < CP_Z_THRESH then
-                    TriggerServerEvent("SPZ:tt:cpHit", TTCpIndex)
+                if dist2 < _gateR2(physCp) and math.abs(pos.z - physCp.coords.z) < CP_Z_THRESH then
+                    TriggerServerEvent("SPZ:tt:cpHit", TTCpIndex)  -- logical
                     Citizen.Wait(DEBOUNCE_MS)
                 else
                     local d = math.sqrt(dist2)
@@ -268,7 +228,6 @@ end)
 -- ── Full cleanup ──────────────────────────────────────────────────────────────
 
 local function _cleanup()
-    _leaveReadyGate()   -- unfreeze + kill any pending gate thread
     TTActive        = false
     _G.SPZ_InTimeTrial = false
     TTTrack         = nil
@@ -278,74 +237,147 @@ local function _cleanup()
     TTLapStart      = 0
     TTBestLap       = nil
     TTLapTimes      = {}
+    TTHeadStart     = nil
     TTRestartActive = false
     _stopVisuals()
 end
 
 -- ── Net events ────────────────────────────────────────────────────────────────
 
-RegisterNetEvent("SPZ:tt:OpenMenu", function(trackList)
-    print("[TimeTrial] Received OpenMenu event from server with " .. #trackList .. " tracks")
+RegisterNetEvent("SPZ:tt:OpenMenu", function(payload)
+    -- payload = { tracks = {...}, classes = {...} }
+    -- Backwards-compat: if server sends a flat array, treat it as tracks-only
+    local trackList = payload.tracks or payload
+    local classes   = payload.classes or {}
 
-    -- Split by type into ox_lib context submenus
-    local circuit, sprint = {}, {}
-    for _, t in ipairs(trackList) do
-        local ttype = t.type or "circuit"
-        local lapTxt = t.laps and (" · " .. t.laps .. " lap" .. (t.laps > 1 and "s" or "")) or ""
-        local opt = {
-            title       = t.name,
-            description = ttype:gsub("^%l", string.upper) .. lapTxt,
-            icon        = ttype == "sprint" and "route" or "flag-checkered",
-            onSelect    = function()
-                TriggerServerEvent("SPZ:tt:SelectTrack", t.index)
-            end,
-        }
-        if ttype == "sprint" then sprint[#sprint + 1] = opt else circuit[#circuit + 1] = opt end
+    print("[TimeTrial] Received OpenMenu — " .. #trackList .. " tracks, " .. #classes .. " classes")
+
+    -- ── Build track submenus (re-registered each time a car is picked) ──────
+    local _selectedModel = nil
+
+    local function _buildTrackMenus(backMenu)
+        local circuit, sprint = {}, {}
+        for _, t in ipairs(trackList) do
+            local ttype = t.type or "circuit"
+            local lapTxt = t.laps and (" · " .. t.laps .. " lap" .. (t.laps > 1 and "s" or "")) or ""
+            local opt = {
+                title       = t.name,
+                description = ttype:gsub("^%l", string.upper) .. lapTxt,
+                icon        = ttype == "sprint" and "route" or "flag-checkered",
+                onSelect    = function()
+                    TriggerServerEvent("SPZ:tt:SelectTrack", t.index, _selectedModel)
+                end,
+            }
+            if ttype == "sprint" then sprint[#sprint + 1] = opt else circuit[#circuit + 1] = opt end
+        end
+
+        lib.registerContext({ id = "tt_circuit", title = "Circuit Tracks", menu = "tt_tracktype", options = circuit })
+        lib.registerContext({ id = "tt_sprint",  title = "Sprint Tracks",  menu = "tt_tracktype", options = sprint })
+
+        local typeOpts = {}
+        if #circuit > 0 then
+            typeOpts[#typeOpts + 1] = { title = "Circuit", description = #circuit .. " tracks", icon = "flag-checkered", arrow = true, menu = "tt_circuit" }
+        end
+        if #sprint > 0 then
+            typeOpts[#typeOpts + 1] = { title = "Sprint", description = #sprint .. " tracks", icon = "route", arrow = true, menu = "tt_sprint" }
+        end
+
+        lib.registerContext({ id = "tt_tracktype", title = "Select Track Type", menu = backMenu or "tt_main", options = typeOpts })
     end
 
-    lib.registerContext({ id = "tt_circuit", title = "Circuit Tracks", menu = "tt_main", options = circuit })
-    lib.registerContext({ id = "tt_sprint",  title = "Sprint Tracks",  menu = "tt_main", options = sprint })
+    -- ── Car selection menus ──────────────────────────────────────────────────
+    if #classes > 0 then
+        local main = {}
+        for _, cls in ipairs(classes) do
+            local classId  = cls.class
+            local vehicles = cls.vehicles or {}
+            local menuId   = "tt_class_" .. classId
 
-    local main = {}
-    if #circuit > 0 then
-        main[#main + 1] = { title = "Circuit", description = #circuit .. " tracks", icon = "flag-checkered", arrow = true, menu = "tt_circuit" }
-    end
-    if #sprint > 0 then
-        main[#main + 1] = { title = "Sprint", description = #sprint .. " tracks", icon = "route", arrow = true, menu = "tt_sprint" }
+            local carOpts = {}
+            for _, car in ipairs(vehicles) do
+                carOpts[#carOpts + 1] = {
+                    title  = car.label,
+                    icon   = "car",
+                    onSelect = function()
+                        _selectedModel = car.model
+                        _buildTrackMenus(menuId)
+                        lib.showContext("tt_tracktype")
+                    end,
+                }
+            end
+            lib.registerContext({
+                id      = menuId,
+                title   = "Class " .. classId .. " — Select Car",
+                menu    = "tt_main",
+                options = carOpts,
+            })
+
+            main[#main + 1] = {
+                title       = "Class " .. classId,
+                description = #vehicles .. " car" .. (#vehicles > 1 and "s" or ""),
+                icon        = "car",
+                arrow       = true,
+                menu        = menuId,
+            }
+        end
+
+        lib.registerContext({ id = "tt_main", title = "Time Trial — Select Car", options = main })
+    else
+        -- No car classes available — skip straight to track selection
+        _selectedModel = nil
+        _buildTrackMenus("tt_main")
+
+        local typeOpts = {}
+        local circuit, sprint = {}, {}
+        for _, t in ipairs(trackList) do
+            if (t.type or "circuit") == "sprint" then sprint[#sprint + 1] = t
+            else circuit[#circuit + 1] = t end
+        end
+        if #circuit > 0 then
+            typeOpts[#typeOpts + 1] = { title = "Circuit", description = #circuit .. " tracks", icon = "flag-checkered", arrow = true, menu = "tt_circuit" }
+        end
+        if #sprint > 0 then
+            typeOpts[#typeOpts + 1] = { title = "Sprint", description = #sprint .. " tracks", icon = "route", arrow = true, menu = "tt_sprint" }
+        end
+
+        lib.registerContext({ id = "tt_main", title = "Time Trial — Select Track", options = typeOpts })
     end
 
-    lib.registerContext({ id = "tt_main", title = "Time Trial — Select Track", options = main })
     lib.showContext("tt_main")
 end)
 
 RegisterNetEvent("SPZ:tt:Begin", function(payload)
     local track = payload.track
+    local total = #track.checkpoints
     TTTrack     = track
-    TTCpIndex   = 1
+    TTCpIndex   = total        -- logical last CP = start/finish crossing
     TTLapNum    = 0
     TTBestLap   = nil
-    TTLapStart  = GetGameTimer() -- Start timer immediately for Out Lap progress
+    TTLapStart  = 0            -- timer starts on first line crossing
     TTLapTimes  = {}
     TTActive    = true
-    _G.SPZ_InTimeTrial = true   -- suppress the race lobby pill + E-to-join
+    _G.SPZ_InTimeTrial = true  -- suppress the race lobby pill + E-to-join
 
-    _tpToStart(2500)
-    _startVisuals(track.checkpoints, 1, track.type)
+    -- Store head start for restarts
+    TTHeadStart = payload.headStart
+
+    -- TP to head start (last physical CP, corner before the start/finish line)
+    _tpToHeadStart(2500)
+
+    -- Visuals: highlight the start/finish line as the next CP to drive through
+    _startVisuals(track.checkpoints, _physIdx(TTCpIndex), track.type)
 
     UI("tt_hud_show", {
         track      = track.name,
         trackType  = track.type,
-        lapLabel   = "PRESS [E] WHEN READY",
+        lapLabel   = "DRIVE TO THE START LINE",
         bestLap    = nil,
-        cpIndex    = 1,
-        cpTotal    = #track.checkpoints,
+        cpIndex    = TTCpIndex,
+        cpTotal    = total,
         restartKey = TT_RESTART_KEY,
     })
 
-    -- Let the TP settle before freezing at the line
-    SetTimeout(600, _enterReadyGate)
-
-    lib.notify({ description = "Time Trial — " .. track.name .. " | Press E to start", type = "info" })
+    lib.notify({ description = "Time Trial — " .. track.name .. " | Drive to the start line", type = "info" })
 end)
 
 RegisterNetEvent("SPZ:tt:LapStarted", function(data)
@@ -364,15 +396,15 @@ RegisterNetEvent("SPZ:tt:LapStarted", function(data)
     PlaySoundFrontend(-1, "CHECKPOINT_UNDER_THE_BRIDGE_STUNT", "HUD_MINI_GAME_SOUNDSET", 1)
 end)
 
-RegisterNetEvent("SPZ:tt:NextCp", function(newIdx)
-    TTCpIndex = newIdx
+RegisterNetEvent("SPZ:tt:NextCp", function(logicalIdx, physIdx)
+    TTCpIndex = logicalIdx
 
     PlaySoundFrontend(-1, "CHECKPOINT_NORMAL", "HUD_MINI_GAME_SOUNDSET", 1)
     if TTTrack then
-        _setActiveCp(newIdx)
+        _setActiveCp(physIdx or _physIdx(logicalIdx))
     end
     UI("tt_next_cp", {
-        cpIndex = newIdx,
+        cpIndex = logicalIdx,
         total   = TTTrack and #TTTrack.checkpoints or 0,
     })
 end)
@@ -380,7 +412,6 @@ end)
 RegisterNetEvent("SPZ:tt:LapComplete", function(data)
     if data.lapTime < (TTBestLap or math.huge) then TTBestLap = data.lapTime end
     TTLapTimes[#TTLapTimes + 1] = data.lapTime
-    TTLapStart = 0
 
     local formatted = {}
     for i, t in ipairs(TTLapTimes) do
@@ -398,32 +429,17 @@ RegisterNetEvent("SPZ:tt:LapComplete", function(data)
     PlaySoundFrontend(-1, "CHECKPOINT_UNDER_THE_BRIDGE_STUNT", "HUD_MINI_GAME_SOUNDSET", 1)
 end)
 
--- Lap finished (circuit or sprint): let the result register, then teleport
--- back to the start line and re-arm the ready gate for the next attempt.
-RegisterNetEvent("SPZ:tt:AttemptReset", function(data)
-    if not TTActive or not TTTrack then return end
-
-    TTCpIndex  = 1
-    TTLapStart = 0
-
-    Citizen.Wait(2000)                 -- let the lap-time toast land first
-    if not TTActive or not TTTrack then return end
-
-    _tpToStart(1500)
-    _startVisuals(TTTrack.checkpoints, 1, TTTrack.type)
-
-    UI("tt_lap_started", {
-        lap      = (data and data.lap) or TTLapNum + 1,
-        lapLabel = "PRESS [E] WHEN READY",
-        bestLap  = FmtTime(TTBestLap),
-    })
-
-    SetTimeout(600, _enterReadyGate)
-end)
-
 -- Server confirmed the restart reset
 RegisterNetEvent("SPZ:tt:Restarted", function(data)
     TTLapStart = 0
+    if not TTTrack then return end
+
+    -- Back to the head-start point (corner before the line) and roll again
+    if data and data.headStart then TTHeadStart = data.headStart end
+    TTCpIndex = #TTTrack.checkpoints          -- next target is the line
+    _tpToHeadStart(1500)
+    _startVisuals(TTTrack.checkpoints, _physIdx(TTCpIndex), TTTrack.type)
+
     UI("tt_lap_started", {
         lap      = (data.lapsDone or 0),
         lapLabel = "DRIVE TO THE START LINE",
