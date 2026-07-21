@@ -8,34 +8,32 @@ function LB_GetGlobalStandings(limit)
 
     local rows = MySQL.query.await(
         [[SELECT
-            p.username      AS name,
-            p.rank          AS rank_title,
+            p.username       AS name,
+            p.rank           AS rank_title,
             p.license_tier,
             p.alltime_points AS points,
             p.sr,
-            p.i_rating      AS iRating,
-            p.level,
-            c.tag           AS crewTag
+            p.i_rating       AS iRating,
+            p.level
           FROM players p
-          LEFT JOIN crews c ON c.id = p.crew_id
           WHERE p.banned = 0
-          ORDER BY p.alltime_points DESC
+          ORDER BY p.alltime_points DESC, p.sr DESC
           LIMIT ?]],
         { limit }
-    )
+    ) or {}
 
     local standings = {}
     for i, row in ipairs(rows) do
         table.insert(standings, {
-            rank      = i,
-            name      = row.name,
-            crewTag   = row.crewTag,
-            rank_title = row.rank_title,
-            tier      = LBConfig.TierToClass[row.license_tier] or "D",
-            level     = row.level or 1,
-            points    = row.points or 0,
-            sr        = row.sr    or 0,
-            iRating   = row.iRating or 1000,
+            rank        = i,
+            name        = row.name or "Racer",
+            crewTag     = nil,
+            rank_title  = row.rank_title or "D-5",
+            tier        = LBConfig.TierToClass[row.license_tier] or "D",
+            level       = row.level or 1,
+            points      = row.points or 0,
+            sr          = row.sr or 3.0,
+            iRating     = row.iRating or 1000,
         })
     end
 
@@ -58,32 +56,31 @@ function LB_GetClassStandings(classLetter, limit)
             p.class_points   AS points,
             p.alltime_points,
             p.sr,
-            c.tag            AS crewTag,
             COUNT(rr.id)     AS total_races,
             SUM(CASE WHEN rr.position = 1 THEN 1 ELSE 0 END) AS wins
           FROM players p
-          LEFT JOIN crews c ON c.id = p.crew_id
           LEFT JOIN race_results rr ON rr.player_id = p.id
-          WHERE p.license_tier = ? AND p.banned = 0
+          WHERE (p.license_tier = ? OR ? = 5) AND p.banned = 0
           GROUP BY p.id
-          ORDER BY p.class_points DESC
+          ORDER BY p.class_points DESC, p.alltime_points DESC
           LIMIT ?]],
-        { tier, limit }
-    )
+        { tier, tier, limit }
+    ) or {}
 
     local standings = {}
     for i, row in ipairs(rows) do
         local tr = tonumber(row.total_races) or 0
+        local w = tonumber(row.wins) or 0
         table.insert(standings, {
             rank        = i,
-            name        = row.name,
-            crewTag     = row.crewTag,
-            rank_title  = row.rank_title,
+            name        = row.name or "Racer",
+            crewTag     = nil,
+            rank_title  = row.rank_title or "D-5",
             points      = row.points or 0,
-            sr          = row.sr or 0,
+            sr          = row.sr or 3.0,
             total_races = tr,
-            wins        = tonumber(row.wins) or 0,
-            win_rate    = tr > 0 and (tonumber(row.wins) or 0) / tr or 0,
+            wins        = w,
+            win_rate    = tr > 0 and (w / tr) or 0,
         })
     end
 
