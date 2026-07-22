@@ -19,6 +19,9 @@ local function HandleFinish(source, pData)
     print(string.format("[Race] %s (%d) finished in %d ms (PB: %s)",
         pData.name, source, pData.finish_time, tostring(pData.personal_best)))
 
+    if UpdateAllPositions then UpdateAllPositions() end
+
+    -- Trigger client-side finish audio sound and state flag
     TriggerClientEvent("SPZ:raceFinished", source, pData.finish_time, pData.personal_best)
 
     -- First finisher arms the finish window for everyone still driving
@@ -33,7 +36,72 @@ local function HandleFinish(source, pData)
         TriggerEvent("spz-raceline:lapCompleted", source, track.name, pData.finish_time)
     end
 
-    if UpdateAllPositions then UpdateAllPositions() end
+    -- ── Immediate Progression & Safe Zone Teleport for Finisher ────────────
+    local indResult = {
+        raceId    = RaceSession.raceId or "N/A",
+        track     = track.name,
+        trackId   = track.id or track.name,
+        type      = track.type,
+        carClass  = carClass,
+        laps      = track.laps,
+        duration  = pData.finish_time / 1000,
+        finishers = {
+            {
+                source        = source,
+                name          = pData.name,
+                crew_tag      = pData.crew_tag,
+                position      = pData.position or 1,
+                finish_time   = pData.finish_time,
+                lap_times     = pData.lap_times or {},
+                best_lap      = pData.best_lap,
+                sector_times  = pData.sector_times or {},
+                best_sectors  = pData.best_sectors or {},
+                personal_best = pData.personal_best or false,
+                collisions    = pData.incidents or {},
+                cleanRace     = (#(pData.incidents or {}) == 0),
+                points_earned = (SPZ.PointsTable and SPZ.PointsTable[pData.position or 1]) or 0,
+            }
+        },
+        dnf = {}
+    }
+
+    -- Process progression rewards & send SPZ:progressionUpdate to finisher
+    if GetResourceState("spz-progression") == "started" then
+        TriggerEvent("SPZ:raceEnd", indResult)
+    end
+
+    -- Send raceEnd event directly to this finisher so UI shows stats modal
+    TriggerClientEvent("SPZ:raceEnd", source, indResult)
+
+    -- Despawn race vehicle
+    if GetResourceState("spz-vehicles") == "started" then
+        pcall(function() exports["spz-vehicles"]:DespawnVehicle(source) end)
+    end
+
+    -- Return player to Freeroam Bucket 0
+    if GetResourceState("spz-core") == "started" then
+        exports["spz-core"]:AssignPlayerToBucket(source, 0)
+    else
+        SetPlayerRoutingBucket(source, 0)
+    end
+
+    -- Clear race statebags for this player
+    Player(source).state:set("inRace",       false, true)
+    Player(source).state:set("inQueue",      false, true)
+    Player(source).state:set("queueClass",   nil,   true)
+    Player(source).state:set("raceId",       nil,   true)
+    Player(source).state:set("raceClass",    nil,   true)
+    Player(source).state:set("raceTrack",    nil,   true)
+    Player(source).state:set("racePosition", nil,   true)
+    Player(source).state:set("raceLap",      nil,   true)
+    Player(source).state:set("raceLaps",     nil,   true)
+    Player(source).state:set("personalBest", nil,   true)
+    Player(source).state:set("allTimeBest",  nil,   true)
+    Player(source).state:set("raceTime",     nil,   true)
+
+    -- Teleport finished player immediately to Safe Zone
+    TriggerClientEvent("SPZ:tpToSafeZone", source)
+
     CheckAllFinished()
 end
 
