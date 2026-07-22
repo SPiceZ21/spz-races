@@ -120,7 +120,10 @@ RegisterNetEvent("SPZ:tt:End",   function() _ttActive = false end)
 -- the race stays LIVE for everyone still driving.
 local _myRaceOver = false
 
-RegisterNetEvent("SPZ:raceFinished", function() _myRaceOver = true end)
+RegisterNetEvent("SPZ:raceFinished", function()
+    _myRaceOver = true
+    PlaySoundFrontend(-1, "FIRST_PLACE", "HUD_MINI_GAME_SOUNDSET", true)
+end)
 
 RegisterNetEvent("SPZ:playerDNF", function(data)
     if data and data.source == GetPlayerServerId(PlayerId()) then

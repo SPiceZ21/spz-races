@@ -45,7 +45,15 @@ local function _endSession(src)
     if GetResourceState("spz-vehicles") == "started" then
         pcall(function() exports["spz-vehicles"]:DespawnVehicle(src) end)
     end
-    SetPlayerRoutingBucket(src, 0)
+
+    if s.bucketId and s.bucketId ~= 0 then
+        if GetResourceState("spz-core") == "started" then
+            exports["spz-core"]:AssignPlayerToBucket(src, 0)
+            exports["spz-core"]:DeleteBucket(s.bucketId)
+        else
+            SetPlayerRoutingBucket(src, 0)
+        end
+    end
 
     TriggerClientEvent("SPZ:tt:End", src, {
         track     = s.track.name,
@@ -104,9 +112,15 @@ RegisterNetEvent("SPZ:tt:SelectTrack", function(trackIndex, model)
         return
     end
 
-    local bid   = _nextBucket
-    _nextBucket = _nextBucket + 1
-    SetPlayerRoutingBucket(src, bid)
+    local bid = 0
+    if GetResourceState("spz-core") == "started" then
+        bid = exports["spz-core"]:CreateBucket(string.format("tt_%d", src))
+        exports["spz-core"]:AssignPlayerToBucket(src, bid)
+    else
+        bid = _nextBucket
+        _nextBucket = _nextBucket + 1
+        SetPlayerRoutingBucket(src, bid)
+    end
 
     TT[src] = {
         source     = src,

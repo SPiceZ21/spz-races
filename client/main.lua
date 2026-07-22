@@ -7,10 +7,20 @@ RegisterNetEvent("SPZ:freezeRacer", function(freeze)
     local ped = PlayerPedId()
     local veh = GetVehiclePedIsIn(ped, false)
 
+    if (not DoesEntityExist(veh) or veh == 0) and freeze then
+        local lastVeh = GetVehiclePedIsIn(ped, true)
+        if DoesEntityExist(lastVeh) then
+            local seatPed = GetPedInVehicleSeat(lastVeh, -1)
+            if seatPed == 0 or seatPed == ped then
+                veh = lastVeh
+            end
+        end
+    end
+
     FreezeEntityPosition(ped, freeze)
     SetEntityInvincible(ped, freeze)
 
-    if DoesEntityExist(veh) then
+    if DoesEntityExist(veh) and veh ~= 0 then
         FreezeEntityPosition(veh, freeze)
         SetEntityInvincible(veh, freeze)
         SetVehicleTyresCanBurst(veh, not freeze)
@@ -33,15 +43,32 @@ end)
 RegisterNetEvent("SPZ:tpToGrid", function(data)
     local ped = PlayerPedId()
     local veh = GetVehiclePedIsIn(ped, false)
-    local c   = data.coords
-    local h   = data.heading or 0.0
 
-    if DoesEntityExist(veh) then
+    -- If player is a free ped (stepped out during warmup), warp back into vehicle
+    if not DoesEntityExist(veh) or veh == 0 then
+        local lastVeh = GetVehiclePedIsIn(ped, true)
+        if DoesEntityExist(lastVeh) then
+            local driverSeat = GetPedInVehicleSeat(lastVeh, -1)
+            if driverSeat == 0 or driverSeat == ped then
+                TaskWarpPedIntoVehicle(ped, lastVeh, -1)
+                veh = lastVeh
+            end
+        end
+    end
+
+    local c = data.coords
+    local h = data.heading or 0.0
+
+    -- Pre-request world collision at grid start point so vehicle doesn't clip/fall
+    RequestCollisionAtCoord(c.x, c.y, c.z)
+
+    if DoesEntityExist(veh) and veh ~= 0 then
         -- Unfreeze to move it, reposition, then kill all momentum and re-freeze
         -- so nobody carries warmup speed onto the grid.
         FreezeEntityPosition(veh, false)
         SetEntityCoords(veh, c.x, c.y, c.z, false, false, false, true)
         SetEntityHeading(veh, h)
+        SetVehicleOnGroundProperly(veh)
         SetEntityVelocity(veh, 0.0, 0.0, 0.0)
         SetEntityRotation(veh, 0.0, 0.0, h, 2, true)
         SetVehicleForwardSpeed(veh, 0.0)
