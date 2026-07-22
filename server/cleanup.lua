@@ -18,7 +18,7 @@ function RunRaceCleanup(results)
     print("[Race Engine] Initiating final sequence cleanup.")
     
     -- ... (rest of the loop remains same)
-    for source, _ in pairs(RaceSession.players) do
+    for source, pData in pairs(RaceSession.players) do
         -- Clear track entities
         if GetResourceState("spz-vehicles") == "started" then
             exports["spz-vehicles"]:DespawnVehicle(source)
@@ -41,8 +41,11 @@ function RunRaceCleanup(results)
         Player(source).state:set("racePosition", nil,   true)
         Player(source).state:set("raceTime",     nil,   true)
 
-        -- Trigger client-side teleport to safe zone
-        TriggerClientEvent("SPZ:tpToSafeZone", source)
+        -- Trigger client-side teleport to safe zone only if not already teleported
+        if pData and not pData.teleportedToSafeZone then
+            pData.teleportedToSafeZone = true
+            TriggerClientEvent("SPZ:tpToSafeZone", source)
+        end
     end
 
     -- 2. Terminate the isolated environment

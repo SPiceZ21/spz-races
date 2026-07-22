@@ -19,8 +19,8 @@ Config.PollOptionsPerType   = 2       -- track options per poll (always 2)
 -- "circuit" = multi-lap, "sprint" = point-to-point
 Config.CycleOrder           = { "circuit", "sprint" }  -- alternates each race
 
--- ── Warmup (60s freeroam + customization window) ────────────────────────────
-Config.WarmupTimeSeconds    = 60      -- free-drive after TP before countdown (0 = skip)
+-- ── Warmup (90s freeroam + customization window) ────────────────────────────
+Config.WarmupTimeSeconds    = 90      -- free-drive after TP before countdown (0 = skip)
                                       -- players practice-drive the track and/or open the
                                       -- tuner menu (/savecustom etc.) to set up their car
 
