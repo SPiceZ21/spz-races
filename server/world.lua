@@ -49,62 +49,70 @@ function SetupRaceWorld()
     spawnConfirmed = {}
     local chosenModel = (type(RaceSession.carClass) == "table" and RaceSession.carClass.model) or "sultan"
 
-    for i, src in ipairs(playersInOrder) do
-        local gridPos = grid[i]
-        local player  = RaceSession.players[src]
+    Citizen.CreateThread(function()
+        for i, src in ipairs(playersInOrder) do
+            if i > 1 then
+                Citizen.Wait(5000)   -- 5s delay between spawning each player's vehicle one by one
+            end
 
-        player.gridIndex   = i
-        player.gridCoords  = gridPos.coords
-        player.gridHeading = gridPos.heading
+            if RaceSession.players[src] then
+                local gridPos = grid[i]
+                local player  = RaceSession.players[src]
 
-        exports["spz-core"]:AssignPlayerToBucket(src, RaceSession.bucketId)
+                player.gridIndex   = i
+                player.gridCoords  = gridPos.coords
+                player.gridHeading = gridPos.heading
 
-        -- Ghost BEFORE any vehicle exists: with one-point spawning every car
-        -- overlaps, so collision must already be off on the very first frame
-        -- each remote vehicle streams in.
+                exports["spz-core"]:AssignPlayerToBucket(src, RaceSession.bucketId)
 
-        local profile = Player(src).state.profile
-        local hasLicense = (profile and profile.license_tier or 0) >= (RaceSession.carClassId or 0)
-        local isRental = not hasLicense
+                -- Ghost BEFORE any vehicle exists: with one-point spawning every car
+                -- overlaps, so collision must already be off on the very first frame
+                -- each remote vehicle streams in.
 
-        -- Bring the player to their grid slot BEFORE the vehicle spawns.
-        -- Remote clients far from the track never get the grid vehicle into
-        -- network scope, can't resolve its netId → upgrade timeout → abort.
-        local ped = GetPlayerPed(src)
-        if ped and ped > 0 then
-            SetEntityCoords(ped, gridPos.coords.x, gridPos.coords.y, gridPos.coords.z + 1.0)
+                local profile = Player(src).state.profile
+                local hasLicense = (profile and profile.license_tier or 0) >= (RaceSession.carClassId or 0)
+                local isRental = not hasLicense
+
+                -- Bring the player to their grid slot BEFORE the vehicle spawns.
+                -- Remote clients far from the track never get the grid vehicle into
+                -- network scope, can't resolve its netId → upgrade timeout → abort.
+                local ped = GetPlayerPed(src)
+                if ped and ped > 0 then
+                    SetEntityCoords(ped, gridPos.coords.x, gridPos.coords.y, gridPos.coords.z + 1.0)
+                end
+
+                print(string.format("[World Setup] Staggered spawn #%d: '%s' for player %d at grid %d (Rental: %s)", i, chosenModel, src, i, tostring(isRental)))
+                local ok, err = pcall(function()
+                    exports["spz-vehicles"]:SpawnRaceVehicle(src, chosenModel, gridPos.coords, gridPos.heading, isRental)
+                end)
+                if not ok then
+                    print(string.format("[World Setup] SpawnRaceVehicle failed for %d: %s", src, tostring(err)))
+                end
+
+                local pb = 0
+                local tb = 0
+                pcall(function()
+                    pb = LB_GetPersonalBest(src, RaceSession.track.name, RaceSession.carClassId) or 0
+                    local records = LB_GetTrackRecords(RaceSession.track.name, RaceSession.carClassId, 1)
+                    tb = records and records[1] and records[1].lap_time_ms or 0
+                end)
+
+                Player(src).state:set("inRace",       true,                    true)
+                Player(src).state:set("raceId",       RaceSession.raceId,      true)
+                Player(src).state:set("raceClass",    RaceSession.carClassId,  true)
+                Player(src).state:set("raceTrack",    RaceSession.track.name,  true)
+                Player(src).state:set("raceLap",      1,                       true)
+                Player(src).state:set("raceLaps",     RaceSession.track.laps or 1, true)
+                Player(src).state:set("personalBest", pb,                      true)
+                Player(src).state:set("allTimeBest",  tb,                      true)
+                Player(src).state:set("racePosition", 0,                       true)
+                Player(src).state:set("raceTime",     0,                       true)
+                Player(src).state:set("dnf",          false,                   true)
+
+                spawnConfirmed[src] = false
+            end
         end
-
-        print(string.format("[World Setup] Spawning '%s' for player %d at grid %d (Rental: %s)", chosenModel, src, i, tostring(isRental)))
-        local ok, err = pcall(function()
-            exports["spz-vehicles"]:SpawnRaceVehicle(src, chosenModel, gridPos.coords, gridPos.heading, isRental)
-        end)
-        if not ok then
-            print(string.format("[World Setup] SpawnRaceVehicle failed for %d: %s", src, tostring(err)))
-        end
-
-        local pb = 0
-        local tb = 0
-        pcall(function()
-            pb = LB_GetPersonalBest(src, RaceSession.track.name, RaceSession.carClassId) or 0
-            local records = LB_GetTrackRecords(RaceSession.track.name, RaceSession.carClassId, 1)
-            tb = records and records[1] and records[1].lap_time_ms or 0
-        end)
-
-        Player(src).state:set("inRace",       true,                    true)
-        Player(src).state:set("raceId",       RaceSession.raceId,      true)
-        Player(src).state:set("raceClass",    RaceSession.carClassId,  true)
-        Player(src).state:set("raceTrack",    RaceSession.track.name,  true)
-        Player(src).state:set("raceLap",      1,                       true)
-        Player(src).state:set("raceLaps",     RaceSession.track.laps or 1, true)
-        Player(src).state:set("personalBest", pb,                      true)
-        Player(src).state:set("allTimeBest",  tb,                      true)
-        Player(src).state:set("racePosition", 0,                       true)
-        Player(src).state:set("raceTime",     0,                       true)
-        Player(src).state:set("dnf",          false,                   true)
-
-        spawnConfirmed[src] = false
-    end
+    end)
 
     StartSpawnTimeoutMonitor()
 end

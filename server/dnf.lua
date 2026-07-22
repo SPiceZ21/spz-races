@@ -41,6 +41,12 @@ function MarkDNF(source, reason)
     Player(source).state:set("raceTime",     nil,   true)
     Player(source).state:set("dnf",          true,  true)
 
+    -- Teleport DNF'd player immediately to Safe Zone
+    if pData and not pData.teleportedToSafeZone then
+        pData.teleportedToSafeZone = true
+        TriggerClientEvent("SPZ:tpToSafeZone", source)
+    end
+
     -- 14.3 Check if everyone is finished
     CheckAllFinished()
 end

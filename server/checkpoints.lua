@@ -100,7 +100,10 @@ local function HandleFinish(source, pData)
     Player(source).state:set("raceTime",     nil,   true)
 
     -- Teleport finished player immediately to Safe Zone
-    TriggerClientEvent("SPZ:tpToSafeZone", source)
+    if pData and not pData.teleportedToSafeZone then
+        pData.teleportedToSafeZone = true
+        TriggerClientEvent("SPZ:tpToSafeZone", source)
+    end
 
     CheckAllFinished()
 end
