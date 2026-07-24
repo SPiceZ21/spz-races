@@ -135,6 +135,16 @@ end)
 RegisterNetEvent("SPZ:spawnCheckpoints", function() _myRaceOver = false end)
 RegisterNetEvent("SPZ:tt:Begin",         function() _myRaceOver = false end)
 
+-- Overtake flourish — a confirmed clean pass, broadcast to the whole race
+RegisterNetEvent("SPZ:overtake", function(data)
+    if not data then return end
+    lib.notify({
+        title = "OVERTAKE",
+        description = ("%s passed %s"):format(data.over or "?", data.under or "?"),
+        type = "inform", duration = 4000, position = "top",
+    })
+end)
+
 Citizen.CreateThread(function()
     while true do
         if (_distState == "LIVE" or _ttActive)
