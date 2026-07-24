@@ -179,13 +179,36 @@ RegisterNetEvent("SPZ:tt:cpHit", function(logicalIdx)
     local now   = GetGameTimer()
     s.lastCpTime = now
 
+    -- ── Split delta vs your best lap at THIS checkpoint ──────────────────────
+    -- s.cpTimes[i] = ms into the current lap when CP i was crossed.
+    -- s.bestSplits[i] = the same, from your fastest lap. Delta = now - best.
+    if s.phase == "ACTIVE" and s.lapStart then
+        s.cpTimes = s.cpTimes or {}
+        local splitNow = now - s.lapStart
+        s.cpTimes[logicalIdx] = splitNow
+
+        local ref = s.bestSplits and s.bestSplits[logicalIdx]
+        TriggerClientEvent("SPZ:tt:split", src, {
+            cp    = logicalIdx,
+            total = total,
+            split = splitNow,
+            delta = ref and (splitNow - ref) or nil,   -- nil = no best yet
+        })
+    end
+
     -- ── Crossing the start/finish line (always the LAST logical CP) ──────────
     if logicalIdx == total then
         if s.phase == "ACTIVE" then
             -- Bank the completed lap
             local lapTime = now - s.lapStart
             table.insert(s.lapTimes, lapTime)
-            if not s.bestLap or lapTime < s.bestLap then s.bestLap = lapTime end
+
+            -- New best → freeze this lap's CP splits as the reference tower
+            if not s.bestLap or lapTime < s.bestLap then
+                s.bestLap    = lapTime
+                s.bestSplits = s.cpTimes or {}
+            end
+            s.cpTimes = {}   -- reset for the lap about to start
 
             if GetResourceState("spz-raceline") == "started" then
                 TriggerEvent("spz-raceline:lapCompleted", src, track.name, lapTime)

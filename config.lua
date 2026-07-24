@@ -33,6 +33,11 @@ Config.CountdownSeconds     = 3       -- 3-2-1-GO
 -- ── Race ───────────────────────────────────────────────────────────────────
 Config.RaceTimeout          = 3600000  -- 60 minutes — DNF anyone not finished (was 5 mins)
 Config.PositionBroadcastInterval = 1000   -- ms between live position updates
+
+-- Overtake auto-clips: a position swap must hold this long to count, then a
+-- screenshot is grabbed + posted to Discord. Cooldown is per overtaking pair.
+Config.OvertakeHoldMs   = 5000
+Config.OvertakeCooldown = 15000
 Config.SpawnTimeout         = 30000   -- ms hard ceiling when NOBODY has spawned yet
 
 -- Warmup doubles as spawn grace: once the FIRST racer is ready, the race moves
@@ -110,3 +115,12 @@ Config.GpsRouteColour       = 51
 
 -- ── Debug ──────────────────────────────────────────────────────────────────
 Config.Debug                = false
+
+-- Personalised lap count per circuit by track length (server/lapcount.lua).
+-- Long tracks get fewer laps, short tracks more, so total race distance stays
+-- roughly even. Sprints are always 1 lap.
+-- Threshold ~ the median lap length across all 75 circuits (~9.5 km), so the
+-- split is roughly even: longer half = 2 laps, shorter half = 3.
+Config.LongTrackMetres = 9500.0   -- a lap longer than this counts as "long"
+Config.LongTrackLaps   = 2
+Config.ShortTrackLaps  = 3

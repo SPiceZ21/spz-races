@@ -396,6 +396,13 @@ RegisterNetEvent("SPZ:tt:LapStarted", function(data)
     PlaySoundFrontend(-1, "CHECKPOINT_UNDER_THE_BRIDGE_STUNT", "HUD_MINI_GAME_SOUNDSET", 1)
 end)
 
+-- Split delta tower — server sends this on every CP crossing with the delta
+-- vs your best lap at that same checkpoint.
+RegisterNetEvent("SPZ:tt:split", function(data)
+    if GetResourceState("spz-raceUI") ~= "started" then return end
+    exports["spz-raceUI"]:ShowSplitDelta(data)
+end)
+
 RegisterNetEvent("SPZ:tt:NextCp", function(logicalIdx, physIdx)
     TTCpIndex = logicalIdx
 

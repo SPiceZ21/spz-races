@@ -20,6 +20,7 @@ server_scripts {
 
   -- Core race engine
   'data/tracks.lua',
+  'server/lapcount.lua',
   'server/main.lua',
   'server/queue.lua',
   'server/poll.lua',
@@ -30,6 +31,7 @@ server_scripts {
   'server/incidents.lua',
   -- 'server/timing.lua',
   'server/positions.lua',
+  'server/overtakes.lua',
   'server/dnf.lua',
   'server/reconnect.lua',
   'server/results.lua',
