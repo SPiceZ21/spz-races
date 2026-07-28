@@ -34,10 +34,23 @@ Config.CountdownSeconds     = 3       -- 3-2-1-GO
 Config.RaceTimeout          = 3600000  -- 60 minutes — DNF anyone not finished (was 5 mins)
 Config.PositionBroadcastInterval = 1000   -- ms between live position updates
 
--- Overtake auto-clips: a position swap must hold this long to count, then a
--- screenshot is grabbed + posted to Discord. Cooldown is per overtaking pair.
-Config.OvertakeHoldMs   = 5000
-Config.OvertakeCooldown = 15000
+-- Overtake auto-clips. A pass triggers a real VIDEO clip recorded from the
+-- overtaker's screen via `screencapture`, uploaded to FiveManage, and posted
+-- to Discord. Recording starts the instant the pass is detected (so the clip
+-- contains the overtake, not just the aftermath) and runs ClipDurationS.
+-- Cooldown is per overtaking pair to stop spam in a back-and-forth battle.
+Config.OvertakeCooldown = 20000
+Config.Clip = {
+  enabled     = true,
+  durationS   = 10,     -- seconds of video captured per overtake
+  maxWidth    = 1280,
+  maxHeight   = 720,
+  -- FiveManage: create a Media API token at https://fivemanage.com and paste
+  -- it here. Without a token the clip system falls back to a screenshot still,
+  -- then to a text-only Discord post.
+  fivemanageUrl   = "https://api.fivemanage.com/api/v3/file",
+  fivemanageToken = "",   -- e.g. "fmapi_xxxxxxxxxxxxxxxx"
+}
 Config.SpawnTimeout         = 30000   -- ms hard ceiling when NOBODY has spawned yet
 
 -- Warmup doubles as spawn grace: once the FIRST racer is ready, the race moves
