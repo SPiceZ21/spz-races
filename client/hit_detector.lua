@@ -1,5 +1,7 @@
 -- client/hit_detector.lua
--- Gate-width checkpoint detection.
+-- Checkpoint CROSSING detection (see client/cp_cross.lua). Registers only when
+-- the player passes THROUGH the gate plane, between the posts — not on entry,
+-- not from the sides.
 
 local _raceState = GlobalState.raceState or "IDLE"
 
@@ -7,20 +9,10 @@ AddStateBagChangeHandler("raceState", "global", function(_, _, value)
     if value then _raceState = value end
 end)
 
-local CP_Z_THRESHOLD = 8.0
 local HIT_DEBOUNCE_MS = 500
 
-local function _gateRadius2(cp)
-    if cp.left then
-        local dx = cp.coords.x - cp.left.x
-        local dy = cp.coords.y - cp.left.y
-        local dz = cp.coords.z - cp.left.z
-        local r  = math.sqrt(dx*dx + dy*dy + dz*dz)
-        return r * r
-    end
-    local r = cp.radius or 5.0
-    return r * r
-end
+local _lastIndex = nil    -- which CP we're tracking the crossing side for
+local _side      = nil    -- last side of the gate plane the player was on
 
 Citizen.CreateThread(function()
     while true do
@@ -28,24 +20,29 @@ Citizen.CreateThread(function()
             local cp, cpIndex = exports["spz-races"]:GetCurrentCP()
 
             if cp then
-                local playerPos = GetEntityCoords(PlayerPedId())
-                local dx    = playerPos.x - cp.coords.x
-                local dy    = playerPos.y - cp.coords.y
-                local dist2 = dx * dx + dy * dy
-                local gate2 = _gateRadius2(cp)
+                -- Reset the crossing state whenever the active CP changes.
+                if cpIndex ~= _lastIndex then
+                    _lastIndex, _side = cpIndex, nil
+                end
 
-                if dist2 < gate2 and math.abs(playerPos.z - cp.coords.z) < CP_Z_THRESHOLD then
+                local pos = GetEntityCoords(PlayerPedId())
+                local crossed, side = SPZ_GateCross(cp, pos, _side)
+                _side = side
+
+                if crossed then
                     TriggerServerEvent("SPZ:checkpointHit", cpIndex)
                     Citizen.Wait(HIT_DEBOUNCE_MS)
                 else
-                    local dist   = math.sqrt(dist2)
-                    local waitMs = dist > 80 and 100 or dist > 30 and 50 or 0
-                    Citizen.Wait(waitMs)
+                    -- Poll fast when close so a fast car can't tunnel the plane.
+                    local dx, dy = pos.x - cp.coords.x, pos.y - cp.coords.y
+                    local dist   = math.sqrt(dx*dx + dy*dy)
+                    Citizen.Wait(dist > 80 and 100 or dist > 30 and 20 or 0)
                 end
             else
                 Citizen.Wait(100)
             end
         else
+            _lastIndex, _side = nil, nil
             Citizen.Wait(500)
         end
     end

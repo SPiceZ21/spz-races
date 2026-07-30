@@ -185,28 +185,36 @@ end)
 -- Uses the PHYSICAL CP index for proximity checks but sends the LOGICAL
 -- index to the server (the server validates order against its logical counter).
 
+local _ttSide, _ttSideIdx = nil, nil   -- crossing-side state for the active CP
+
 Citizen.CreateThread(function()
     while true do
         if TTActive and TTTrack and not TTRestartActive
         and GetGameTimer() >= TTReadyAt then
             local physCp = TTTrack.checkpoints[_physIdx(TTCpIndex)]
             if physCp then
-                local pos   = GetEntityCoords(PlayerPedId())
-                local dx    = pos.x - physCp.coords.x
-                local dy    = pos.y - physCp.coords.y
-                local dist2 = dx*dx + dy*dy
+                -- Reset crossing state when the active CP changes.
+                if TTCpIndex ~= _ttSideIdx then
+                    _ttSideIdx, _ttSide = TTCpIndex, nil
+                end
 
-                if dist2 < _gateR2(physCp) and math.abs(pos.z - physCp.coords.z) < CP_Z_THRESH then
+                local pos = GetEntityCoords(PlayerPedId())
+                local crossed, side = SPZ_GateCross(physCp, pos, _ttSide)
+                _ttSide = side
+
+                if crossed then
                     TriggerServerEvent("SPZ:tt:cpHit", TTCpIndex)  -- logical
                     Citizen.Wait(DEBOUNCE_MS)
                 else
-                    local d = math.sqrt(dist2)
-                    Citizen.Wait(d > 80 and 100 or d > 30 and 50 or 0)
+                    local dx, dy = pos.x - physCp.coords.x, pos.y - physCp.coords.y
+                    local d = math.sqrt(dx*dx + dy*dy)
+                    Citizen.Wait(d > 80 and 100 or d > 30 and 20 or 0)
                 end
             else
                 Citizen.Wait(100)
             end
         else
+            _ttSideIdx, _ttSide = nil, nil
             Citizen.Wait(200)
         end
     end
