@@ -56,6 +56,7 @@ server_scripts {
 client_scripts {
   'client/main.lua',
   'client/checkpoints.lua',
+  'client/cp_cross.lua',
   'client/hit_detector.lua',
   'client/incidents.lua',
   'client/nui_bridge.lua',
