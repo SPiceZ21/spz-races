@@ -61,6 +61,7 @@ client_scripts {
   'client/incidents.lua',
   'client/nui_bridge.lua',
   'client/raceblips.lua',
+  'client/trackboard.lua',
   'client/timetrail.lua',
   'client/creator.lua',
   'client/editor.lua',
