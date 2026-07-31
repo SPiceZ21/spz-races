@@ -358,6 +358,7 @@ end)
 local function _lobbyMode()
     if LocalPlayer.state.inRace then return { mode = "hidden" } end
     if _G.SPZ_InTimeTrial then return { mode = "hidden" } end  -- no join UI in TT
+    if IsNuiFocused() then return { mode = "hidden" } end       -- spawn menu / any focused NUI open
 
     local qCount = GlobalState.queueCount or 0
 
@@ -403,7 +404,8 @@ end)
 -- Disabled once actually racing (inRace) — no bailing mid-grid via E.
 Citizen.CreateThread(function()
     while true do
-        if not LocalPlayer.state.inRace and not _G.SPZ_InTimeTrial and not IsPauseMenuActive() then
+        if not LocalPlayer.state.inRace and not _G.SPZ_InTimeTrial
+        and not IsPauseMenuActive() and not IsNuiFocused() then
             if IsControlJustPressed(0, 51) then   -- INPUT_CONTEXT (E)
                 if LocalPlayer.state.inQueue or LocalPlayer.state.pendingRace then
                     TriggerServerEvent("SPZ:leaveQueue")
