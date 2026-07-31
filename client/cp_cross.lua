@@ -47,9 +47,17 @@ function SPZ_GateCross(cp, pos, prev)
         return false, prev
     end
 
-    -- Plane normal = perpendicular to the gate line (≈ direction of travel).
+    -- Plane normal, perpendicular to the gate line, ALIGNED to the direction of
+    -- travel via the checkpoint heading. Alignment lets us call the "before"
+    -- side deterministically (negative), independent of left/right post order.
     local nx, ny = -gy / glen, gx / glen
-    -- Signed distance of the player from the plane through the centre.
+    if cp.heading then
+        local rad = math.rad(cp.heading)
+        local hx, hy = -math.sin(rad), math.cos(rad)   -- forward vector
+        if (nx * hx + ny * hy) < 0 then nx, ny = -nx, -ny end
+    end
+
+    -- Signed distance from the plane: >0 = past the line, <0 = before it.
     local d    = (pos.x - cx) * nx + (pos.y - cy) * ny
     local side = (d >= 0) and 1 or -1
 
@@ -59,8 +67,16 @@ function SPZ_GateCross(cp, pos, prev)
     local withinGate = t >= -GATE_MARGIN and t <= (glen + GATE_MARGIN)
     local zOk        = math.abs(pos.z - cz) < Z_THRESH
 
-    -- A hit is a genuine side-flip while between the posts, at the right height.
-    if prev ~= nil and prev ~= side and withinGate and zOk then
+    -- First sample after this checkpoint became active: seed the side to
+    -- "before" (-1). At the START you spawn ON the line, so there is no
+    -- approach to flip from — seeding "before" means the very first forward
+    -- move across the line registers, instead of the start point being skipped.
+    if prev == nil then
+        return false, -1
+    end
+
+    -- A hit is a genuine before→after flip while between the posts.
+    if prev ~= side and side == 1 and withinGate and zOk then
         return true, side
     end
 

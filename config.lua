@@ -137,3 +137,15 @@ Config.Debug                = false
 Config.LongTrackMetres = 9500.0   -- a lap longer than this counts as "long"
 Config.LongTrackLaps   = 2
 Config.ShortTrackLaps  = 3
+
+-- ── In-world record boards ─────────────────────────────────────────────────
+-- Physical floating scoreboards showing the fastest lap holders for a track.
+-- Walk near one and the top times render in the world. Each board is pinned to
+-- a track name (must match a key/name in data/tracks.lua). Add as many as you
+-- like — e.g. one at spawn, one at each track's start line.
+Config.RecordBoards = {
+    -- { coords = vector3(x, y, z), heading = 0.0, track = "10-80" },
+    { coords = vector3(-1327.5, -1196.0, 5.6), heading = 120.0, track = "10-80" },
+}
+Config.BoardRange   = 12.0     -- metres: render when the player is this close
+Config.BoardRefresh = 30000    -- ms between record re-fetches

@@ -66,3 +66,31 @@ end)
 lib.callback.register("spz-races:getActivityFeed", function(source, data)
     return safeCall(LB_GetActivityFeed, {}, data and data.limit)
 end)
+
+-- In-world record board: overall fastest lap per track (any class), from the
+-- racelines store — the same record-holder data the ghost/rival systems use.
+local _boardCache = {}   -- [track] = { at = ms, rows = {} }
+lib.callback.register("spz-races:getBoardRecords", function(source, data)
+    local track = data and data.track
+    local limit = math.min((data and data.limit) or 5, 10)
+    if type(track) ~= "string" then return {} end
+
+    local hit = _boardCache[track]
+    if hit and (GetGameTimer() - hit.at) < 30000 then return hit.rows end
+
+    local rows = MySQL.query.await([[
+        SELECT r.best_ms, p.username
+        FROM racelines r
+        JOIN players p ON p.id = r.player_id
+        WHERE r.track = ?
+        ORDER BY r.best_ms ASC
+        LIMIT ?
+    ]], { track, limit }) or {}
+
+    local out = {}
+    for i, row in ipairs(rows) do
+        out[i] = { rank = i, name = row.username or "Unknown", ms = row.best_ms }
+    end
+    _boardCache[track] = { at = GetGameTimer(), rows = out }
+    return out
+end)
