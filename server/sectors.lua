@@ -10,6 +10,27 @@
 -- Fastest sector times seen in the current race, across all racers.
 local SessionBest = { nil, nil, nil }
 
+-- Tracks split into 3 sectors (shared/sectors.lua). A "perfect lap" is purple
+-- in all three within the same lap.
+local SECTORS_PER_LAP = 3
+
+-- Record a purple sector on a lap; when all three land in one lap, fire the
+-- perfect-lap reward exactly once. `bag` is the per-player session table
+-- (race pData or TT session), so state is naturally scoped and cleaned up.
+local function MarkPurple(bag, lap, sector, source, trackName, class)
+    bag._purple = bag._purple or {}
+    local set = bag._purple[lap]
+    if not set then set = { n = 0 }; bag._purple[lap] = set end
+    if not set[sector] then
+        set[sector] = true
+        set.n = set.n + 1
+    end
+    if set.n >= SECTORS_PER_LAP and not set.done then
+        set.done = true
+        TriggerEvent("SPZ:perfectLap", source, { track = trackName, class = class, lap = lap })
+    end
+end
+
 -- ── Personal bests ───────────────────────────────────────────────────────────
 
 -- Stored bests are loaded once per racer at race start so the hot path (a
@@ -107,6 +128,10 @@ function RecordSectorHit(source, pData, cpIndex, now)
 
     local colour = isSessionBest and "purple" or (isOwnBest and "green" or "yellow")
 
+    if colour == "purple" then
+        MarkPurple(pData, lap, sector, source, track.name, RaceSession.carClassId)
+    end
+
     -- Delta against the player's own reference, so it reads the same way the
     -- lap delta does: negative is faster.
     local ref   = ownBest or pb
@@ -181,6 +206,10 @@ function TT_RecordSectorHit(source, s, cpIndex, now)
     -- Solo context: purple = beats the stored all-time PB, green = best of
     -- this TT session, yellow = slower than both.
     local colour = isPB and "purple" or (isOwnBest and "green" or "yellow")
+
+    if colour == "purple" then
+        MarkPurple(s, s.currentLap or 1, sector, source, track.name, TT_CLASS)
+    end
 
     local ref   = ownBest or pb
     local delta = ref and (ms - ref) or nil
