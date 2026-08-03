@@ -126,6 +126,22 @@ Config.GateRange            = 130.0
 -- GPS route colour index (GTA colour palette, 51 = bright yellow).
 Config.GpsRouteColour       = 51
 
+-- ── Ghost-bots (cold-start field filler) ────────────────────────────────────
+-- Thin races are backfilled with "ghost-bots": real stored human lines
+-- (spz-raceline) replayed as SOLID, non-collidable cars driven by their
+-- recorded timing. They fill the grid, appear in the live standings and push
+-- your visible position, but grant NO rewards and do NOT affect
+-- iRating/series/XP — humans are scored only against humans.
+--
+-- Requires stored lines on the track (someone must have driven it). A brand-new
+-- track with zero lines simply gets no bots until one is set.
+Config.Bots = {
+  enabled     = true,
+  targetField = 6,       -- top the grid up to this many total cars
+  onlyWhenSolo = false,  -- true = bots only when you are the single human
+  labelRange  = 80.0,    -- metres within which the floating "BOT" label draws
+}
+
 -- ── Debug ──────────────────────────────────────────────────────────────────
 Config.Debug                = false
 

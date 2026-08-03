@@ -184,6 +184,9 @@ function StartCountdownSequence()
         BroadcastToRacers("SPZ:go")
         print("[Countdown] RACE LIVE")
 
+        -- Backfill the grid with ghost-bots (uses the GO clock just set).
+        if SpawnRaceBots then SpawnRaceBots() end
+
         -- Start timeout watchdog
         StartRaceTimeoutWatchdog()
 

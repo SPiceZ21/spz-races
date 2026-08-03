@@ -85,6 +85,26 @@ function _gapToLeader(leader, pData, entry, leadEntry)
     return "+0.00"
 end
 
+-- Unified gap string over the MERGED (human + bot) field. Both kinds carry
+-- lap/cp/last_cp_time, so the same lap→cp→last-crossing fallback applies.
+local function _mergedGap(leader, e)
+    if not leader then return "" end
+    if e == leader then return "LEADER" end
+    if e.finished and leader.finished then
+        local d = (e.ft or 0) - (leader.ft or 0)
+        return d > 0 and ("+" .. string.format("%.2f", d / 1000)) or "+0.00"
+    end
+    local lapDiff = (leader.lap or 1) - (e.lap or 1)
+    if lapDiff > 0 then return ("+%d L"):format(lapDiff) end
+    local cpDiff = (leader.cp or 1) - (e.cp or 1)
+    if cpDiff > 0 then return ("+%d CP"):format(cpDiff) end
+    if leader.lct and e.lct then
+        local d = e.lct - leader.lct
+        if d > 0 then return "+" .. string.format("%.2f", d / 1000) end
+    end
+    return "+0.00"
+end
+
 -- 13.2 Periodic Broadcast
 local _posVersion = 0
 
@@ -93,35 +113,74 @@ Citizen.CreateThread(function()
         Citizen.Wait(Config.PositionBroadcastInterval or 1000)
 
         if RaceSession.state == SPZ.RaceState.LIVE then
-            local ranked = CalculatePositions()
+            local now = GetGameTimer()
+
+            -- CalculatePositions ranks HUMANS only and sets pData.position — that
+            -- stays the scoring truth (results.lua uses it). Bots are merged in
+            -- below for DISPLAY only, so they never touch human scoring.
+            CalculatePositions()
+
+            local merged = {}
+            for src, pData in pairs(RaceSession.players) do
+                if not pData.dnf then
+                    merged[#merged + 1] = {
+                        bot = false, source = src, name = pData.name,
+                        crew_tag = pData.crew_tag,
+                        lap = pData.current_lap, cp = pData.current_cp,
+                        finished = pData.finished, ft = pData.finish_time or 0,
+                        lct = pData.last_cp_time or 0,
+                    }
+                end
+            end
+            if GetBotStandings then
+                for _, br in ipairs(GetBotStandings(now)) do
+                    merged[#merged + 1] = {
+                        bot = true, source = br.id, name = br.name,
+                        lap = br.lap, cp = br.cp, finished = br.finished,
+                        ft = br.finish_time or 0, lct = br.last_cp_time or 0,
+                    }
+                end
+            end
+
+            table.sort(merged, function(a, b)
+                if a.finished ~= b.finished then return a.finished end
+                if a.finished and b.finished then return a.ft < b.ft end
+                if a.lap ~= b.lap then return a.lap > b.lap end
+                if a.cp  ~= b.cp  then return a.cp  > b.cp  end
+                return (a.lct or 0) < (b.lct or 0)
+            end)
+
+            local leader = merged[1]
             local payload = {}
-
-            local leader = ranked[1] and RaceSession.players[ranked[1].source] or nil
-
-            for i, entry in ipairs(ranked) do
-                local pData = RaceSession.players[entry.source]
-                table.insert(payload, {
-                    source   = entry.source,
-                    name     = pData.name,
-                    crew_tag = pData.crew_tag,
+            for i, e in ipairs(merged) do
+                payload[i] = {
+                    source   = e.source,   -- number for humans, "bot_N" for bots
+                    bot      = e.bot,
+                    name     = e.name,
+                    crew_tag = e.crew_tag,
                     position = i,
-                    lap      = pData.current_lap,
-                    finished = pData.finished,
-                    gap      = _gapToLeader(leader, pData, entry, ranked[1]),
-                })
+                    lap      = e.lap,
+                    finished = e.finished,
+                    gap      = _mergedGap(leader, e),
+                }
             end
 
             _posVersion = _posVersion + 1
             -- Clients reject packets whose version is not strictly greater than their last
             BroadcastToRacers("SPZ:positionUpdate", payload, _posVersion)
 
-            -- Also update statebags for reactive UI
-            for i, entry in ipairs(ranked) do
-                local src = entry.source
-                local pData = RaceSession.players[src]
-                Player(src).state:set("racePosition", i, true)
-                Player(src).state:set("raceLap", pData.current_lap, true)
-                Player(src).state:set("raceTime", GetGameTimer() - (RaceSession.startTime or 0), true)
+            -- Statebags for reactive UI: humans get their DISPLAY position within
+            -- the merged field (so "P2/6" counts the bots ahead).
+            for i, e in ipairs(merged) do
+                if not e.bot then
+                    local src = e.source
+                    local pData = RaceSession.players[src]
+                    if pData then
+                        Player(src).state:set("racePosition", i, true)
+                        Player(src).state:set("raceLap", pData.current_lap, true)
+                        Player(src).state:set("raceTime", now - (RaceSession.startTime or 0), true)
+                    end
+                end
             end
         end
     end

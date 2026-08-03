@@ -16,7 +16,10 @@ function RunRaceCleanup(results)
     end
 
     print("[Race Engine] Initiating final sequence cleanup.")
-    
+
+    -- Tear down ghost-bots (delete their solid cars on every client).
+    if ClearRaceBots then ClearRaceBots() end
+
     -- ... (rest of the loop remains same)
     for source, pData in pairs(RaceSession.players) do
         -- Clear track entities
