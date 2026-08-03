@@ -40,6 +40,9 @@ RegisterNetEvent("SPZ:positionUpdate", function(payload)
     local alive = {}
 
     for _, racer in ipairs(payload) do
+        -- Bots carry a string id and no ped; their blips are owned by
+        -- client/bots.lua (attached to the local replay car).
+        if not racer.bot then
         local sid = racer.source
         alive[sid] = true
         local blip = ensureBlip(sid)
@@ -53,6 +56,7 @@ RegisterNetEvent("SPZ:positionUpdate", function(payload)
             AddTextComponentSubstringPlayerName(("P%s  %s"):format(racer.position or "?", racer.name or ""))
             EndTextCommandSetBlipName(blip)
         end
+        end   -- not racer.bot
     end
 
     -- drop blips for racers no longer in the payload (finished / DNF / left)

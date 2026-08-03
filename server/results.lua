@@ -51,9 +51,16 @@ function ProcessRaceResults()
     end
 
     -- Ensure exact ordering by P1 -> PN
-    table.sort(results.finishers, function(a, b) 
-        return a.position < b.position 
+    table.sort(results.finishers, function(a, b)
+        return a.position < b.position
     end)
+
+    -- Ghost-bots: display-only rows for the results grid. Deliberately kept out
+    -- of `finishers` so spz-progression (which scores `finishers`) never sees
+    -- them — humans are ranked and rewarded only against humans.
+    if GetBotResults then
+        results.bots = GetBotResults()
+    end
 
     print(string.format("[Results] Finalized results for race %s on %s. Winner: %s", 
         results.raceId, results.track, results.finishers[1] and results.finishers[1].name or "None"))
