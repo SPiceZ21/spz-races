@@ -39,6 +39,7 @@ server_scripts {
   'server/cleanup.lua',
   'server/intermission.lua',
   'server/timetrail.lua',
+  'server/duel.lua',
   'server/state_machine.lua',
 
   -- Leaderboard (absorbed from spz-leaderboard)
@@ -66,6 +67,7 @@ client_scripts {
   'client/trackboard.lua',
   'client/bonus.lua',
   'client/timetrail.lua',
+  'client/duel.lua',
   'client/creator.lua',
   'client/editor.lua',
   'client/dev_heading.lua',

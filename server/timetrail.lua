@@ -42,6 +42,12 @@ local function _endSession(src)
     local s = TT[src]
     if not s then return end
 
+    -- A duel that tears down without a settled lap (quit/disconnect/failed start)
+    -- refunds the challenger's escrowed stake.
+    if s.duel and not s.duel.settled and RefundDuel then
+        RefundDuel(s.duel)
+    end
+
     if GetResourceState("spz-vehicles") == "started" then
         pcall(function() exports["spz-vehicles"]:DespawnVehicle(src) end)
     end
@@ -222,6 +228,15 @@ RegisterNetEvent("SPZ:tt:cpHit", function(logicalIdx)
                 times     = s.lapTimes,
                 isNewBest = (lapTime == s.bestLap),
             })
+
+            -- Ghost duel: the first completed timed lap IS the attempt. Settle
+            -- against the opponent's stored time and tear the session down. The
+            -- server owns the comparison — the client never reports the outcome.
+            if s.duel and not s.duel.settled then
+                s.duel.settled = true
+                if OnDuelLap then OnDuelLap(src, s, lapTime) end
+                return
+            end
         end
 
         -- ...and immediately roll into the next one. Continuous, no reset.
@@ -284,6 +299,85 @@ end, false)
 AddEventHandler("playerDropped", function()
     if TT[source] then _endSession(source) end
 end)
+
+-- ── Ghost-duel entry points (called from server/duel.lua) ────────────────────
+-- A duel reuses the entire TT harness (bucket, CP timing, sectors, ghost) but
+-- runs a SINGLE timed lap against a target time. duel.lua handles the wager,
+-- validation and settlement; here we just start/stop the session.
+
+-- d = { track, trackIndex, oppLine = {model, points}, targetMs, oppName,
+--       oppPid, challengerPid, stake, duelId }
+function StartDuelSession(src, d)
+    if TT[src] then return false end
+    local track = d.track
+    local total = #track.checkpoints
+    if total < 2 then return false end
+
+    local bid = 0
+    if GetResourceState("spz-core") == "started" then
+        bid = exports["spz-core"]:CreateBucket(("duel_%d"):format(src))
+        exports["spz-core"]:AssignPlayerToBucket(src, bid)
+    else
+        bid = _nextBucket; _nextBucket = _nextBucket + 1
+        SetPlayerRoutingBucket(src, bid)
+    end
+
+    TT[src] = {
+        source = src, track = track, bucketId = bid, model = d.oppLine.model,
+        phase = "OUT_LAP", currentLap = 0, currentCp = total, lapStart = nil,
+        lapTimes = {}, bestLap = nil, lastCpTime = GetGameTimer(),
+        duel = {
+            targetMs = d.targetMs, stake = d.stake, oppName = d.oppName,
+            oppPid = d.oppPid, challengerPid = d.challengerPid,
+            duelId = d.duelId, settled = false,
+        },
+    }
+    TT_InitSectors(src, TT[src])
+
+    local headStart = track.checkpoints[total]
+    local heading   = headStart.heading
+    if not heading then
+        local target = track.checkpoints[1]
+        heading = math.deg(math.atan(
+            -(target.coords.x - headStart.coords.x),
+            target.coords.y - headStart.coords.y)) % 360
+    end
+
+    -- Challenger drives the SAME model as the opponent's stored line — fair, and
+    -- it skips the car-select step. The line stores a model HASH; SpawnVehicle
+    -- needs a registered spawn NAME, so resolve it (fall back to a safe default
+    -- if that model isn't in the race registry).
+    local spawnName
+    if GetResourceState("spz-vehicles") == "started" then
+        local h = d.oppLine.model
+        if type(h) == "number" then
+            local ok, nm = pcall(function() return GetDisplayNameFromVehicleModel(h) end)
+            if ok and nm and nm ~= "" and nm ~= "NULL" then spawnName = nm:lower() end
+        elseif type(h) == "string" then
+            spawnName = h:lower()
+        end
+        if not (spawnName and exports["spz-vehicles"]:GetVehicleData(spawnName)) then
+            spawnName = (Config.Duel and Config.Duel.FallbackModel) or "sultan"
+        end
+        exports["spz-vehicles"]:SpawnRaceVehicle(src, spawnName, headStart.coords, heading, true)
+    end
+
+    TriggerClientEvent("SPZ:tt:Begin", src, {
+        track = track, trackIndex = d.trackIndex, model = spawnName,
+        headStart = { coords = headStart.coords, heading = heading },
+    })
+    TriggerClientEvent("SPZ:duel:Begin", src, {
+        line     = { model = d.oppLine.model, points = d.oppLine.points },
+        targetMs = d.targetMs, oppName = d.oppName, stake = d.stake,
+    })
+    return true
+end
+
+function EndDuelSession(src)
+    _endSession(src)
+end
+
+function IsBusyInTT(src) return TT[src] ~= nil end
 
 -- ── Export ────────────────────────────────────────────────────────────────────
 
