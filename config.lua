@@ -142,6 +142,25 @@ Config.Bots = {
   labelRange  = 80.0,    -- metres within which the floating "BOT" label draws
 }
 
+-- ── Ghost duels (async PvP wagers) ──────────────────────────────────────────
+-- /duel <player|id> <track> <stake> — race an opponent's STORED best line (a
+-- ghost) for credits. Reuses the Time-Trial harness (bucket, CP timing, ghost).
+-- Server-authoritative: it compares its measured lap to the stored best_ms.
+Config.Duel = {
+  Enabled  = true,
+  MinStake = 100,
+  MaxStake = 10000,
+  -- HouseFunded = true  → winnings are a house bounty; the (possibly offline)
+  --   opponent is NEVER charged. Winner nets +stake (stake back + matched bonus).
+  -- HouseFunded = false → the opponent's balance covers the matched stake: they
+  --   lose it if their ghost is beaten, win the challenger's stake if it holds.
+  --   Charges an offline player without consent — off by default.
+  HouseFunded = true,
+  -- Car for the challenger when the opponent's stored model can't be resolved to
+  -- a registered race vehicle.
+  FallbackModel = "sultan",
+}
+
 -- ── Debug ──────────────────────────────────────────────────────────────────
 Config.Debug                = false
 

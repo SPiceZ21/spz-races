@@ -169,6 +169,11 @@ Citizen.CreateThread(function()
             -- Clients reject packets whose version is not strictly greater than their last
             BroadcastToRacers("SPZ:positionUpdate", payload, _posVersion)
 
+            -- Server-side standings feed for out-of-race modules (spz-betting):
+            -- BroadcastToRacers only reaches racers, so spectators/other resources
+            -- get the live order here. Same payload (humans + ghost-bots flagged).
+            TriggerEvent("SPZ:standings", payload, _posVersion)
+
             -- Statebags for reactive UI: humans get their DISPLAY position within
             -- the merged field (so "P2/6" counts the bots ahead).
             for i, e in ipairs(merged) do
