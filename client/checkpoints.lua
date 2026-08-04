@@ -15,6 +15,7 @@
 -- ── State ──────────────────────────────────────────────────────────────────
 local CurrentCheckpoints = {}
 local CurrentCPIndex     = 1
+local LastCaughtIdx      = nil   -- last checkpoint actually crossed (for /respawn)
 local RaceState          = "IDLE"
 local TrackType          = "circuit"   -- "circuit" | "sprint"
 
@@ -355,6 +356,7 @@ RegisterNetEvent("SPZ:spawnCheckpoints", function(checkpoints, startIdx, trackTy
     TrackType          = trackType or "circuit"
     CurrentCheckpoints = checkpoints
     CurrentCPIndex     = startIdx or 1
+    LastCaughtIdx      = nil
 
     _buildBlips(checkpoints)
     _applyActive(CurrentCPIndex)
@@ -364,6 +366,8 @@ RegisterNetEvent("SPZ:nextCheckpoint", function(newIndex)
     -- Periodic resyncs re-send the CURRENT index — only chime and restyle
     -- when the checkpoint actually advanced.
     if newIndex == CurrentCPIndex then return end
+    -- The CP we just crossed was the old target — remember it as the respawn point.
+    LastCaughtIdx  = CurrentCPIndex
     CurrentCPIndex = newIndex
     PlaySoundFrontend(-1, "CHECKPOINT_NORMAL", "HUD_MINI_GAME_SOUNDSET", 1)
     _applyActive(CurrentCPIndex)
@@ -382,6 +386,7 @@ local function _onRaceStateChange(newState)
         _clearAllBlips()
         CurrentCheckpoints = {}
         CurrentCPIndex     = 1
+        LastCaughtIdx      = nil
     end
 end
 
@@ -406,6 +411,26 @@ end)
 
 exports("GetCurrentCP", function()
     return CurrentCheckpoints[CurrentCPIndex], CurrentCPIndex
+end)
+
+-- Respawn point for the "back to last checkpoint" key: the coords of the last
+-- checkpoint actually crossed (fallback: the first checkpoint / start), with a
+-- heading that faces the NEXT target so you resume pointing the right way.
+exports("GetRespawnPoint", function()
+    if #CurrentCheckpoints == 0 then return nil end
+
+    local fromCp = CurrentCheckpoints[LastCaughtIdx or 1]
+    if not fromCp then return nil end
+
+    local nextCp  = CurrentCheckpoints[CurrentCPIndex]
+    local heading = fromCp.heading
+    if nextCp then
+        heading = math.deg(math.atan(
+            -(nextCp.coords.x - fromCp.coords.x),
+            nextCp.coords.y - fromCp.coords.y)) % 360
+    end
+
+    return { coords = fromCp.coords, heading = heading or 0.0 }
 end)
 
 exports("GetRaceState", function()

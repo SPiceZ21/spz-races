@@ -66,6 +66,8 @@ client_scripts {
   'client/bots.lua',
   'client/trackboard.lua',
   'client/bonus.lua',
+  'client/lockin.lua',
+  'client/recover.lua',
   'client/timetrail.lua',
   'client/duel.lua',
   'client/creator.lua',
