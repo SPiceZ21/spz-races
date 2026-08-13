@@ -123,9 +123,12 @@ Citizen.CreateThread(function()
             local merged = {}
             for src, pData in pairs(RaceSession.players) do
                 if not pData.dnf then
+                    local st = Player(src).state
                     merged[#merged + 1] = {
                         bot = false, source = src, name = pData.name,
                         crew_tag = pData.crew_tag,
+                        nation = st and st['spz:nation'] or nil,
+                        raceNumber = st and st['spz:raceNumber'] or nil,
                         lap = pData.current_lap, cp = pData.current_cp,
                         finished = pData.finished, ft = pData.finish_time or 0,
                         lct = pData.last_cp_time or 0,
@@ -154,14 +157,16 @@ Citizen.CreateThread(function()
             local payload = {}
             for i, e in ipairs(merged) do
                 payload[i] = {
-                    source   = e.source,   -- number for humans, "bot_N" for bots
-                    bot      = e.bot,
-                    name     = e.name,
-                    crew_tag = e.crew_tag,
-                    position = i,
-                    lap      = e.lap,
-                    finished = e.finished,
-                    gap      = _mergedGap(leader, e),
+                    source     = e.source,   -- number for humans, "bot_N" for bots
+                    bot        = e.bot,
+                    name       = e.name,
+                    crew_tag   = e.crew_tag,
+                    nation     = e.nation,
+                    raceNumber = e.raceNumber,
+                    position   = i,
+                    lap        = e.lap,
+                    finished   = e.finished,
+                    gap        = _mergedGap(leader, e),
                 }
             end
 
