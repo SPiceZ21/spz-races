@@ -15,7 +15,7 @@ RegisterNetEvent("SPZ:perfectLapFlourish", function()
 
     PlaySoundFrontend(-1, "RANK_UP", "HUD_AWARDS", true)
 
-    if not IsAnimpostfxRunning("SuccessNeutral") then
+    if not AnimpostfxIsRunning("SuccessNeutral") then
         AnimpostfxPlay("SuccessNeutral", 900, false)
         SetTimeout(900, function() AnimpostfxStop("SuccessNeutral") end)
     end
