@@ -155,6 +155,22 @@ function CountPlayers()
     return n
 end
 
+-- ── Current race meta (read-only snapshot for external modules, e.g. spz-discord) ─
+exports("GetRaceInfo", function()
+    local t = RaceSession.track
+    return {
+        raceId   = RaceSession.raceId,
+        state    = RaceSession.state,
+        track    = t and t.name,
+        trackId  = t and (t.id or t.name),
+        type     = (t and t.type) or RaceSession.raceType,
+        laps     = t and t.laps,
+        carClass = RaceSession.carClassId,
+        players  = CountPlayers(),
+        startTime = RaceSession.startTime,
+    }
+end)
+
 -- ── playerDropped ─────────────────────────────────────────────────────────────
 AddEventHandler("playerDropped", function()
     local src   = source
