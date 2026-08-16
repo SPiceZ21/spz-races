@@ -9,9 +9,12 @@ function SetupRaceWorld()
         RaceSession.raceId = string.format("R%d", math.random(1000, 9999))
     end
 
-    RaceSession.bucketId = exports["spz-core"]:CreateBucket(RaceSession.raceId)
-    print(string.format("[World Setup] Bucket %d created for race %s",
-        RaceSession.bucketId, RaceSession.raceId))
+    -- Enable ambient population in the race bucket only if players voted for
+    -- traffic (light/heavy). "none" keeps the classic clean race world.
+    local wantTraffic = RaceSession.trafficLevel and RaceSession.trafficLevel ~= "none"
+    RaceSession.bucketId = exports["spz-core"]:CreateBucket(RaceSession.raceId, wantTraffic or false)
+    print(string.format("[World Setup] Bucket %d created for race %s (traffic: %s)",
+        RaceSession.bucketId, RaceSession.raceId, tostring(RaceSession.trafficLevel or "none")))
 
     -- Build ordered player list
     local playersInOrder = {}

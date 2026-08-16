@@ -180,7 +180,9 @@ Config.ShortTrackLaps  = 3
 -- like — e.g. one at spawn, one at each track's start line.
 Config.RecordBoards = {
     -- { coords = vector3(x, y, z), heading = 0.0, track = "10-80" },
-    { coords = vector3(-1327.5, -1196.0, 5.6), heading = 120.0, track = "10-80" },
+    -- Removed: this board sat right on the after-race safe-zone TP spot
+    -- (SafeZone -1323.8,-1199.1) so it rendered in the player's face every race.
+    -- { coords = vector3(-1327.5, -1196.0, 5.6), heading = 120.0, track = "10-80" },
 }
 Config.BoardRange   = 12.0     -- metres: render when the player is this close
 Config.BoardRefresh = 30000    -- ms between record re-fetches

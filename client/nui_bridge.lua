@@ -19,7 +19,8 @@ end)
 RegisterNetEvent("SPZ:pollResult", function(data)
     if GetResourceState("spz-poll") ~= "started" then return end
     exports["spz-poll"]:UpdatePoll(data)
-    if data.phase == "vehicle" then
+    -- Traffic is the LAST poll phase now — only close the widget after it.
+    if data.phase == "traffic" then
         Citizen.SetTimeout(1200, function()
             exports["spz-poll"]:StopPoll()
         end)
