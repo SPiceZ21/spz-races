@@ -131,7 +131,7 @@ Config.GpsRouteColour       = 51
 -- (spz-raceline) replayed as SOLID, non-collidable cars driven by their
 -- recorded timing. They fill the grid, appear in the live standings and push
 -- your visible position, but grant NO rewards and do NOT affect
--- iRating/series/XP — humans are scored only against humans.
+-- iRating/XP — humans are scored only against humans.
 --
 -- Requires stored lines on the track (someone must have driven it). A brand-new
 -- track with zero lines simply gets no bots until one is set.
