@@ -13,6 +13,14 @@ function SetupRaceWorld()
     -- traffic (light/heavy). "none" keeps the classic clean race world.
     local wantTraffic = RaceSession.trafficLevel and RaceSession.trafficLevel ~= "none"
     RaceSession.bucketId = exports["spz-core"]:CreateBucket(RaceSession.raceId, wantTraffic or false)
+
+    -- CreateBucket applies STRICT entity lockdown (isolation), which also blocks
+    -- the client-spawned AMBIENT traffic. So when traffic was voted, relax the
+    -- lockdown so ambient vehicles/peds can actually populate the race world.
+    if wantTraffic then
+        SetRoutingBucketEntityLockdownMode(RaceSession.bucketId, "relaxed")
+    end
+
     print(string.format("[World Setup] Bucket %d created for race %s (traffic: %s)",
         RaceSession.bucketId, RaceSession.raceId, tostring(RaceSession.trafficLevel or "none")))
 
