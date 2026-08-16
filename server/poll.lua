@@ -71,7 +71,7 @@ function StartRacePoll()
 
         RaceSession.pollVotes = {}
         for i = 1, #pollOptions do RaceSession.pollVotes[i] = 0 end
-    else
+    elseif phase == 2 then
         local availableClasses = exports["spz-vehicles"]:GetRaceClasses()
         if not availableClasses or #availableClasses == 0 then
             print("[Race Poll] No race-eligible vehicles. Resetting.")
@@ -131,6 +131,16 @@ function StartRacePoll()
 
         RaceSession.pollVotes = {}
         for i = 1, #pollOptions do RaceSession.pollVotes[i] = 0 end
+    else
+        -- Phase 3: how much ambient traffic to spawn inside the race world.
+        pollOptions = { { level = "none" }, { level = "light" }, { level = "heavy" } }
+        uiOptions = {
+            { name = "none",  label = "No Traffic",    subtext = "Empty streets", color = "#9AA0A6", stats = {} },
+            { name = "light", label = "Light Traffic", subtext = "A few cars",    color = "#FFB020", stats = {} },
+            { name = "heavy", label = "Heavy Traffic", subtext = "Busy roads",    color = "#FF6200", stats = {} },
+        }
+        RaceSession.pollVotes = {}
+        for i = 1, #pollOptions do RaceSession.pollVotes[i] = 0 end
     end
 
     RaceSession.pollOptions = pollOptions
@@ -140,12 +150,13 @@ function StartRacePoll()
 
     -- Poll only appears for players who joined the queue — everyone else
     -- keeps freeroaming undisturbed.
+    local phaseName = (phase == 1 and "track") or (phase == 2 and "vehicle") or "traffic"
     local pollPayload = {
-        phase    = phase == 1 and "track" or "vehicle",
+        phase    = phaseName,
         options  = uiOptions,
         duration = Config.PollDuration,
-        title    = phase == 1 and "Choose Track" or "Choose Vehicle",
-        subtitle = phase == 1 and "VOTE FOR THE NEXT RACE" or "SELECT YOUR PERFORMANCE",
+        title    = (phase == 1 and "Choose Track") or (phase == 2 and "Choose Vehicle") or "Choose Traffic",
+        subtitle = (phase == 1 and "VOTE FOR THE NEXT RACE") or (phase == 2 and "SELECT YOUR PERFORMANCE") or "SET THE ROAD DENSITY",
     }
     for src in pairs(RaceSession.players) do
         TriggerClientEvent("SPZ:pollOpen", src, pollPayload)
@@ -202,6 +213,23 @@ function EndRacePoll()
             RaceSession.pollPhase = 2
             StartRacePoll()
         end)
+    elseif phase == 3 then
+        -- Traffic density vote resolved → store level + broadcast to clients so
+        -- the density controller knows how thick to make the race traffic.
+        local pick = RaceSession.pollOptions[winnerIdx]
+        RaceSession.trafficLevel = (pick and pick.level) or "none"
+        GlobalState:set("raceTraffic", RaceSession.trafficLevel, true)
+        print("[Poll] Traffic level selected: " .. RaceSession.trafficLevel)
+
+        for src in pairs(RaceSession.players) do
+            TriggerClientEvent("SPZ:pollResult", src, {
+                winner = { index = winnerIdx },
+                phase  = "traffic",
+                traffic = RaceSession.trafficLevel,
+            })
+        end
+
+        SetRaceState(SPZ.RaceState.WAITING)
     else
         local selection = RaceSession.pollOptions[winnerIdx]
         if not selection then
@@ -231,7 +259,12 @@ function EndRacePoll()
             })
         end
 
-        SetRaceState(SPZ.RaceState.WAITING)
+        -- Vehicle chosen → let the winner ring show, then run the traffic vote
+        -- before the world spins up.
+        Citizen.SetTimeout(1500, function()
+            RaceSession.pollPhase = 3
+            StartRacePoll()
+        end)
     end
 end
 
