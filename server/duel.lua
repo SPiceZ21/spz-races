@@ -10,7 +10,21 @@
 -- compares its own measured lap time to the stored best_ms; the client never
 -- reports who won.
 
-local Log = SPZ.Logger("spz-duel")
+-- spz-races does not load spz-core's shared logger, so SPZ.Logger is nil in this
+-- environment — calling it aborted the whole resource at load. Use it when it is
+-- there, otherwise fall back to a printing stub with the same API.
+local Log = (SPZ and SPZ.Logger and SPZ.Logger("spz-duel")) or (function()
+    local function out(level, msg, ...)
+        local ok, formatted = pcall(string.format, msg, ...)
+        print(("[spz-duel] [%s]: %s"):format(level, ok and formatted or msg))
+    end
+    return {
+        debug = function(msg, ...) out("DEBUG", msg, ...) end,
+        info  = function(msg, ...) out("INFO",  msg, ...) end,
+        warn  = function(msg, ...) out("WARN",  msg, ...) end,
+        error = function(msg, ...) out("ERROR", msg, ...) end,
+    }
+end)()
 local DUEL = nil   -- Config.Duel, resolved on first use
 
 local function cfg()
