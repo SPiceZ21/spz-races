@@ -122,7 +122,7 @@ AddEventHandler("SPZ:playerReady", function(newSrc, profile)
     TriggerClientEvent("SPZ:go",               newSrc)   -- re-arms overlay, ghosting, incident watch
 
     TriggerClientEvent("ox_lib:notify", newSrc, {
-        title = "Race", type = "success",
+        title = "Race", type = "success", position = "center-left",
         description = ("Reconnected — lap %d, checkpoint %d. Go!"):format(pData.current_lap, pData.current_cp),
     })
     BroadcastToRacers("SPZ:racerReconnected", { name = pData.name })

@@ -340,6 +340,26 @@ Citizen.CreateThread(function()
     end
 end)
 
+-- Camera collision — gate posts have physics collision off (you drive through
+-- them), but the game camera still collides with their bounds, so passing a
+-- gate slams the chase cam into the car. DisableCamCollisionForObject only
+-- holds for one frame, so it has to be re-asserted every frame while gates are
+-- standing; it is cheap and only runs when props actually exist nearby.
+Citizen.CreateThread(function()
+    while true do
+        local any = false
+        for _, g in pairs(GateProps) do
+            if g.left  and DoesEntityExist(g.left)  then
+                DisableCamCollisionForObject(g.left);  any = true
+            end
+            if g.right and DoesEntityExist(g.right) then
+                DisableCamCollisionForObject(g.right); any = true
+            end
+        end
+        Citizen.Wait(any and 0 or 500)
+    end
+end)
+
 -- ── Apply active CP state ──────────────────────────────────────────────────
 
 local function _applyActive(idx)

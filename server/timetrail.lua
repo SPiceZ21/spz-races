@@ -11,7 +11,9 @@
 -- of the lap, not the first. Physically the line is checkpoints[1], so a lap
 -- runs 2, 3, ... n, 1 — and that final crossing of [1] reads as "CP n/n".
 --   logical i  ->  physical (i % total) + 1
--- Sprints keep plain 1..n ordering (finish = n).
+-- Sprints keep plain 1..n ordering (start = 1, finish = n) and spawn ON the
+-- start line: crossing CP 1 starts the clock, crossing CP n ends the run and
+-- teleports back to CP 1 for the next attempt.
 
 local TT          = {}        -- [source] = session
 local _nextBucket = 8000      -- high range; race buckets start at 1
@@ -34,6 +36,32 @@ local function _phys(s, logical)
         return (logical % total) + 1
     end
     return logical
+end
+
+-- Where a run begins.
+--   circuit: the LAST checkpoint (corner before the start/finish line) — the
+--            player rolls into the line at speed and the clock starts there.
+--   sprint : the FIRST checkpoint (the start line itself) — a sprint has no
+--            lap to roll out of, so the run starts where the track does.
+local function _startCp(track)
+    if track.type == "sprint" then return 1 end
+    return #track.checkpoints
+end
+
+-- Spawn pose for the start checkpoint: its stored heading, or aimed at the
+-- checkpoint the player drives to next.
+local function _startPose(track)
+    local idx       = _startCp(track)
+    local headStart = track.checkpoints[idx]
+    local heading   = headStart.heading
+    if not heading then
+        local target = track.checkpoints[track.type == "sprint" and 2 or 1]
+        heading = math.deg(math.atan(
+            -(target.coords.x - headStart.coords.x),
+            target.coords.y - headStart.coords.y
+        )) % 360
+    end
+    return headStart, heading
 end
 
 -- ── Session teardown ──────────────────────────────────────────────────────────
@@ -137,7 +165,8 @@ RegisterNetEvent("SPZ:tt:SelectTrack", function(trackIndex, model)
         -- ACTIVE : a lap is being timed. There is no other phase.
         phase      = "OUT_LAP",
         currentLap = 0,
-        currentCp  = total,   -- logical: the line closes the lap, so it IS CP n
+        -- circuit: the line closes the lap, so it IS CP n. sprint: CP 1.
+        currentCp  = _startCp(track),
         lapStart   = nil,
         lapTimes   = {},
         bestLap    = nil,
@@ -146,18 +175,10 @@ RegisterNetEvent("SPZ:tt:SelectTrack", function(trackIndex, model)
 
     TT_InitSectors(src, TT[src])
 
-    -- Head start: last physical checkpoint (the corner before the line) so the
+    -- Circuit: last physical checkpoint (the corner before the line) so the
     -- player arrives at the start/finish already at speed.
-    local headStart = track.checkpoints[total]
-    local heading   = headStart.heading
-    if not heading then
-        -- Fallback: aim from headstart toward the start/finish line
-        local target = track.checkpoints[1]
-        heading = math.deg(math.atan(
-            -(target.coords.x - headStart.coords.x),
-            target.coords.y - headStart.coords.y
-        )) % 360
-    end
+    -- Sprint: the first checkpoint — the start line itself.
+    local headStart, heading = _startPose(track)
 
     -- Spawn the selected car at the head-start position
     if model and GetResourceState("spz-vehicles") == "started" then
@@ -202,6 +223,25 @@ RegisterNetEvent("SPZ:tt:cpHit", function(logicalIdx)
         })
     end
 
+    local isSprint = (track.type == "sprint")
+
+    -- ── Sprint: crossing CP 1 starts the clock (no rolling lap) ──────────────
+    if isSprint and logicalIdx == 1 and s.phase == "OUT_LAP" then
+        s.currentLap = s.currentLap + 1
+        s.lapStart   = now
+        s.phase      = "ACTIVE"
+        s.currentCp  = 2
+        s.cpTimes    = {}
+        TT_StartSectorClock(s, now)
+
+        TriggerClientEvent("SPZ:tt:LapStarted", src, {
+            lap   = s.currentLap,
+            label = _lapLabel(s.currentLap),
+        })
+        TriggerClientEvent("SPZ:tt:NextCp", src, 2, _phys(s, 2))
+        return
+    end
+
     -- ── Crossing the start/finish line (always the LAST logical CP) ──────────
     if logicalIdx == total then
         if s.phase == "ACTIVE" then
@@ -237,8 +277,26 @@ RegisterNetEvent("SPZ:tt:cpHit", function(logicalIdx)
                 if OnDuelLap then OnDuelLap(src, s, lapTime) end
                 return
             end
+
+            -- Sprint: the run ENDS at the finish line — there is no lap to roll
+            -- into. Reset to the start line and wait for the next attempt.
+            if isSprint then
+                s.phase     = "OUT_LAP"
+                s.currentCp = 1
+                s.lapStart  = nil
+
+                local headStart, heading = _startPose(track)
+                TriggerClientEvent("SPZ:tt:Restarted", src, {
+                    lapsDone  = #s.lapTimes,
+                    bestLap   = s.bestLap,
+                    headStart = { coords = headStart.coords, heading = heading },
+                })
+                return
+            end
         end
 
+        -- Sprint start line is CP 1, handled above; only a circuit reaches here
+        -- with the line as the last logical CP.
         -- ...and immediately roll into the next one. Continuous, no reset.
         s.currentLap = s.currentLap + 1
         s.lapStart   = now
@@ -270,16 +328,15 @@ RegisterNetEvent("SPZ:tt:Restart", function()
     local s   = TT[src]
     if not s then return end
 
-    local total = #s.track.checkpoints
     s.phase     = "OUT_LAP"
-    s.currentCp = total
+    s.currentCp = _startCp(s.track)
     s.lapStart  = nil
 
-    local headStart = s.track.checkpoints[total]
+    local headStart, heading = _startPose(s.track)
     TriggerClientEvent("SPZ:tt:Restarted", src, {
         lapsDone  = #s.lapTimes,
         bestLap   = s.bestLap,
-        headStart = { coords = headStart.coords, heading = headStart.heading },
+        headStart = { coords = headStart.coords, heading = heading },
     })
 end)
 
@@ -324,7 +381,7 @@ function StartDuelSession(src, d)
 
     TT[src] = {
         source = src, track = track, bucketId = bid, model = d.oppLine.model,
-        phase = "OUT_LAP", currentLap = 0, currentCp = total, lapStart = nil,
+        phase = "OUT_LAP", currentLap = 0, currentCp = _startCp(track), lapStart = nil,
         lapTimes = {}, bestLap = nil, lastCpTime = GetGameTimer(),
         duel = {
             targetMs = d.targetMs, stake = d.stake, oppName = d.oppName,
@@ -334,14 +391,7 @@ function StartDuelSession(src, d)
     }
     TT_InitSectors(src, TT[src])
 
-    local headStart = track.checkpoints[total]
-    local heading   = headStart.heading
-    if not heading then
-        local target = track.checkpoints[1]
-        heading = math.deg(math.atan(
-            -(target.coords.x - headStart.coords.x),
-            target.coords.y - headStart.coords.y)) % 360
-    end
+    local headStart, heading = _startPose(track)
 
     -- Challenger drives the SAME model as the opponent's stored line — fair, and
     -- it skips the car-select step. The line stores a model HASH; SpawnVehicle

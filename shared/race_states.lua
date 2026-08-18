@@ -20,7 +20,7 @@ SPZ.RaceType = {
 
 if IsDuplicityVersion() then
     function SPZ.Notify(src, msg, ntype, duration)
-        TriggerClientEvent('ox_lib:notify', src, { description = msg, type = ntype or "info", duration = duration })
+        TriggerClientEvent('ox_lib:notify', src, { description = msg, type = ntype or "info", duration = duration, position = "center-left" })
     end
 end
 
