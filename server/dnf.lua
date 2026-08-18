@@ -83,6 +83,7 @@ local function NotifyUnfinished(msg, ntype)
         if not p.finished and not p.dnf then
             TriggerClientEvent("ox_lib:notify", src, {
                 title = "Race", description = msg, type = ntype or "warning",
+                position = "center-left",
             })
         end
     end

@@ -47,7 +47,7 @@ end)
 RegisterNetEvent("SPZ:saveCustomTrack", function(payload)
     local src = source
     if not payload or not payload.checkpoints or #payload.checkpoints < 2 then
-        TriggerClientEvent("ox_lib:notify", src, { description = "Save failed: need at least 2 checkpoints.", type = "error" })
+        TriggerClientEvent("ox_lib:notify", src, { description = "Save failed: need at least 2 checkpoints.", type = "error", position = "center-left" })
         return
     end
 
@@ -173,7 +173,7 @@ lib.callback.register("spz-races:deleteTrack", function(source, data)
     end
 
     SPZ.Tracks[trackId] = nil
-    TriggerClientEvent('ox_lib:notify', source, { description = "Track deleted.", type = "success" })
+    TriggerClientEvent('ox_lib:notify', source, { description = "Track deleted.", type = "success", position = "center-left" })
     return true
 end)
 

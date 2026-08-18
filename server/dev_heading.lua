@@ -48,7 +48,7 @@ end
 RegisterNetEvent("spz-dev:reqTracks", function()
     local src = source
     if not IsDev(src) then
-        TriggerClientEvent('ox_lib:notify', src, { description = "Dev tool locked (need spz.dev ACE or spz_dev convar).", type = "error" })
+        TriggerClientEvent('ox_lib:notify', src, { description = "Dev tool locked (need spz.dev ACE or spz_dev convar).", type = "error", position = "center-left" })
         return
     end
     TriggerClientEvent("spz-dev:tracks", src, BuildDevTrackList())
@@ -71,7 +71,7 @@ RegisterNetEvent("spz-dev:saveHeading", function(trackId, heading)
     local res  = GetCurrentResourceName()
     local file = LoadResourceFile(res, "data/tracks.lua")
     if not file then
-        TriggerClientEvent('ox_lib:notify', src, { description = "Could not read data/tracks.lua", type = "error" })
+        TriggerClientEvent('ox_lib:notify', src, { description = "Could not read data/tracks.lua", type = "error", position = "center-left" })
         return
     end
 
@@ -84,11 +84,11 @@ RegisterNetEvent("spz-dev:saveHeading", function(trackId, heading)
 
     local updated, n = file:gsub(pattern, "%1" .. newVal, 1)
     if n == 0 then
-        TriggerClientEvent('ox_lib:notify', src, { description = "Track '" .. trackId .. "' not found in file.", type = "error" })
+        TriggerClientEvent('ox_lib:notify', src, { description = "Track '" .. trackId .. "' not found in file.", type = "error", position = "center-left" })
         return
     end
 
     SaveResourceFile(res, "data/tracks.lua", updated, -1)
     print(("[spz-dev] Saved start_heading %.2f for track '%s'"):format(heading, trackId))
-    TriggerClientEvent('ox_lib:notify', src, { description = ("Saved %s → %.2f°"):format(trackId, heading), type = "success" })
+    TriggerClientEvent('ox_lib:notify', src, { description = ("Saved %s → %.2f°"):format(trackId, heading), type = "success", position = "center-left" })
 end)

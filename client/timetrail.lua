@@ -6,6 +6,10 @@
 -- line crossing starts the clock -> full lap -> crossing the line again banks
 -- the lap AND immediately starts the next one. No stopping, no ready gate, no
 -- countdown: it is a permanent rolling hotlap session.
+--
+-- Sprints differ: the car spawns at the FIRST checkpoint (the start line),
+-- crossing it starts the clock, and the finish sends you back to that same
+-- spawn for the next attempt.
 
 local TTActive     = false
 local TTTrack      = nil
@@ -84,6 +88,20 @@ end
 --   logical i → physical (i % total) + 1   (circuits)
 --   logical i → physical i                 (sprints)
 
+-- First logical CP of a run: circuits roll in from the last CP and cross the
+-- line (logical n); sprints start ON the line at CP 1.
+local function _startIdx()
+    if not TTTrack then return 1 end
+    if TTTrack.type == "sprint" then return 1 end
+    return #TTTrack.checkpoints
+end
+
+-- Sprints spawn ON the start line, so "drive to the start" makes no sense.
+local function _startLabel()
+    if TTTrack and TTTrack.type == "sprint" then return "CROSS THE START LINE" end
+    return "DRIVE TO THE START LINE"
+end
+
 local function _physIdx(logical)
     if not TTTrack then return logical end
     local total = #TTTrack.checkpoints
@@ -126,8 +144,7 @@ end
 
 local function _executeRestart()
     TTRestartActive = false
-    local total     = TTTrack and #TTTrack.checkpoints or 1
-    TTCpIndex       = total   -- logical last = start/finish crossing
+    TTCpIndex       = _startIdx()   -- circuit: line crossing · sprint: CP 1
     TTLapStart      = 0
 
     _tpToHeadStart(1500)
@@ -137,7 +154,7 @@ local function _executeRestart()
 
     TriggerServerEvent("SPZ:tt:Restart")
     UI("tt_restart_done", {
-        lapLabel = "DRIVE TO THE START LINE",
+        lapLabel = _startLabel(),
         bestLap  = FmtTime(TTBestLap),
     })
     PlaySoundFrontend(-1, "BACK", "HUD_FRONTEND_DEFAULT_SOUNDSET", 1)
@@ -358,7 +375,7 @@ RegisterNetEvent("SPZ:tt:Begin", function(payload)
     local track = payload.track
     local total = #track.checkpoints
     TTTrack     = track
-    TTCpIndex   = total        -- logical last CP = start/finish crossing
+    TTCpIndex   = _startIdx()  -- circuit: last CP (line) · sprint: CP 1
     TTLapNum    = 0
     TTBestLap   = nil
     TTLapStart  = 0            -- timer starts on first line crossing
@@ -378,14 +395,14 @@ RegisterNetEvent("SPZ:tt:Begin", function(payload)
     UI("tt_hud_show", {
         track      = track.name,
         trackType  = track.type,
-        lapLabel   = "DRIVE TO THE START LINE",
+        lapLabel   = _startLabel(),
         bestLap    = nil,
         cpIndex    = TTCpIndex,
         cpTotal    = total,
         restartKey = TT_RESTART_KEY,
     })
 
-    lib.notify({ description = "Time Trial — " .. track.name .. " | Drive to the start line", type = "info" })
+    lib.notify({ description = "Time Trial — " .. track.name .. " | " .. _startLabel():lower(), type = "info" })
 end)
 
 RegisterNetEvent("SPZ:tt:LapStarted", function(data)
@@ -451,13 +468,13 @@ RegisterNetEvent("SPZ:tt:Restarted", function(data)
 
     -- Back to the head-start point (corner before the line) and roll again
     if data and data.headStart then TTHeadStart = data.headStart end
-    TTCpIndex = #TTTrack.checkpoints          -- next target is the line
+    TTCpIndex = _startIdx()                   -- next target is the line
     _tpToHeadStart(1500)
     _startVisuals(TTTrack.checkpoints, _physIdx(TTCpIndex), TTTrack.type)
 
     UI("tt_lap_started", {
         lap      = (data.lapsDone or 0),
-        lapLabel = "DRIVE TO THE START LINE",
+        lapLabel = _startLabel(),
         bestLap  = FmtTime(TTBestLap),
     })
 end)

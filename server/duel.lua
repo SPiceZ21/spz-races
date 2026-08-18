@@ -23,7 +23,7 @@ local Log = (SPZ and SPZ.Logger and SPZ.Logger("spz-duel")) or (function()
         info  = function(msg, ...) out("INFO",  msg, ...) end,
         warn  = function(msg, ...) out("WARN",  msg, ...) end,
         error = function(msg, ...) out("ERROR", msg, ...) end,
-    }
+    }   
 end)()
 local DUEL = nil   -- Config.Duel, resolved on first use
 
