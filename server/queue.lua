@@ -75,6 +75,17 @@ function JoinQueue(src)
     Notify(src, string.format("Joined queue (%d players waiting)", count), "success")
     BroadcastQueueUpdate()
 
+    -- Joined while voting is already underway: hand them the live ballot with the
+    -- time that is left, instead of silently entering them into a race whose
+    -- track and car were picked without them.
+    if RaceSession.state == SPZ.RaceState.POLLING and SendActivePollTo then
+        if SendActivePollTo(src) then
+            Notify(src, "Voting is already open — get your pick in", "info")
+        else
+            Notify(src, "Voting just closed — you're in the next race on this track", "info")
+        end
+    end
+
     -- First joiner (or any joiner while idle) arms the shared countdown
     ArmJoinWindow()
 
