@@ -35,11 +35,18 @@ local function spawnShowcase(model)
         end
         if veh ~= currentShowcase or not DoesEntityExist(veh) then return end
 
-        SetEntityRoutingBucket(veh, 0)              -- freeroam bucket so all can see it
-        FreezeEntityPosition(veh, true)             -- static display
-        SetEntityInvincible(veh, true)
-        SetVehicleDoorsLocked(veh, 2)               -- locked / non-enterable (best-effort server-side)
-        -- Client-side enforcement runs off this tag (server door natives are flaky).
+        SetEntityRoutingBucket(veh, 0)   -- freeroam bucket so all can see it
+
+        -- Server-side entity API is a small subset of the client's: invincibility,
+        -- door locks and freezing are CLIENT natives and are nil here (calling
+        -- SetEntityInvincible threw and aborted the rest of this block, which is
+        -- why the showcase car spawned unlocked and drivable).
+        --
+        -- The tag below is the whole contract: client/showcase.lua watches for it
+        -- and applies freeze + lock + no-collision on every client that streams
+        -- the car in.
+        if FreezeEntityPosition then FreezeEntityPosition(veh, true) end
+
         Entity(veh).state:set("spzShowcase", true, true)
 
         print(("[showcase] Parked race car '%s' at the showcase spot."):format(tostring(model)))
