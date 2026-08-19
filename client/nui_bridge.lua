@@ -9,18 +9,30 @@ RegisterNetEvent("SPZ:pollOpen", function(data)
     end
     exports["spz-poll"]:StartPoll({
         phase    = data.phase,
+        -- `timer` is what spz-poll's own API documents, but its UI reads
+        -- `duration` — sending only timer left the countdown bar permanently on
+        -- its 30s default. Send both so the bar matches the real window.
         timer    = data.duration,
+        duration = data.duration,
         options  = data.options,
         title    = data.title,
         subtitle = data.subtitle,
     })
 end)
 
+-- Voting is per player now: the moment YOUR three picks are in, your menu shuts
+-- and you are free until the grid forms — no waiting on the slowest voter.
+RegisterNetEvent("SPZ:pollClosed", function()
+    if GetResourceState("spz-poll") ~= "started" then return end
+    exports["spz-poll"]:StopPoll()
+end)
+
 RegisterNetEvent("SPZ:pollResult", function(data)
     if GetResourceState("spz-poll") ~= "started" then return end
     exports["spz-poll"]:UpdatePoll(data)
-    -- Traffic is the LAST poll phase now — only close the widget after it.
-    if data.phase == "traffic" then
+    -- "final" is the decided race, broadcast once everyone has voted. Any ballot
+    -- still open at that point is closed here.
+    if data.phase == "final" then
         Citizen.SetTimeout(1200, function()
             exports["spz-poll"]:StopPoll()
         end)

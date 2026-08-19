@@ -70,9 +70,6 @@ function RunRaceCleanup(results)
         bucketId     = 0,
         startTime    = 0,
         players      = {},
-        pollVotes    = {},
-        pollOptions  = {},
-        pollPhase    = 1,
         cycleCount   = lastCycleCount + 1,
     }
 

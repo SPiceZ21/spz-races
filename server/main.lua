@@ -10,9 +10,6 @@ RaceSession = {
     bucketId     = 0,
     startTime    = 0,
     players      = {},
-    pollVotes    = {},
-    pollOptions  = {},
-    pollPhase    = 1,
     cycleCount   = 0,
     intermissionActive = false,
 }
@@ -44,7 +41,6 @@ end
 function ResetToIdle()
     SetRaceState(SPZ.RaceState.IDLE)
     RaceSession.players            = {}
-    RaceSession.pollPhase          = 1
     RaceSession.intermissionActive = false
 end
 
