@@ -16,7 +16,9 @@ local _side      = nil    -- last side of the gate plane the player was on
 
 Citizen.CreateThread(function()
     while true do
-        if _raceState == "LIVE" then
+        -- Rewinding scrubs the car backward through world space — that is not
+        -- a real gate crossing, so hit detection sleeps until it ends.
+        if _raceState == "LIVE" and not exports["spz-races"]:IsRewinding() then
             local cp, cpIndex = exports["spz-races"]:GetCurrentCP()
 
             if cp then

@@ -49,7 +49,13 @@ end)
 
 CreateThread(function()
     while true do
-        if active and IC then
+        if active and IC and exports["spz-races"]:IsRewinding() then
+            -- Teleporting backward through world space every frame would read
+            -- as a crash. Keep the cooldown fresh through the rewind so the
+            -- jump back to live physics on release doesn't false-trigger either.
+            lastHitAt = GetGameTimer()
+            Wait(0)
+        elseif active and IC then
             local ped = PlayerPedId()
             local veh = GetVehiclePedIsIn(ped, false)
 

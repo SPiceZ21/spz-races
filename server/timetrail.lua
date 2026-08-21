@@ -321,6 +321,22 @@ RegisterNetEvent("SPZ:tt:cpHit", function(logicalIdx)
     TriggerClientEvent("SPZ:tt:NextCp", src, s.currentCp, _phys(s, s.currentCp))
 end)
 
+-- ── Net: rewind rollback — client scrubbed back before its last CP hit ───────
+-- Backward-only and clamped here regardless of what the client claims: this
+-- can only push currentCp EARLIER (more of the lap to re-drive), never skip
+-- one, so a stale or spoofed target is a harmless no-op at worst.
+RegisterNetEvent("SPZ:tt:rewindCheckpoint", function(targetCp)
+    local src = source
+    local s   = TT[src]
+    if not s then return end
+
+    targetCp = tonumber(targetCp)
+    if not targetCp or targetCp < 1 or targetCp >= s.currentCp then return end
+
+    s.currentCp = targetCp
+    TriggerClientEvent("SPZ:tt:NextCp", src, targetCp, _phys(s, targetCp))
+end)
+
 -- ── Net: restart — head-start teleport again, out lap ────────────────────────
 
 RegisterNetEvent("SPZ:tt:Restart", function()

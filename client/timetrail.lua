@@ -207,7 +207,8 @@ local _ttSide, _ttSideIdx = nil, nil   -- crossing-side state for the active CP
 Citizen.CreateThread(function()
     while true do
         if TTActive and TTTrack and not TTRestartActive
-        and GetGameTimer() >= TTReadyAt then
+        and GetGameTimer() >= TTReadyAt
+        and not exports["spz-races"]:IsRewinding() then
             local physCp = TTTrack.checkpoints[_physIdx(TTCpIndex)]
             if physCp then
                 -- Reset crossing state when the active CP changes.
@@ -515,3 +516,7 @@ AddEventHandler("SPZ:tt:nuiRestartBtn", function()
         end
     end
 end)
+
+-- ── Export ────────────────────────────────────────────────────────────────────
+-- Lets client/rewind.lua snapshot the logical CP index per recorded frame.
+exports("GetTTCpIndex", function() return TTActive and TTCpIndex or nil end)

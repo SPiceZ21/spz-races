@@ -188,6 +188,26 @@ RegisterNetEvent("SPZ:checkpointHit", function(cpIndex)
     HandleCheckpointAdvance(src, pData)
 end)
 
+-- ── Rewind checkpoint rollback ───────────────────────────────────────────────
+-- Fired by client/rewind.lua when a scrub lands before the last checkpoint the
+-- player crossed. Backward-only and server-clamped: it can only ever push
+-- current_cp EARLIER (more gates to re-cross), never skip one, so a spoofed
+-- or stale target is a harmless no-op at worst.
+RegisterNetEvent("SPZ:rewindCheckpoint", function(targetCp)
+    local src   = source
+    local pData = RaceSession.players[src]
+    if not pData                               then return end
+    if pData.finished or pData.dnf             then return end
+    if RaceSession.state ~= SPZ.RaceState.LIVE then return end
+
+    targetCp = tonumber(targetCp)
+    if not targetCp or targetCp < 1 or targetCp >= pData.current_cp then return end
+
+    pData.current_cp     = targetCp
+    pData.awaitingFinish = false
+    TriggerClientEvent("SPZ:nextCheckpoint", src, targetCp)
+end)
+
 -- ── Idle-kick watchdog ──────────────────────────────────────────────────────
 -- If a racer has not crossed a single checkpoint within Config.IdleKickMs during
 -- a live race they are assumed to have given up / gone AFK and are DNF'd.
