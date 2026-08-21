@@ -173,6 +173,22 @@ Config.LongTrackMetres = 9500.0   -- a lap longer than this counts as "long"
 Config.LongTrackLaps   = 2
 Config.ShortTrackLaps  = 3
 
+-- ── Rewind (Forza Horizon-style time rewind) ────────────────────────────────
+-- Hold the key to scrub the car backward along its recent path; release to
+-- resume driving from that point with the momentum it had back then. Bounded
+-- only by the rolling history buffer — no use cap, no cooldown beyond a short
+-- settle after release. Works in live Race (LIVE state) and Time Trial.
+-- No leaderboard exploit: checkpoints must still be crossed for real and the
+-- race/lap clock keeps running in real time no matter where the car sits.
+Config.Rewind = {
+  enabled           = true,
+  key               = "R",
+  bufferSeconds     = 10,     -- how far back you can scrub
+  recordIntervalMs  = 66,     -- ~15 Hz history sampling
+  playbackSpeedMult = 2.5,    -- scrub speed vs real time (10s buffer plays back in 4s)
+  resumeCooldownMs  = 350,    -- short lockout after releasing before rewinding again
+}
+
 -- ── In-world record boards ─────────────────────────────────────────────────
 -- Physical floating scoreboards showing the fastest lap holders for a track.
 -- Walk near one and the top times render in the world. Each board is pinned to

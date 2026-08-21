@@ -70,6 +70,7 @@ client_scripts {
   'client/bonus.lua',
   'client/lockin.lua',
   'client/recover.lua',
+  'client/rewind.lua',
   'client/timetrail.lua',
   'client/duel.lua',
   'client/creator.lua',
