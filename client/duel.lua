@@ -31,7 +31,7 @@ local function buildRoute(model, flat)
         pts[#pts + 1] = { x = flat[i], y = flat[i + 1], z = flat[i + 2], s = flat[i + 3], t = flat[i + 4] }
     end
     if #pts < 3 then return nil end
-    return { pts = pts, model = (model and model ~= 0) and model or `sultan` }
+    return { pts = pts, model = (model and model ~= 0) and model or 'sultan' }
 end
 
 local function removeGhost()
@@ -43,7 +43,7 @@ local function removeGhost()
 end
 
 local function spawnGhost(model, at, heading)
-    if not IsModelInCdimage(model) then model = `sultan` end
+    if not IsModelInCdimage(model) then model = 'sultan' end
     RequestModel(model)
     local deadline = GetGameTimer() + 5000
     while not HasModelLoaded(model) and GetGameTimer() < deadline do Wait(25) end
