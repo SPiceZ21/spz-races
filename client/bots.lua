@@ -7,7 +7,7 @@
 -- Same kinematic replay as the time-trial ghost (spz-raceline/client/ghost.lua),
 -- but OPAQUE (looks like a real opponent) and multi-lap (loops the line).
 
-local FALLBACK  = `sultan`
+local FALLBACK  = 'sultan'
 local ZLIFT     = 0.45
 local HEAD_LERP = 10.0
 local LABEL_RANGE = (Config.Bots and Config.Bots.labelRange) or 80.0

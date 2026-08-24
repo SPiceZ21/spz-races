@@ -80,9 +80,9 @@ end
 -- Each gate has two variants: "_a" while the checkpoint is still ahead of you,
 -- "_b" once you have crossed it. Swapping the prop is the visual confirmation
 -- that the checkpoint registered.
-local PROP_START      = { pending = `bzzz_start_a`,      cleared = `bzzz_start_b`      }
-local PROP_FINISH     = { pending = `bzzz_finish_a`,     cleared = `bzzz_finish_b`     }
-local PROP_CHECKPOINT = { pending = `bzzz_checkpoint_a`, cleared = `bzzz_checkpoint_b` }
+local PROP_START      = { pending = 'bzzz_start_a',      cleared = 'bzzz_start_b'      }
+local PROP_FINISH     = { pending = 'bzzz_finish_a',     cleared = 'bzzz_finish_b'     }
+local PROP_CHECKPOINT = { pending = 'bzzz_checkpoint_a', cleared = 'bzzz_checkpoint_b' }
 
 local GateProps = {}   -- [cpIndex] = { left = handle, right = handle, cleared = bool }
 

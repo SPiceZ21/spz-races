@@ -241,7 +241,17 @@ local function _rewindLoop()
 
         SetEntityCoords(ent, x, y, z, false, false, false, false)
         SetEntityRotation(ent, rx, ry, rz, 2, true)
-        SetEntityVelocity(ent, 0.0, 0.0, 0.0)
+
+        -- Wheels only spin off the entity's actual velocity — zeroing it (as
+        -- this used to, to stop the chassis fighting the teleport) left them
+        -- dead-static for the whole scrub. Position is already re-pinned
+        -- every tick above regardless of velocity, so feeding it the real
+        -- interpolated speed is free. Negated because time is running
+        -- backward: the car is visibly sliding the opposite way it originally
+        -- drove this stretch, so the wheels should spin opposite too. Scaled
+        -- by playbackMult so the spin rate matches the sped-up scrub instead
+        -- of reading as the car's original, slower-than-this-looks pace.
+        SetEntityVelocity(ent, -vx * playbackMult, -vy * playbackMult, -vz * playbackMult)
 
         _lastApplied = { t = _rewindHead, vx = vx, vy = vy, vz = vz, cp = f1.cp }
 
