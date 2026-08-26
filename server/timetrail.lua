@@ -232,6 +232,7 @@ RegisterNetEvent("SPZ:tt:cpHit", function(logicalIdx)
         s.phase      = "ACTIVE"
         s.currentCp  = 2
         s.cpTimes    = {}
+        s.rewindCredit = 0            -- per-lap credit budget resets with the lap
         TT_StartSectorClock(s, now)
 
         TriggerClientEvent("SPZ:tt:LapStarted", src, {
@@ -302,6 +303,7 @@ RegisterNetEvent("SPZ:tt:cpHit", function(logicalIdx)
         s.lapStart   = now
         s.phase      = "ACTIVE"
         s.currentCp  = 1
+        s.rewindCredit = 0            -- per-lap credit budget resets with the lap
         TT_StartSectorClock(s, now)
 
         TriggerClientEvent("SPZ:tt:LapStarted", src, {
@@ -335,6 +337,53 @@ RegisterNetEvent("SPZ:tt:rewindCheckpoint", function(targetCp)
 
     s.currentCp = targetCp
     TriggerClientEvent("SPZ:tt:NextCp", src, targetCp, _phys(s, targetCp))
+end)
+
+-- ── Net: rewind clock credit — the lap timer scrubs back with the car ────────
+-- The client scrubbed `ms` of driving away, so the same `ms` comes off the lap
+-- clock: the car and its time land on the same moment. Clamped hard here since
+-- this number reaches the leaderboard:
+--   • one claim can never exceed the history buffer (× the credit factor)
+--   • the running total per lap is capped at maxCreditPerLapMs
+--   • lapStart can never move past now, so elapsed stays >= 0
+-- A credit only ever gives back time the player already spent driving, so no
+-- lap can come out shorter than the driving actually done.
+-- Ceiling for a SINGLE scrub: the whole history buffer, plus the real time it
+-- takes to play that buffer back at the scrub speed (the clock is put back on
+-- the car's moment, so both halves count), plus a second of slack.
+local function _maxRewindCredit(cfg, factor)
+    local bufMs = (cfg.bufferSeconds or 10) * 1000
+    local mult  = math.max(0.1, cfg.playbackSpeedMult or 2.5)
+    return math.floor((bufMs * (1.0 + 1.0 / mult) + 1000) * factor)
+end
+
+RegisterNetEvent("SPZ:tt:rewindTime", function(ms)
+    local src = source
+    local s   = TT[src]
+    if not s or s.phase ~= "ACTIVE" or not s.lapStart then return end
+
+    local cfg    = Config.Rewind or {}
+    local factor = math.max(0.0, math.min(1.0, cfg.timeCreditFactor or 1.0))
+    if factor <= 0.0 then return end
+
+    ms = math.floor(tonumber(ms) or 0)
+    if ms <= 0 or ms > _maxRewindCredit(cfg, factor) then return end
+
+    local used    = s.rewindCredit or 0
+    local allowed = math.max(0, (cfg.maxCreditPerLapMs or 60000) - used)
+    ms = math.min(ms, allowed)
+    if ms <= 0 then return end
+
+    local now = GetGameTimer()
+    s.rewindCredit = used + ms
+    s.lapStart     = math.min(s.lapStart + ms, now)
+    if s.sector_start then s.sector_start = math.min(s.sector_start + ms, now) end
+
+    -- Splits already banked this lap were measured against the old epoch; pull
+    -- them onto the new one so the delta tower keeps comparing like with like.
+    if s.cpTimes then
+        for i, t in pairs(s.cpTimes) do s.cpTimes[i] = math.max(0, t - ms) end
+    end
 end)
 
 -- ── Net: restart — head-start teleport again, out lap ────────────────────────

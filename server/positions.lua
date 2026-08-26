@@ -188,7 +188,10 @@ Citizen.CreateThread(function()
                     if pData then
                         Player(src).state:set("racePosition", i, true)
                         Player(src).state:set("raceLap", pData.current_lap, true)
-                        Player(src).state:set("raceTime", now - (RaceSession.startTime or 0), true)
+                        -- Per-racer epoch: a rewind shifts race_start_time
+                        -- forward, so this clock winds back with the car.
+                        Player(src).state:set("raceTime",
+                            now - (pData.race_start_time or RaceSession.startTime or 0), true)
                     end
                 end
             end
