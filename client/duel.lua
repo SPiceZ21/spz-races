@@ -15,6 +15,24 @@ local curHeading = 0.0
 
 local Z_LIFT = 0.45
 
+-- Ghost wheels. The car is placed by hand every frame with collision off, so
+-- its wheels never touch ground and nothing rolls them — they have to be driven
+-- explicitly, off the replay's own speed. The native differs by game build.
+local wheelSet, wheelUnit
+do
+    local rads = rawget(_G, 'SetVehicleWheelRotationSpeed')
+    local mps  = rawget(_G, 'SetVehicleWheelSpeed')
+    if type(rads) == 'function' then wheelSet, wheelUnit = rads, 'rads'
+    elseif type(mps) == 'function' then wheelSet, wheelUnit = mps, 'mps' end
+end
+
+local function driveWheels(veh, mps)
+    if not wheelSet then return end
+    local value = (wheelUnit == 'rads') and (mps / 0.35) or mps
+    local n = math.min(GetVehicleNumberOfWheels(veh) or 4, 4)
+    for i = 0, n - 1 do pcall(wheelSet, veh, i, value) end
+end
+
 local function fmt(ms)
     if not ms or ms <= 0 then return "--:--.---" end
     local m = math.floor(ms / 60000)
@@ -135,6 +153,11 @@ CreateThread(function()
                 SetEntityCoordsNoOffset(ghostVeh, x, y, z, false, false, false)
                 SetEntityHeading(ghostVeh, curHeading)
                 DisableCamCollisionForObject(ghostVeh)
+
+                -- Wheels turn at the pace this segment was driven at.
+                local dx, dy, dz = b.x - a.x, b.y - a.y, b.z - a.z
+                local inv = span > 0 and (1000.0 / span) or 0.0
+                driveWheels(ghostVeh, math.sqrt(dx * dx + dy * dy + dz * dz) * inv)
             end
             Wait(0)
         else
