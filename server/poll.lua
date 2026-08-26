@@ -61,6 +61,34 @@ local function GetWeightedTracks(type, count)
     return selected
 end
 
+-- World XY of every checkpoint, in lap order — the ballot draws this as the
+-- track's shape over the map so you vote on a route, not a name. Z is dropped
+-- (the plot is top-down) and coords are rounded to a metre: this rides in the
+-- ballot payload, and sub-metre precision is invisible at ~300 px wide.
+--
+-- Long tracks are thinned to PATH_MAX points by taking every Nth checkpoint,
+-- with the last one always kept so a circuit still closes on its start line.
+local PATH_MAX = 160
+
+local function TrackPath(track)
+    local cps = track.checkpoints
+    if not cps or #cps < 2 then return nil end
+
+    local step = math.max(1, math.ceil(#cps / PATH_MAX))
+    local path = {}
+    for i = 1, #cps, step do
+        local c = cps[i].coords
+        path[#path + 1] = { x = math.floor(c.x + 0.5), y = math.floor(c.y + 0.5) }
+    end
+
+    local last = cps[#cps].coords
+    local tail = path[#path]
+    if tail.x ~= math.floor(last.x + 0.5) or tail.y ~= math.floor(last.y + 0.5) then
+        path[#path + 1] = { x = math.floor(last.x + 0.5), y = math.floor(last.y + 0.5) }
+    end
+    return path
+end
+
 --- @return table|nil raw options, table ui options
 local function BuildTrackOptions()
     local tracks = GetWeightedTracks(RaceSession.raceType, Config.PollOptionsPerType or 2)
@@ -74,6 +102,10 @@ local function BuildTrackOptions()
             laps             = track.laps,
             checkpointCount  = #track.checkpoints,
             recommendedClass = track.recommendedClass or "Any",
+            -- Preview: the route itself, plus whether it closes back on its
+            -- start line (circuits) or ends elsewhere (sprints).
+            path             = TrackPath(track),
+            loop             = track.type == "circuit",
         }
     end
     return tracks, ui

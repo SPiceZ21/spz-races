@@ -93,16 +93,31 @@ local function startRun()
     running    = true
 end
 
+-- Rewind landed: shift the ghost's epoch by the credited amount so it resumes
+-- from the same moment of the lap the player does.
+AddEventHandler("SPZ:rewind:applied", function(ms)
+    ms = tonumber(ms) or 0
+    if ms <= 0 or not running then return end
+    runStart = math.min(runStart + ms, GetGameTimer())
+end)
+
 -- Replay loop
 CreateThread(function()
     while true do
         if running and route and ghostVeh ~= 0 and DoesEntityExist(ghostVeh) then
             local pts = route.pts
             local n   = #pts
-            local elapsed = GetGameTimer() - runStart
+            -- The opponent ghost is a clock reference, so it follows the same
+            -- clock the player's lap does: a rewind winds both back together.
+            -- Live credit here, the committed amount folded into runStart below.
+            local elapsed = math.max(0,
+                GetGameTimer() - runStart - (exports["spz-races"]:GetRewindCreditMs() or 0))
 
             while cursor < n - 1 and pts[cursor + 1].t <= elapsed do
                 cursor = cursor + 1
+            end
+            while cursor > 1 and pts[cursor].t > elapsed do
+                cursor = cursor - 1
             end
 
             if elapsed >= pts[n].t then

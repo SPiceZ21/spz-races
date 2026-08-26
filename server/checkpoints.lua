@@ -123,6 +123,7 @@ local function HandleCheckpointAdvance(source, pData)
             pData.current_cp      = 1
             pData.current_lap     = pData.current_lap + 1
             pData.lap_start_time  = now
+            pData.rewind_credit_lap = 0   -- per-lap credit budget resets with the lap
             StartSectorClock(pData, now)
 
             table.insert(pData.lap_times, lapTime)
@@ -206,6 +207,54 @@ RegisterNetEvent("SPZ:rewindCheckpoint", function(targetCp)
     pData.current_cp     = targetCp
     pData.awaitingFinish = false
     TriggerClientEvent("SPZ:nextCheckpoint", src, targetCp)
+end)
+
+-- ── Rewind clock credit ──────────────────────────────────────────────────────
+-- The client scrubbed `ms` of driving away, so the same `ms` comes off this
+-- racer's clocks: the car and its time land on the same moment. Implemented by
+-- shifting the epochs forward rather than carrying a separate offset, so every
+-- derived number (race time, lap time, sector time, the idle watchdog) follows
+-- automatically. Clamped hard — this reaches the leaderboard:
+--   • one claim can never exceed the history buffer (× the credit factor)
+--   • the running total per lap is capped at maxCreditPerLapMs
+--   • no epoch can move past now, so elapsed times stay >= 0
+-- Ceiling for a SINGLE scrub: the whole history buffer, plus the real time it
+-- takes to play that buffer back at the scrub speed (the clock is put back on
+-- the car's moment, so both halves count), plus a second of slack.
+local function _maxRewindCredit(cfg, factor)
+    local bufMs = (cfg.bufferSeconds or 10) * 1000
+    local mult  = math.max(0.1, cfg.playbackSpeedMult or 2.5)
+    return math.floor((bufMs * (1.0 + 1.0 / mult) + 1000) * factor)
+end
+
+RegisterNetEvent("SPZ:rewindTime", function(ms)
+    local src   = source
+    local pData = RaceSession.players[src]
+    if not pData                               then return end
+    if pData.finished or pData.dnf             then return end
+    if RaceSession.state ~= SPZ.RaceState.LIVE then return end
+
+    local cfg    = Config.Rewind or {}
+    local factor = math.max(0.0, math.min(1.0, cfg.timeCreditFactor or 1.0))
+    if factor <= 0.0 then return end
+
+    ms = math.floor(tonumber(ms) or 0)
+    if ms <= 0 or ms > _maxRewindCredit(cfg, factor) then return end
+
+    local used    = pData.rewind_credit_lap or 0
+    local allowed = math.max(0, (cfg.maxCreditPerLapMs or 60000) - used)
+    ms = math.min(ms, allowed)
+    if ms <= 0 then return end
+
+    local now   = GetGameTimer()
+    local start = RaceSession.startTime or now
+
+    pData.rewind_credit_lap = used + ms
+    pData.race_start_time = math.min((pData.race_start_time or start) + ms, now)
+    pData.lap_start_time  = math.min((pData.lap_start_time  or start) + ms, now)
+    if pData.sector_start then
+        pData.sector_start = math.min(pData.sector_start + ms, now)
+    end
 end)
 
 -- ── Idle-kick watchdog ──────────────────────────────────────────────────────

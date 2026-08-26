@@ -3,13 +3,28 @@
 -- along its recently recorded path; release to resume driving from that
 -- point with the momentum it had back then.
 --
--- Why this can't be abused for lap times: the race/TT clock is server-owned
--- and keeps running in real time regardless of where the car physically is,
--- and checkpoints still have to be crossed for real afterwards. Rewinding
--- just costs you the seconds you spend doing it — same trade Forza makes.
+-- The clock rewinds with the car (Config.Rewind.timeCreditFactor): scrubbing
+-- back N seconds hands N seconds back to the race/lap timer, so the car and its
+-- time land at the same moment. Everything that reads that clock — the HUD, the
+-- ghost, the raceline capture — is scrubbed by the same amount, so nothing ends
+-- up describing a moment that no longer happened.
+--
+-- Why this can't be abused for lap times: the credit is only ever the time you
+-- scrubbed away, so a lap can never come out shorter than the driving actually
+-- done; the server clamps every claim to the buffer length and to
+-- maxCreditPerLapMs per lap; and checkpoints stay server-authoritative, so every
+-- gate you rewind past has to be re-crossed for real.
 
 local RCfg = Config and Config.Rewind or {}
-if RCfg.enabled == false then return end
+
+-- Disabled: still publish the exports other files poll every frame
+-- (checkpoint/incident detection, the TT clock), so turning rewind off never
+-- turns into "attempt to index a nil value" somewhere else.
+if RCfg.enabled == false then
+    exports("IsRewinding", function() return false end)
+    exports("GetRewindCreditMs", function() return 0 end)
+    return
+end
 
 -- ── Recording buffer ─────────────────────────────────────────────────────────
 -- Ring-ish buffer of recent {t, x,y,z, rx,ry,rz, vx,vy,vz}. Oldest-first.
@@ -90,13 +105,17 @@ end)
 
 -- ── UI bridge ─────────────────────────────────────────────────────────────────
 
-local function _uiUpdate(secondsBack, fraction)
+local function _uiUpdate(secondsBack, fraction, creditMs)
     if GetResourceState("spz-raceUI") ~= "started" then return end
     exports["spz-raceUI"]:UpdateRewind({
         active       = true,
         secondsBack  = secondsBack,
         fraction     = fraction,
         bufferSeconds = RCfg.bufferSeconds or 10,
+        -- Total clock credit earned so far in THIS scrub. The race HUD's clocks
+        -- are a local interval, so it applies the growing delta itself and the
+        -- timer visibly runs backward while the key is held.
+        creditMs     = creditMs,
     })
 end
 
@@ -111,6 +130,28 @@ local _rewindEnt        = nil
 local _rewindHead        = 0     -- virtual GetGameTimer() timestamp we're scrubbing at
 local _lastApplied        = nil
 local _cooldownUntil       = 0
+
+-- Clock credit for the scrub in progress, in ms: the gap between now and the
+-- moment the car is currently sitting in. That is BOTH halves — the recorded
+-- span scrubbed away AND the real seconds spent holding the key — because the
+-- point is to put the clock back on the same moment as the car. It starts at
+-- zero (the head starts at `now`) and only grows, so consumers can apply it as
+-- a running delta.
+local _liveCredit   = 0    -- factored: what the clock is actually given back
+local _liveRewound  = 0    -- unfactored: the true distance back in time
+
+local function _creditFactor()
+    local f = RCfg.timeCreditFactor
+    if f == nil then return 1.0 end
+    return math.max(0.0, math.min(1.0, f + 0.0))
+end
+
+-- Live credit is read every frame by anything that draws or replays against the
+-- lap clock (TT HUD, raceline capture, the ghost), so it stays a plain number
+-- rather than an event storm.
+local function _rewoundAt(head)
+    return math.max(0.0, GetGameTimer() - head)
+end
 
 local function _lerp(a, b, f) return a + (b - a) * f end
 
@@ -150,11 +191,21 @@ local function _finishRewind()
 
     -- Drop every recorded frame newer than the landing point — that "future"
     -- never happened — and resume recording forward from here.
+    --
+    -- The surviving frames are then rebased so the newest sits at `now`: the
+    -- clock was just wound back to this moment too, so history and clock stay on
+    -- one timeline. Without it the trim leaves a hole the length of the scrub,
+    -- and the NEXT rewind spends that hole scrubbing a stretch where the car
+    -- never moved.
     if _lastApplied then
-        local landAt = _lastApplied.t
+        local landAt  = _lastApplied.t
+        local shift   = GetGameTimer() - landAt
         local trimmed = {}
         for _, fr in ipairs(_buffer) do
-            if fr.t <= landAt then trimmed[#trimmed + 1] = fr end
+            if fr.t <= landAt then
+                fr.t = fr.t + shift
+                trimmed[#trimmed + 1] = fr
+            end
         end
         _buffer = trimmed
     end
@@ -173,6 +224,37 @@ local function _finishRewind()
             else
                 TriggerServerEvent("SPZ:rewindCheckpoint", _lastApplied.cp)
             end
+        end
+    end
+
+    -- ── Clock credit ─────────────────────────────────────────────────────────
+    -- Hand back the time the scrub wound off, recomputed on this exact frame so
+    -- the clock lands on the moment the car landed on rather than on the last
+    -- loop tick. Locally first (so the HUD, the ghost and the raceline capture
+    -- all move to the same moment on the same frame), then to the server, which
+    -- owns the number that ends up on the leaderboard and clamps it.
+    local rewound = _lastApplied and _rewoundAt(_lastApplied.t) or _liveRewound
+    local credit  = math.floor(rewound * _creditFactor() + 0.5)
+    rewound       = math.floor(rewound + 0.5)
+
+    -- Final UI frame carrying the committed figure: the race HUD applies these
+    -- as deltas, so it has to see the last one before the panel hides or the
+    -- tail of the scrub never reaches its clocks.
+    if credit > 0 then
+        _uiUpdate(rewound / 1000.0, 1.0, credit)
+    end
+
+    _liveCredit, _liveRewound = 0, 0
+    if credit > 0 then
+        -- `rewound` is the TRUE distance back in time; `credit` is what the
+        -- clock is given back (they differ when timeCreditFactor < 1). Anything
+        -- discarding un-driven history wants the first, anything moving a clock
+        -- wants the second.
+        TriggerEvent("SPZ:rewind:applied", credit, rewound)
+        if _G.SPZ_InTimeTrial then
+            TriggerServerEvent("SPZ:tt:rewindTime", credit)
+        else
+            TriggerServerEvent("SPZ:rewindTime", credit)
         end
     end
 
@@ -254,6 +336,8 @@ local function _rewindLoop()
         SetEntityVelocity(ent, -vx * playbackMult, -vy * playbackMult, -vz * playbackMult)
 
         _lastApplied = { t = _rewindHead, vx = vx, vy = vy, vz = vz, cp = f1.cp }
+        _liveRewound = _rewoundAt(_rewindHead)
+        _liveCredit  = _liveRewound * _creditFactor()
 
         if exhausted then
             _finishRewind()
@@ -262,7 +346,8 @@ local function _rewindLoop()
 
         local bufSpan     = math.max(newest.t - oldest.t, 1)
         local secondsBack = (newest.t - _rewindHead) / 1000.0
-        _uiUpdate(secondsBack, math.min((newest.t - _rewindHead) / bufSpan, 1.0))
+        _uiUpdate(secondsBack, math.min((newest.t - _rewindHead) / bufSpan, 1.0),
+            math.floor(_liveCredit + 0.5))
 
         Citizen.Wait(0)
     end
@@ -282,6 +367,8 @@ local function _startRewind()
     _rewindEnt            = veh
     _rewindHead           = GetGameTimer()
     _lastApplied          = nil
+    _liveCredit           = 0
+    _liveRewound          = 0
 
     SetEntityInvincible(veh, true)
     SetVehicleTyresCanBurst(veh, false)
@@ -302,3 +389,12 @@ end)
 -- Lets checkpoint / incident detection suppress false hits while the car is
 -- being scrubbed backward through world space.
 exports("IsRewinding", function() return _rewinding end)
+
+-- Clock credit earned by the scrub CURRENTLY in progress, in ms (0 when not
+-- rewinding). Anything that measures against the lap clock while the car is
+-- being scrubbed subtracts this so it stays on the same moment as the car:
+-- the TT timer counts backward, the raceline capture keeps its per-point `t`
+-- honest, and the ghost winds back alongside you. It resets to 0 the instant
+-- the rewind commits — the committed amount arrives as SPZ:rewind:applied
+-- (client event, ms) exactly once, so nothing double-counts.
+exports("GetRewindCreditMs", function() return _liveCredit end)

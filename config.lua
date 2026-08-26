@@ -178,8 +178,8 @@ Config.ShortTrackLaps  = 3
 -- resume driving from that point with the momentum it had back then. Bounded
 -- only by the rolling history buffer — no use cap, no cooldown beyond a short
 -- settle after release. Works in live Race (LIVE state) and Time Trial.
--- No leaderboard exploit: checkpoints must still be crossed for real and the
--- race/lap clock keeps running in real time no matter where the car sits.
+-- No leaderboard exploit: checkpoints must still be crossed for real, so every
+-- gate you scrub back past has to be re-driven at racing speed.
 Config.Rewind = {
   enabled           = true,
   key               = "R",
@@ -187,6 +187,17 @@ Config.Rewind = {
   recordIntervalMs  = 66,     -- ~15 Hz history sampling
   playbackSpeedMult = 2.5,    -- scrub speed vs real time (10s buffer plays back in 4s)
   resumeCooldownMs  = 350,    -- short lockout after releasing before rewinding again
+
+  -- ── Clock credit ─────────────────────────────────────────────────────────
+  -- The clock rewinds WITH the car: scrub back 4 s and the race/lap timer runs
+  -- backward by 4 s too, so the car and its time land at the same moment. That
+  -- is what makes a rewind read as "undo" instead of "teleport + penalty".
+  --   1.0 = full refund (Forza) · 0.0 = clock keeps running (old behaviour)
+  --   anything between = partial refund, i.e. a rewind costs you the difference
+  timeCreditFactor  = 1.0,
+  -- Server-side ceiling on how much clock a single lap/run can win back, no
+  -- matter how many rewinds are chained. Nothing above this is credited.
+  maxCreditPerLapMs = 60000,
 }
 
 -- ── In-world record boards ─────────────────────────────────────────────────
