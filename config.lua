@@ -198,6 +198,15 @@ Config.Rewind = {
   -- Server-side ceiling on how much clock a single lap/run can win back, no
   -- matter how many rewinds are chained. Nothing above this is credited.
   maxCreditPerLapMs = 60000,
+
+  -- ── Landing ──────────────────────────────────────────────────────────────
+  -- The crash you rewound out of did not happen any more, so the car comes back
+  -- as it was. GTA cannot roll the WORLD back, so the loose wreckage around the
+  -- landing point is cleared instead — objects only, never peds or vehicles
+  -- (this runs mid-race; another racer's car is not debris).
+  repairOnLand      = true,
+  clearDebrisOnLand = true,
+  clearDebrisRadius = 12.0,
 }
 
 -- ── In-world record boards ─────────────────────────────────────────────────

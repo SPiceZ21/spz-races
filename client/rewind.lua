@@ -153,6 +153,40 @@ local function _rewoundAt(head)
     return math.max(0.0, GetGameTimer() - head)
 end
 
+-- ── Wheel drive ──────────────────────────────────────────────────────────────
+-- A scrubbed car is teleported along its path every frame, so its wheels never
+-- touch anything: nothing makes them turn and the car slides down the road on
+-- locked wheels. Feeding entity velocity is not enough either — wheel rotation
+-- comes from ground contact, which a teleporting body does not have. So the
+-- wheels are driven explicitly.
+--
+-- The native differs by game build (rad/s vs m/s), so a setter is resolved once
+-- at load and the value converted to match; when neither exists the car simply
+-- behaves as it did before.
+local _wheelSet, _wheelUnit
+
+do
+    local rads = rawget(_G, "SetVehicleWheelRotationSpeed")
+    local mps  = rawget(_G, "SetVehicleWheelSpeed")
+    if type(rads) == "function" then
+        _wheelSet, _wheelUnit = rads, "rads"
+    elseif type(mps) == "function" then
+        _wheelSet, _wheelUnit = mps, "mps"
+    end
+end
+
+local WHEEL_RADIUS = 0.35   -- metres; close enough for every road car
+
+--- Spin every wheel as though the car were rolling at `mps` metres per second.
+local function _driveWheels(veh, mps)
+    if not _wheelSet then return end
+    local value = (_wheelUnit == "rads") and (mps / WHEEL_RADIUS) or mps
+    local n = math.min(GetVehicleNumberOfWheels(veh) or 4, 4)
+    for i = 0, n - 1 do
+        pcall(_wheelSet, veh, i, value)
+    end
+end
+
 local function _lerp(a, b, f) return a + (b - a) * f end
 
 -- Shortest-path angle interpolation so a heading near 359/1 doesn't spin the
@@ -180,13 +214,48 @@ local function _finishRewind()
     if ent and DoesEntityExist(ent) then
         local landing = _lastApplied
         if landing then
+            -- Handing the momentum back as a raw velocity vector is what left
+            -- the car undriveable: for the whole scrub the game saw a body
+            -- moving BACKWARDS at speed, so the transmission dropped into
+            -- reverse and stayed there. Throttle then did nothing until the car
+            -- had fully stopped and the box could shift again.
+            --
+            -- SetVehicleForwardSpeed re-syncs the drivetrain — gear, rpm, wheel
+            -- rotation — to a car moving forward at this speed, which is exactly
+            -- the state being resumed. The full velocity vector goes back on top
+            -- so any sideways momentum (mid-slide landings) survives.
+            local fv = GetEntityForwardVector(ent)
+            local forward = landing.vx * fv.x + landing.vy * fv.y + landing.vz * fv.z
+
+            SetVehicleForwardSpeed(ent, forward)
             SetEntityVelocity(ent, landing.vx, landing.vy, landing.vz)
+            _driveWheels(ent, forward)
+
+            -- Nothing may be left latched from the scrub or from whatever the
+            -- player was doing when they grabbed the key.
+            SetVehicleHandbrake(ent, false)
+            SetVehicleEngineOn(ent, true, true, false)
+            SetVehicleUndriveable(ent, false)
         end
         -- No getter native exists for the prior invincible state, and nothing
         -- else in this resource sets it true during a LIVE race — false is
         -- always the correct value to hand back.
         SetEntityInvincible(ent, false)
         SetVehicleTyresCanBurst(ent, true)
+
+        -- The damage taken during the stretch that was just un-driven did not
+        -- happen any more — the whole point of the rewind is that the crash is
+        -- undone. GTA has no world rollback, but the car itself is ours to
+        -- restore (Config.Rewind.repairOnLand, default on).
+        if RCfg.repairOnLand ~= false then
+            local dirt = GetVehicleDirtLevel(ent)   -- dents go, the race grime stays
+            SetVehicleFixed(ent)
+            SetVehicleDeformationFixed(ent)
+            SetVehicleEngineHealth(ent, 1000.0)
+            SetVehiclePetrolTankHealth(ent, 1000.0)
+            SetVehicleBodyHealth(ent, 1000.0)
+            SetVehicleDirtLevel(ent, dirt)
+        end
     end
 
     -- Drop every recorded frame newer than the landing point — that "future"
@@ -208,6 +277,24 @@ local function _finishRewind()
             end
         end
         _buffer = trimmed
+    end
+
+    -- ── World cleanup ────────────────────────────────────────────────────────
+    -- The car's own history rewinds; the WORLD's does not. GTA has no rollback
+    -- for a knocked-over bollard or a scattered pile of debris, so the wreckage
+    -- of the crash you just undid is still lying across the road — and hitting
+    -- it a second time is worse than the first, because now it is loose.
+    --
+    -- What can be done is clear the loose stuff around where the car lands:
+    -- broken pieces, dropped props, and anything physics has moved off its
+    -- anchor. Peds, vehicles and projectiles are deliberately left alone — this
+    -- runs in a live race, and deleting another racer's car to tidy a bollard
+    -- would be a far bigger bug than the one being fixed.
+    if RCfg.clearDebrisOnLand ~= false and _lastApplied then
+        local c = GetEntityCoords(_rewindEnt or PlayerPedId())
+        local r = RCfg.clearDebrisRadius or 12.0
+        ClearAreaOfObjects(c.x, c.y, c.z, r, 0)
+        RemoveParticleFxInRange(c.x, c.y, c.z, r)
     end
 
     -- Checkpoint progress is server-authoritative and never moves with the
@@ -334,6 +421,13 @@ local function _rewindLoop()
         -- by playbackMult so the spin rate matches the sped-up scrub instead
         -- of reading as the car's original, slower-than-this-looks pace.
         SetEntityVelocity(ent, -vx * playbackMult, -vy * playbackMult, -vz * playbackMult)
+
+        -- ...and turn the wheels to match. Velocity alone cannot do it while the
+        -- body is being teleported (no ground contact, no rolling), which is why
+        -- the car used to slide the whole scrub on locked wheels. Negative
+        -- because the car is travelling backwards through the stretch.
+        local speed = math.sqrt(vx * vx + vy * vy + vz * vz) * playbackMult
+        _driveWheels(ent, -speed)
 
         _lastApplied = { t = _rewindHead, vx = vx, vy = vy, vz = vz, cp = f1.cp }
         _liveRewound = _rewoundAt(_rewindHead)
