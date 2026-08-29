@@ -51,6 +51,7 @@ server_scripts {
   'server/leaderboard/records.lua',
   'server/leaderboard/standings.lua',
   'server/leaderboard/stats.lua',
+  'server/leaderboard/duels.lua',
   'server/leaderboard/callbacks.lua',
   'server/creator.lua',
   'server/dev_heading.lua',

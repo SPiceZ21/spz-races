@@ -116,7 +116,7 @@ function LB_GetActivityFeed(limit)
     if cached then return cached end
 
     local rows = MySQL.query.await(
-        [[SELECT p.username AS player, rs.track AS detail,
+        [[SELECT p.username AS player, p.avatar_url AS avatar, rs.track AS detail,
                  rr.position, rr.created_at AS timestamp
           FROM race_results rr
           JOIN players p        ON p.id      = rr.player_id
@@ -131,6 +131,7 @@ function LB_GetActivityFeed(limit)
         local action = row.position == 1 and "won a race at" or ("finished P" .. row.position .. " at")
         table.insert(feed, {
             player    = row.player or "Racer",
+            avatar    = row.avatar,
             action    = action,
             detail    = row.detail or "Track",
             title     = (row.player or "Racer") .. " " .. action .. " " .. (row.detail or "Track"),
@@ -141,4 +142,93 @@ function LB_GetActivityFeed(limit)
 
     LBCache.Set(cacheKey, feed, 10)
     return feed
+end
+
+-- Daily race counts for the My-stats heatmap. Grouped by day AND track so the
+-- UI can filter the calendar without a second round trip.
+function LB_GetPlayerActivity(source, days)
+    days = math.min(tonumber(days) or 364, 730)
+    local cacheKey = ("activity:player:%s:%d"):format(tostring(source), days)
+    local cached = LBCache.Get(cacheKey)
+    if cached then return cached end
+
+    local ok, profile = pcall(function() return exports["spz-identity"]:GetProfile(source) end)
+    if not ok or not profile then return {} end
+
+    local rows = MySQL.query.await(
+        [[SELECT
+            DATE(rr.created_at)                              AS day,
+            rs.track                                         AS track,
+            COUNT(*)                                         AS races,
+            SUM(CASE WHEN rr.position = 1 THEN 1 ELSE 0 END) AS wins,
+            SUM(CASE WHEN rr.dnf = 1 THEN 1 ELSE 0 END)      AS dnfs
+          FROM race_results rr
+          JOIN race_sessions rs ON rs.race_id = rr.race_id
+          WHERE rr.player_id = ?
+            AND rr.created_at >= (CURDATE() - INTERVAL ? DAY)
+          GROUP BY day, rs.track
+          ORDER BY day ASC]],
+        { profile.id, days }
+    ) or {}
+
+    local out = {}
+    for _, row in ipairs(rows) do
+        table.insert(out, {
+            day    = tostring(row.day):sub(1, 10),
+            track  = row.track or "Unknown",
+            races  = tonumber(row.races) or 0,
+            wins   = tonumber(row.wins) or 0,
+            dnfs   = tonumber(row.dnfs) or 0,
+        })
+    end
+
+    LBCache.Set(cacheKey, out, LBConfig.StatsCacheTTL)
+    return out
+end
+
+-- Per-track career summary — feeds the track filter with counts that cover
+-- every race, not just the page of history the charts plot.
+function LB_GetPlayerTrackSummary(source)
+    local cacheKey = "tracksum:" .. tostring(source)
+    local cached = LBCache.Get(cacheKey)
+    if cached then return cached end
+
+    local ok, profile = pcall(function() return exports["spz-identity"]:GetProfile(source) end)
+    if not ok or not profile then return {} end
+
+    local rows = MySQL.query.await(
+        [[SELECT
+            rs.track                                         AS track,
+            COUNT(*)                                         AS races,
+            SUM(CASE WHEN rr.position = 1 THEN 1 ELSE 0 END) AS wins,
+            SUM(CASE WHEN rr.position <= 3 AND rr.dnf = 0 THEN 1 ELSE 0 END) AS podiums,
+            SUM(CASE WHEN rr.dnf = 1 THEN 1 ELSE 0 END)      AS dnfs,
+            AVG(NULLIF(rr.position, 99))                     AS avg_position,
+            MIN(NULLIF(rr.best_lap, 0))                      AS best_lap_ms,
+            SUM(rr.points_earned)                            AS points
+          FROM race_results rr
+          JOIN race_sessions rs ON rs.race_id = rr.race_id
+          WHERE rr.player_id = ?
+          GROUP BY rs.track
+          ORDER BY races DESC]],
+        { profile.id }
+    ) or {}
+
+    local out = {}
+    for _, row in ipairs(rows) do
+        table.insert(out, {
+            track        = row.track or "Unknown",
+            races        = tonumber(row.races) or 0,
+            wins         = tonumber(row.wins) or 0,
+            podiums      = tonumber(row.podiums) or 0,
+            dnfs         = tonumber(row.dnfs) or 0,
+            avg_position = tonumber(row.avg_position) or 0,
+            best_lap_ms  = tonumber(row.best_lap_ms) or nil,
+            best_lap_f   = row.best_lap_ms and LB_FormatTime(row.best_lap_ms) or nil,
+            points       = tonumber(row.points) or 0,
+        })
+    end
+
+    LBCache.Set(cacheKey, out, LBConfig.StatsCacheTTL)
+    return out
 end
