@@ -51,6 +51,24 @@ lib.callback.register("spz-races:getPlayerStats", function(source, data)
     return safeCall(LB_GetPlayerStats, nil, target)
 end)
 
+-- Ghost duels: server-wide feed plus the caller's own record.
+lib.callback.register("spz-races:getDuelBoard", function(source, data)
+    return {
+        record = safeCall(LB_GetDuelRecord, {}, source),
+        rows   = safeCall(LB_GetDuelFeed, {}, data and data.limit),
+    }
+end)
+
+-- Heatmap calendar (day x track counts) for the My-stats charts.
+lib.callback.register("spz-races:getPlayerActivity", function(source, data)
+    return safeCall(LB_GetPlayerActivity, {}, source, data and data.days)
+end)
+
+-- Per-track career summary, used by the My-stats track filter.
+lib.callback.register("spz-races:getPlayerTrackSummary", function(source)
+    return safeCall(LB_GetPlayerTrackSummary, {}, source)
+end)
+
 lib.callback.register("spz-races:getPlayerHistory", function(source, data)
     return safeCall(LB_GetPlayerHistory, { rows = {}, hasMore = false }, source, data and data.page, data and data.pageSize)
 end)

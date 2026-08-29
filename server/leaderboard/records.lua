@@ -69,7 +69,11 @@ function LB_GetAllTrackRecords(carClass)
     if carClass then
         rows = MySQL.query.await(
             [[SELECT tr.track, tr.car_class, MIN(tr.best_time) AS lap_time_ms,
-                     (SELECT p.username FROM track_records tr2 JOIN players p ON p.id = tr2.player_id WHERE tr2.track = tr.track AND tr2.car_class = tr.car_class ORDER BY tr2.best_time ASC LIMIT 1) AS player_name
+                     (SELECT p.username FROM track_records tr2 JOIN players p ON p.id = tr2.player_id WHERE tr2.track = tr.track AND tr2.car_class = tr.car_class ORDER BY tr2.best_time ASC LIMIT 1) AS player_name,
+                     (SELECT p.avatar_url FROM track_records tr2 JOIN players p ON p.id = tr2.player_id WHERE tr2.track = tr.track AND tr2.car_class = tr.car_class ORDER BY tr2.best_time ASC LIMIT 1) AS avatar,
+                     (SELECT p.username FROM track_records tr3 JOIN players p ON p.id = tr3.player_id WHERE tr3.track = tr.track AND tr3.car_class = tr.car_class ORDER BY tr3.best_time ASC LIMIT 1 OFFSET 1) AS runner_up,
+                     (SELECT tr4.best_time FROM track_records tr4 WHERE tr4.track = tr.track AND tr4.car_class = tr.car_class ORDER BY tr4.best_time ASC LIMIT 1 OFFSET 1) AS runner_up_ms,
+                     (SELECT COUNT(DISTINCT tr5.player_id) FROM track_records tr5 WHERE tr5.track = tr.track AND tr5.car_class = tr.car_class) AS entrants
               FROM track_records tr
               WHERE tr.car_class = ?
               GROUP BY tr.track, tr.car_class
@@ -79,7 +83,11 @@ function LB_GetAllTrackRecords(carClass)
     else
         rows = MySQL.query.await(
             [[SELECT tr.track, tr.car_class, MIN(tr.best_time) AS lap_time_ms,
-                     (SELECT p.username FROM track_records tr2 JOIN players p ON p.id = tr2.player_id WHERE tr2.track = tr.track AND tr2.car_class = tr.car_class ORDER BY tr2.best_time ASC LIMIT 1) AS player_name
+                     (SELECT p.username FROM track_records tr2 JOIN players p ON p.id = tr2.player_id WHERE tr2.track = tr.track AND tr2.car_class = tr.car_class ORDER BY tr2.best_time ASC LIMIT 1) AS player_name,
+                     (SELECT p.avatar_url FROM track_records tr2 JOIN players p ON p.id = tr2.player_id WHERE tr2.track = tr.track AND tr2.car_class = tr.car_class ORDER BY tr2.best_time ASC LIMIT 1) AS avatar,
+                     (SELECT p.username FROM track_records tr3 JOIN players p ON p.id = tr3.player_id WHERE tr3.track = tr.track AND tr3.car_class = tr.car_class ORDER BY tr3.best_time ASC LIMIT 1 OFFSET 1) AS runner_up,
+                     (SELECT tr4.best_time FROM track_records tr4 WHERE tr4.track = tr.track AND tr4.car_class = tr.car_class ORDER BY tr4.best_time ASC LIMIT 1 OFFSET 1) AS runner_up_ms,
+                     (SELECT COUNT(DISTINCT tr5.player_id) FROM track_records tr5 WHERE tr5.track = tr.track AND tr5.car_class = tr.car_class) AS entrants
               FROM track_records tr
               GROUP BY tr.track, tr.car_class
               ORDER BY tr.track ASC, tr.car_class ASC]],
@@ -91,7 +99,8 @@ function LB_GetAllTrackRecords(carClass)
     if #rows == 0 then
         rows = MySQL.query.await(
             [[SELECT r.track, 'S' AS car_class, MIN(r.best_ms) AS lap_time_ms,
-                     (SELECT p.username FROM racelines r2 JOIN players p ON p.id = r2.player_id WHERE r2.track = r.track ORDER BY r2.best_ms ASC LIMIT 1) AS player_name
+                     (SELECT p.username FROM racelines r2 JOIN players p ON p.id = r2.player_id WHERE r2.track = r.track ORDER BY r2.best_ms ASC LIMIT 1) AS player_name,
+                     (SELECT p.avatar_url FROM racelines r2 JOIN players p ON p.id = r2.player_id WHERE r2.track = r.track ORDER BY r2.best_ms ASC LIMIT 1) AS avatar
               FROM racelines r
               GROUP BY r.track
               ORDER BY r.track ASC]],
@@ -106,6 +115,12 @@ function LB_GetAllTrackRecords(carClass)
             track_name  = row.track or "Unknown",
             car_class   = row.car_class or "S",
             player_name = row.player_name or "Racer",
+            avatar      = row.avatar,
+            runner_up     = row.runner_up,
+            runner_up_ms  = tonumber(row.runner_up_ms) or nil,
+            runner_up_f   = row.runner_up_ms and LB_FormatTime(row.runner_up_ms) or nil,
+            margin_ms     = row.runner_up_ms and ((tonumber(row.runner_up_ms) or 0) - (tonumber(row.lap_time_ms) or 0)) or nil,
+            entrants      = tonumber(row.entrants) or nil,
             lap_time_ms = row.lap_time_ms or 0,
             lap_time_f  = LB_FormatTime(row.lap_time_ms or 0),
             set_at      = row.set_at or nil,
