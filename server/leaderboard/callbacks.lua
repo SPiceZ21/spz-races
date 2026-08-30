@@ -20,6 +20,9 @@ AddEventHandler("SPZ:raceEnd", function(results)
     LBCache.Bust("standings")
     LBCache.Bust("records:" .. (results.track or ""))
     LBCache.Bust("activity:")
+    -- The race that just finished has to appear in the archive immediately;
+    -- a player pressing F6 at the results screen is the main way it is read.
+    LBCache.Bust("archive:")
     LBCache.Bust("stats:")
 end)
 
@@ -79,6 +82,15 @@ end)
 
 lib.callback.register("spz-races:getPersonalRecords", function(source)
     return safeCall(LB_GetPersonalRecords, {}, source)
+end)
+
+-- Race archive: the list of finished races, and the full classification of one.
+lib.callback.register("spz-races:getRaceArchive", function(source, data)
+    return safeCall(LB_GetRaceArchive, {}, data and data.limit, data and data.page)
+end)
+
+lib.callback.register("spz-races:getRaceResults", function(source, data)
+    return safeCall(LB_GetRaceResults, nil, data and data.raceId)
 end)
 
 lib.callback.register("spz-races:getActivityFeed", function(source, data)

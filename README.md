@@ -48,11 +48,11 @@ Modes: standard race, time trial, and duel.
 | Server | `server/dnf.lua` · `reconnect.lua` | DNF and mid-race rejoin |
 | Server | `server/results.lua` · `cleanup.lua` · `intermission.lua` | Results, teardown, next cycle |
 | Server | `server/timetrail.lua` · `duel.lua` · `bots.lua` | Alternate modes and AI |
-| Server | `server/leaderboard/*.lua` | Records, standings, stats, callbacks |
+| Server | `server/leaderboard/*.lua` | Records, standings, stats, race archive, callbacks |
 | Server | `server/creator.lua` · `dev_heading.lua` | Track creation tooling |
 | Client | `client/main.lua` · `nui_bridge.lua` | Race flow and UI delegation |
 | Client | `client/checkpoints.lua` · `cp_cross.lua` · `hit_detector.lua` | Checkpoint rendering and detection |
-| Client | `client/raceblips.lua` · `trackboard.lua` · `bonus.lua` | Blips, record boards, bonuses |
+| Client | `client/raceblips.lua` · `trackboard.lua` · `bonus.lua` | Blips, record boards, bonus and overtake flourishes |
 | Client | `client/lockin.lua` · `recover.lua` · `incidents.lua` | Grid lock, recovery, incidents |
 | Client | `client/rewind.lua` · `showcase.lua` | Time rewind, post-race car showcase |
 | Client | `client/timetrail.lua` · `duel.lua` · `bots.lua` | Alternate modes |
@@ -83,12 +83,12 @@ Names live in `shared/events.lua` and are merged into `SPZ.Events`
 |---|---|---|
 | `SPZ:racerFinished` | Once per **finisher**, on crossing | Feeds, telemetry, showcase. Field still incomplete. |
 | `SPZ:raceEnd` | Once per **race**, from `ProcessRaceResults` | Scoring, persistence, payouts. |
-| `SPZ:standings` | Every `Config.StandingsBroadcastInterval` | Betting, spectator boards. |
+| `SPZ:standings` | Every `Config.StandingsBroadcastInterval` | Live race board (spz-spectate), other out-of-race UIs. |
 | `SPZ:raceStateChanged` | Every lifecycle transition | Anything that mirrors race phase. |
 
 `SPZ:raceEnd` is fired by `ProcessRaceResults` and nowhere else. Firing it per finisher ran
-every listener twice per race — double progression, duplicate result rows, a Discord post
-per finisher, and the betting pool settling on the first crossing.
+every listener twice per race — double progression, duplicate result rows, and a Discord
+post per finisher.
 
 ## Anti-abuse
 
@@ -107,9 +107,9 @@ duel.
 | Command | Effect |
 |---|---|
 | `/joinrace` · `/leaverace` | Queue in / out |
-| `/timetrail` · `/tt_restart` · `/quittt` | Time trial control |
+| `/timetrail` · `/tt_restart` · `/quittt` | Time trial control (leaving the car also ends the run) |
 | `/duel` | Challenge a player |
-| `/spz_respawn_cp` · `/spz_flip_car` | Recovery |
+| `/spz_respawn_cp` (F4) · `/spz_flip_car` (X) | Recovery — offered by name when you miss a checkpoint |
 | `/trackcreator` · `/trackeditor` · `/trackname` · `/tracktype` · `/fixheadings` · `/checkgateprops` | Track tooling |
 
 ## Dependencies

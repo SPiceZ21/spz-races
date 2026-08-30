@@ -55,52 +55,56 @@ function CalculatePositions()
     return ranked
 end
 
--- Human-readable gap to the leader. We don't have per-CP timestamps for every
--- racer, so time gaps are only exact when two racers are on the same lap AND
--- checkpoint (compare their last-CP crossing times). Otherwise fall back to a
--- lap/checkpoint delta, which is honest and still useful.
-function _gapToLeader(leader, pData, entry, leadEntry)
-    if not leader or not leadEntry then return "" end
-    if entry.source == leadEntry.source then return "LEADER" end
-    if pData.finished then
-        local d = (pData.finish_time or 0) - (leader.finish_time or 0)
-        return d > 0 and ("+" .. string.format("%.2f", d / 1000)) or "+0.00"
+local function _fmtGap(ms)
+    if ms < 0 then ms = 0 end
+    if ms >= 60000 then
+        return ("+%d:%05.2f"):format(math.floor(ms / 60000), (ms % 60000) / 1000)
     end
-
-    local lapDiff = (leadEntry.lap or 1) - (entry.lap or 1)
-    if lapDiff > 0 then
-        return ("+%d L"):format(lapDiff)
-    end
-
-    local cpDiff = (leadEntry.cp or 1) - (entry.cp or 1)
-    if cpDiff > 0 then
-        return ("+%d CP"):format(cpDiff)
-    end
-
-    -- Same lap and CP: compare when each last crossed a checkpoint.
-    if leader.last_cp_time and pData.last_cp_time then
-        local d = pData.last_cp_time - leader.last_cp_time
-        if d > 0 then return "+" .. string.format("%.2f", d / 1000) end
-    end
-    return "+0.00"
+    return ("+%.2f"):format(ms / 1000)
 end
 
--- Unified gap string over the MERGED (human + bot) field. Both kinds carry
--- lap/cp/last_cp_time, so the same lap→cp→last-crossing fallback applies.
+-- Unified gap string over the MERGED (human + bot) field.
+--
+-- Real TIME gap, not a checkpoint count. Both kinds of entry carry the progress
+-- index they have reached (gates cleared since GO) and can answer "what was
+-- your elapsed time when you reached index N". The gap is then the plain
+-- question a pit wall asks: how long ago was the leader standing where this car
+-- is now?
+--
+--   gap = e.elapsedAt(e.idx) - leader.elapsedAt(e.idx)
+--
+-- That works unchanged when the two are on different laps, which is exactly the
+-- case the old "+2 CP" / "+1 L" text existed to paper over. A lapped car reads
+-- as the real time it is down, and the "1 L" fact is kept as a suffix because
+-- being lapped is information a time alone does not convey.
 local function _mergedGap(leader, e)
     if not leader then return "" end
     if e == leader then return "LEADER" end
+
     if e.finished and leader.finished then
-        local d = (e.ft or 0) - (leader.ft or 0)
-        return d > 0 and ("+" .. string.format("%.2f", d / 1000)) or "+0.00"
+        return _fmtGap((e.ft or 0) - (leader.ft or 0))
     end
+
     local lapDiff = (leader.lap or 1) - (e.lap or 1)
+
+    -- Leader's elapsed time when they were at this car's current position.
+    local mine = e.elapsedAt and e.elapsedAt(e.idx)
+    local his  = leader.elapsedAt and leader.elapsedAt(e.idx)
+
+    if mine and his then
+        local gap = _fmtGap(mine - his)
+        return lapDiff > 0 and (gap .. " " .. lapDiff .. "L") or gap
+    end
+
+    -- No banked crossing for one of them yet (first gate of the race, or a
+    -- racer restored mid-race with no history). Fall back to the old text
+    -- rather than printing a time that is not measured.
     if lapDiff > 0 then return ("+%d L"):format(lapDiff) end
     local cpDiff = (leader.cp or 1) - (e.cp or 1)
     if cpDiff > 0 then return ("+%d CP"):format(cpDiff) end
     if leader.lct and e.lct then
         local d = e.lct - leader.lct
-        if d > 0 then return "+" .. string.format("%.2f", d / 1000) end
+        if d > 0 then return _fmtGap(d) end
     end
     return "+0.00"
 end
@@ -121,6 +125,9 @@ Citizen.CreateThread(function()
             -- below for DISPLAY only, so they never touch human scoring.
             CalculatePositions()
 
+            local track  = RaceSession.track
+            local numCPs = (track and track.checkpoints and #track.checkpoints) or 1
+
             local merged = {}
             for src, pData in pairs(RaceSession.players) do
                 if not pData.dnf then
@@ -133,15 +140,36 @@ Citizen.CreateThread(function()
                         lap = pData.current_lap, cp = pData.current_cp,
                         finished = pData.finished, ft = pData.finish_time or 0,
                         lct = pData.last_cp_time or 0,
+                        -- Held slot: dropped mid-race, inside the reconnect
+                        -- window. They keep their place in the tower, but the
+                        -- UI should say why they are not moving.
+                        dc = pData.disconnected and true or false,
+                        -- Gates cleared, and the banked elapsed time at any of
+                        -- them — the two facts a real time gap needs.
+                        idx = pData.progress_idx or 0,
+                        elapsedAt = function(i) return CPProgressAt(pData, i) end,
                     }
                 end
             end
             if GetBotStandings then
                 for _, br in ipairs(GetBotStandings(now)) do
+                    -- A bot's schedule is analytic: it reached gate `c` of lap
+                    -- `l` at (l-1)*lapMs + splits[c]. So its elapsed at ANY
+                    -- index is exact, with no history to store.
+                    local bot = RaceSession.bots and RaceSession.bots[br.id]
                     merged[#merged + 1] = {
                         bot = true, source = br.id, name = br.name,
                         lap = br.lap, cp = br.cp, finished = br.finished,
                         ft = br.finish_time or 0, lct = br.last_cp_time or 0,
+                        idx = ((br.lap or 1) - 1) * numCPs + math.max(0, (br.cp or 1) - 1),
+                        elapsedAt = function(i)
+                            if not bot or i < 1 then return nil end
+                            local lap = math.floor((i - 1) / numCPs) + 1
+                            local cp  = i - (lap - 1) * numCPs
+                            local s   = bot.splits and bot.splits[cp]
+                            if not s then return nil end
+                            return (lap - 1) * bot.lapMs + s
+                        end,
                     }
                 end
             end
@@ -167,7 +195,13 @@ Citizen.CreateThread(function()
                     position   = i,
                     lap        = e.lap,
                     finished   = e.finished,
+                    dc         = e.dc or false,
                     gap        = _mergedGap(leader, e),
+                    -- Gap to the car directly ahead. Same measurement, different
+                    -- reference — a tower usually wants both: `gap` says where
+                    -- you are in the race, `interval` says whether you are
+                    -- catching the car you can actually see.
+                    interval   = (i > 1) and _mergedGap(merged[i - 1], e) or "LEADER",
                 }
             end
 
@@ -175,13 +209,15 @@ Citizen.CreateThread(function()
             -- Clients reject packets whose version is not strictly greater than their last
             BroadcastToRacers("SPZ:positionUpdate", payload, _posVersion)
 
-            -- Server-side standings feed for out-of-race modules (spz-betting):
-            -- BroadcastToRacers only reaches racers, so spectators/other resources
-            -- get the live order here. Same payload (humans + ghost-bots flagged).
+            -- Server-side standings feed for out-of-race modules (the live
+            -- race board in spz-spectate):
+            -- BroadcastToRacers only reaches racers, so freeroamers/spectators and
+            -- other resources get the live order here. Same payload (humans +
+            -- ghost-bots flagged).
             --
             -- Throttled independently of the racer HUD feed. Racers need 1 Hz to
-            -- keep the gap tower honest; a spectator board does not, and every
-            -- emit here fans out to every spectator through spz-betting.
+            -- keep the gap tower honest; a passive freeroam board does not, and
+            -- every emit here fans out to everyone not in the race.
             local standingsEvery = Config.StandingsBroadcastInterval or 2500
             if (now - _lastStandingsAt) >= standingsEvery then
                 _lastStandingsAt = now

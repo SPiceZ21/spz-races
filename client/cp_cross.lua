@@ -17,9 +17,16 @@ local GATE_MARGIN  = 2.0    -- metres of slack outside the posts (wide cars)
 -- cp    : { coords, left, right, radius }
 -- pos   : player position (vector3)
 -- prev  : the previous side value this detector stored for this checkpoint
--- returns: crossed(bool), side(number|nil)  — store `side` back for next call
+-- returns: crossed(bool), side(number|nil), missed(bool)
+--   `side`   — store back and pass in as `prev` next call
+--   `missed` — the player crossed the gate PLANE but outside the posts. That is
+--              the precise definition of missing a checkpoint, and it is already
+--              computed here to decide `crossed`; returning it means callers do
+--              not have to re-derive it from distance guesswork.
+--              Radius-only checkpoints (no posts) have no "outside the gate"
+--              geometry, so they never report a miss.
 function SPZ_GateCross(cp, pos, prev)
-    if not cp then return false, nil end
+    if not cp then return false, nil, false end
 
     local cx, cy, cz = cp.coords.x, cp.coords.y, cp.coords.z
 
@@ -76,9 +83,12 @@ function SPZ_GateCross(cp, pos, prev)
     end
 
     -- A hit is a genuine before→after flip while between the posts.
-    if prev ~= side and side == 1 and withinGate and zOk then
-        return true, side
+    local flipped = (prev ~= side) and side == 1
+    if flipped and withinGate and zOk then
+        return true, side, false
     end
 
-    return false, side
+    -- Same flip, but wide of the posts (or well above/below them): the player
+    -- went past this checkpoint without going through it.
+    return false, side, flipped
 end

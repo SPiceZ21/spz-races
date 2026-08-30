@@ -34,11 +34,12 @@ Config.CountdownSeconds     = 3       -- 3-2-1-GO
 Config.RaceTimeout          = 3600000  -- 60 minutes — DNF anyone not finished (was 5 mins)
 Config.PositionBroadcastInterval = 1000   -- ms between live position updates
 
--- ms between SPZ:standings emits — the out-of-race feed consumed by spz-betting
--- and any spectator board. Separate from the racer HUD interval above because
--- each emit fans out to every spectator, while racers need the tighter rate for
--- an honest gap tower. Also gates spz-betting's lap-based pool close, so the
--- close can lag the leader's lap by up to this much.
+-- ms between SPZ:standings emits — the out-of-race feed consumed by the live
+-- race board in spz-spectate and any other spectator UI. Separate from the racer
+-- HUD interval above because each emit fans out to every non-racer on the
+-- server, while racers need the tighter rate for an honest gap tower. This is
+-- also the refresh rate of that board, so it is the visible update rate for
+-- everyone watching from outside the race.
 Config.StandingsBroadcastInterval = 2500
 
 -- Overtake auto-clips. A pass triggers a real VIDEO clip recorded from the
@@ -47,6 +48,24 @@ Config.StandingsBroadcastInterval = 2500
 -- contains the overtake, not just the aftermath) and runs ClipDurationS.
 -- Cooldown is per overtaking pair to stop spam in a back-and-forth battle.
 Config.OvertakeCooldown = 20000
+
+-- Nitrous flourish on a completed pass: the OVERTAKER's car spits exhaust
+-- flames (networked, so the whole field sees it). Fires off the same detection
+-- as the auto-clip, so it inherits OvertakeCooldown and cannot spam in a
+-- back-and-forth battle.
+Config.OvertakeNos = {
+  enabled    = true,
+  durationMs = 1400,   -- how long the flames burn
+  pulseMs    = 110,    -- gap between particle bursts (lower = denser flame)
+  scale      = 1.6,
+
+  -- Rocket-Voltic boost on top of the flames. OFF deliberately: it is a real
+  -- speed gain, so it pays for a pass with pace and makes overtaking
+  -- self-reinforcing — the leader pulls away for winning a position. Turn it on
+  -- only if that is the racing you want.
+  boost      = false,
+  boostMs    = 900,
+}
 Config.Clip = {
   enabled     = true,
   durationS   = 10,     -- seconds of video captured per overtake
@@ -138,6 +157,13 @@ Config.SafeZoneHeading      = 210.0
 -- automatically DNF'd for idling / going off-route.
 Config.IdleKickMs           = 120000  -- 2 minutes
 
+-- Teleport back to the last checkpoint you crossed (client/recover.lua).
+-- Declared here, not inline in the key mapping, because the missed-checkpoint
+-- prompt and the HUD key strip both print it — one source, no drift.
+--
+-- NOT F6: spz-leaderboard already owns that key for the results board.
+Config.RecoverKey           = "F4"
+
 -- Range (metres) within which checkpoint gate props are spawned.
 -- Beyond this the props are removed again to keep the entity count low.
 Config.GateRange            = 130.0
@@ -201,7 +227,9 @@ Config.ShortTrackLaps  = 3
 -- gate you scrub back past has to be re-driven at racing speed.
 Config.Rewind = {
   enabled           = true,
-  key               = "R",
+  -- Paired with the respawn key in client/recover.lua (F6): a missed checkpoint
+  -- offers both, so they sit next to each other on the keyboard.
+  key               = "F5",
   bufferSeconds     = 10,     -- how far back you can scrub
   recordIntervalMs  = 66,     -- ~15 Hz history sampling
   playbackSpeedMult = 2.5,    -- scrub speed vs real time (10s buffer plays back in 4s)
