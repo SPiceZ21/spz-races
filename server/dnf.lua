@@ -26,20 +26,11 @@ function MarkDNF(source, reason)
     -- Return to default bucket and clean up state
     exports["spz-core"]:AssignPlayerToBucket(source, 0)
 
-    -- Clear race statebags
-    Player(source).state:set("inRace",       false, true)
-    Player(source).state:set("inQueue",      false, true)
-    Player(source).state:set("queueClass",   nil,   true)
-    Player(source).state:set("raceId",       nil,   true)
-    Player(source).state:set("raceClass",    nil,   true)
-    Player(source).state:set("raceTrack",    nil,   true)
-    Player(source).state:set("racePosition", nil,   true)
-    Player(source).state:set("raceLap",      nil,   true)
-    Player(source).state:set("raceLaps",     nil,   true)
-    Player(source).state:set("personalBest", nil,   true)
-    Player(source).state:set("allTimeBest",  nil,   true)
-    Player(source).state:set("raceTime",     nil,   true)
-    Player(source).state:set("dnf",          true,  true)
+    -- Clear race statebags. keepDnfFlag: the dnf bag is what the client HUD
+    -- and the post-race screen read to show the DNF state, so it is set here
+    -- rather than wiped with the rest.
+    ClearRaceState(source, true)
+    Player(source).state:set("dnf", true, true)
 
     -- Teleport DNF'd player immediately to Safe Zone
     if pData and not pData.teleportedToSafeZone then

@@ -121,10 +121,10 @@ function SetupRaceWorld()
                 -- Bring the player to their grid slot BEFORE the vehicle spawns.
                 -- Remote clients far from the track never get the grid vehicle into
                 -- network scope, can't resolve its netId → upgrade timeout → abort.
-                local ped = GetPlayerPed(src)
-                if ped and ped > 0 then
-                    SetEntityCoords(ped, gridPos.coords.x, gridPos.coords.y, gridPos.coords.z + 1.0)
-                end
+                -- The owning client does this (see client/main.lua) — a
+                -- server-side SetEntityCoords on a player ped is advisory only.
+                TriggerClientEvent("SPZ:tpToGridPoint", src, gridPos.coords)
+                Citizen.Wait(Config.GridTpSettleMs or 400)
 
                 print(string.format("[World Setup] Staggered spawn #%d: '%s' for player %d at grid %d (Rental: %s)", i, chosenModel, src, i, tostring(isRental)))
                 local ok, err = pcall(function()
@@ -216,8 +216,7 @@ function ReconcileUnconfirmed()
         if not confirmed and RaceSession.players[src] then
             RaceSession.players[src] = nil
             exports["spz-core"]:AssignPlayerToBucket(src, 0)
-            Player(src).state:set("inRace",  false, true)
-            Player(src).state:set("inQueue", false, true)
+            ClearRaceState(src)
             if GetPlayerName(src) then
                 SPZ.Notify(src, "Your vehicle failed to spawn in time — you'll auto-join the next race.", "error", 6000)
             end
@@ -253,9 +252,9 @@ function StartWarmupSpawnGrace()
                     local active = exports["spz-vehicles"]:GetPlayerVehicle(src)
                     if not active then
                         print(("[World Setup] Warmup grace: retrying spawn for %d"):format(src))
-                        local ped = GetPlayerPed(src)
-                        if ped and ped > 0 and pData.gridCoords then
-                            SetEntityCoords(ped, pData.gridCoords.x, pData.gridCoords.y, pData.gridCoords.z + 1.0)
+                        if pData.gridCoords then
+                            TriggerClientEvent("SPZ:tpToGridPoint", src, pData.gridCoords)
+                            Citizen.Wait(Config.GridTpSettleMs or 400)
                         end
                         pcall(function()
                             exports["spz-vehicles"]:SpawnRaceVehicle(

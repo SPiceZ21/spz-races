@@ -81,6 +81,31 @@ RegisterNetEvent("SPZ:tpToGrid", function(data)
     end
 end)
 
+-- ── Pre-spawn grid placement ──────────────────────────────────────────────────
+-- Moves the ped to its grid slot BEFORE the race vehicle is created, so the
+-- spawning client is in network scope of the new vehicle and can resolve its
+-- netId. Deliberately does NOT freeze or touch a vehicle — SPZ:tpToGrid is the
+-- staging teleport; this one only gets the player to the right part of the map.
+--
+-- The server used to call SetEntityCoords on the player ped directly. Entity
+-- position for a player-owned ped is authoritative on the OWNING client; the
+-- server-side call is advisory and is silently dropped whenever the client is
+-- mid-stream, which is exactly the case this teleport exists to fix.
+RegisterNetEvent("SPZ:tpToGridPoint", function(coords)
+    if not coords then return end
+    local ped = PlayerPedId()
+
+    RequestCollisionAtCoord(coords.x, coords.y, coords.z)
+    SetEntityCoords(ped, coords.x, coords.y, coords.z + 1.0, false, false, false, true)
+
+    -- Let the world stream in around the grid before the vehicle is created.
+    local deadline = GetGameTimer() + 3000
+    while not HasCollisionLoadedAroundEntity(ped) and GetGameTimer() < deadline do
+        RequestCollisionAtCoord(coords.x, coords.y, coords.z)
+        Citizen.Wait(50)
+    end
+end)
+
 -- ── Staging ───────────────────────────────────────────────────────────────────
 RegisterNetEvent("SPZ:stagingPhase", function(data)
     if Config and Config.Debug then

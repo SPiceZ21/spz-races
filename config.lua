@@ -34,6 +34,13 @@ Config.CountdownSeconds     = 3       -- 3-2-1-GO
 Config.RaceTimeout          = 3600000  -- 60 minutes — DNF anyone not finished (was 5 mins)
 Config.PositionBroadcastInterval = 1000   -- ms between live position updates
 
+-- ms between SPZ:standings emits — the out-of-race feed consumed by spz-betting
+-- and any spectator board. Separate from the racer HUD interval above because
+-- each emit fans out to every spectator, while racers need the tighter rate for
+-- an honest gap tower. Also gates spz-betting's lap-based pool close, so the
+-- close can lag the leader's lap by up to this much.
+Config.StandingsBroadcastInterval = 2500
+
 -- Overtake auto-clips. A pass triggers a real VIDEO clip recorded from the
 -- overtaker's screen via `screencapture`, uploaded to FiveManage, and posted
 -- to Discord. Recording starts the instant the pass is detected (so the clip
@@ -60,6 +67,10 @@ Config.SpawnTimeout         = 30000   -- ms hard ceiling when NOBODY has spawned
 --   16 players × 800ms ≈ 13s   (fits inside SpawnTimeout)
 --   16 players × 5000ms ≈ 75s  (the old value — outlived WARMUP)
 Config.SpawnStaggerMs       = 800
+
+-- ms to let the client-side grid teleport land (and collision stream in) before
+-- the race vehicle is created at that spot.
+Config.GridTpSettleMs       = 400
 
 -- Warmup doubles as spawn grace: once the FIRST racer is ready, the race moves
 -- on after this delay and slow clients keep spawning during the whole warmup
@@ -205,7 +216,12 @@ Config.Rewind = {
   timeCreditFactor  = 1.0,
   -- Server-side ceiling on how much clock a single lap/run can win back, no
   -- matter how many rewinds are chained. Nothing above this is credited.
-  maxCreditPerLapMs = 60000,
+  -- This is PER LAP, so a 3-lap circuit allowed 3x this much refund on a time
+  -- that reaches the leaderboard — 60s/lap made a rewound run strictly faster
+  -- than a clean one. Any run that credits a single millisecond is now barred
+  -- from track records and personal bests (see leaderboard/writer.lua), so this
+  -- number only governs how forgiving the mid-race experience is.
+  maxCreditPerLapMs = 15000,
 
   -- ── Landing ──────────────────────────────────────────────────────────────
   -- The crash you rewound out of did not happen any more, so the car comes back

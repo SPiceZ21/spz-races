@@ -20,7 +20,7 @@ RaceSession = {
 function SetRaceState(state)
     RaceSession.state = state
     GlobalState:set("raceState", state, true)
-    TriggerEvent("SPZ:raceStateChanged", state)
+    TriggerEvent(SPZ.Events.RACE_STATE, state)
 end
 
 exports("SetRaceState", SetRaceState)
@@ -213,10 +213,11 @@ exports("HandlePlayerDisconnect", function(src)
     end
 end)
 
+-- CountPlayers was a byte-for-byte duplicate of GetQueueCount (server/queue.lua)
+-- over the same table. Kept as an alias so any external caller still resolves,
+-- but there is one implementation.
 function CountPlayers()
-    local n = 0
-    for _ in pairs(RaceSession.players) do n = n + 1 end
-    return n
+    return GetQueueCount()
 end
 
 -- ── Current race meta (read-only snapshot for external modules, e.g. spz-discord) ─

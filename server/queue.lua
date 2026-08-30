@@ -119,21 +119,13 @@ function LeaveQueue(src)
             exports["spz-vehicles"]:DespawnVehicle(src)
         end
         exports["spz-core"]:AssignPlayerToBucket(src, 0)
-        for _, key in ipairs({
-            "inRace", "raceId", "raceClass", "raceTrack", "raceLap", "raceLaps",
-            "personalBest", "allTimeBest", "racePosition", "raceTime", "dnf",
-        }) do
-            Player(src).state:set(key, nil, true)
-        end
+        ClearRaceState(src)
         TriggerClientEvent("SPZ:tpToSafeZone", src)
         TriggerClientEvent("SPZ:warmupEnd", src)   -- tear down warmup HUD
     end
 
     RaceSession.players[src] = nil
-
-    Player(src).state:set("inQueue",       false, true)
-    Player(src).state:set("queuePosition", nil,   true)
-    Player(src).state:set("queueClass",    nil,   true)
+    ClearRaceState(src)
 
     Notify(src, "Left the race", "info")
     BroadcastQueueUpdate()

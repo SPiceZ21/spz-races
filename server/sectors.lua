@@ -27,7 +27,7 @@ local function MarkPurple(bag, lap, sector, source, trackName, class)
     end
     if set.n >= SECTORS_PER_LAP and not set.done then
         set.done = true
-        TriggerEvent("SPZ:perfectLap", source, { track = trackName, class = class, lap = lap })
+        TriggerEvent(SPZ.Events.PERFECT_LAP, source, { track = trackName, class = class, lap = lap })
     end
 end
 

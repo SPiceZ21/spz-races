@@ -6,8 +6,13 @@
 
 `spz-races` runs the race. It owns the lifecycle state machine, the join queue, the track
 vote, the grid and countdown, checkpoint and sector validation, live positions, DNF and
-reconnect handling, results, and the intermission that loops back into the next race. The
-server decides everything; clients only report checkpoint hits.
+reconnect handling, results, and the intermission that loops back into the next race.
+
+The server decides everything. A client may *propose* an event — a checkpoint crossing, an
+incident, a rewind — and the server accepts it only if it can check the claim against data
+it owns: which gate you were due to cross and where you actually are, what state the race
+is in, and hard per-race ceilings. The client owns timing precision, because only it has
+the frame; it never owns an outcome.
 
 It also hosts the leaderboard back end (`server/leaderboard/`) — records, standings and
 stats — which [spz-leaderboard](../spz-leaderboard/README.md) renders.
@@ -16,7 +21,7 @@ stats — which [spz-leaderboard](../spz-leaderboard/README.md) renders.
 
 1. **Idle** → first player queues, arming a dynamic join window.
 2. **Poll** — players vote on track and vehicle class ([spz-poll](../spz-poll/README.md)).
-3. **Warmup** (60 s) — world set up, grid spawned, doubles as spawn grace.
+3. **Warmup** (90 s) — world set up, grid spawned, doubles as spawn grace.
 4. **Countdown** — grid settle, 3-2-1.
 5. **Live** — checkpoints, sectors, positions, overtakes, incidents.
 6. **Finish** — first finisher arms a straggler countdown (warned at 60/30/10 s), then
@@ -31,7 +36,7 @@ Modes: standard race, time trial, and duel.
 |---|---|---|
 | Shared | `config.lua` | Race configuration and tuning |
 | Shared | `shared/race_states.lua` | Race state enum |
-| Shared | `shared/events.lua` | Event name constants |
+| Shared | `shared/events.lua` | Race event names, merged into `SPZ.Events` |
 | Shared | `shared/points.lua` | Points scoring table |
 | Shared | `shared/sectors.lua` | Sector split helpers |
 | Server | `data/tracks.lua` | Track definitions (101 tracks: 76 circuit, 25 sprint) |
@@ -49,6 +54,7 @@ Modes: standard race, time trial, and duel.
 | Client | `client/checkpoints.lua` · `cp_cross.lua` · `hit_detector.lua` | Checkpoint rendering and detection |
 | Client | `client/raceblips.lua` · `trackboard.lua` · `bonus.lua` | Blips, record boards, bonuses |
 | Client | `client/lockin.lua` · `recover.lua` · `incidents.lua` | Grid lock, recovery, incidents |
+| Client | `client/rewind.lua` · `showcase.lua` | Time rewind, post-race car showcase |
 | Client | `client/timetrail.lua` · `duel.lua` · `bots.lua` | Alternate modes |
 | Client | `client/creator.lua` · `editor.lua` · `dev_heading.lua` | Track creation tooling |
 
@@ -56,7 +62,7 @@ Modes: standard race, time trial, and duel.
 
 | Group | Exports |
 |---|---|
-| State | `GetRaceState` · `SetRaceState` · `ResetToIdle` |
+| State | `GetRaceState` · `SetRaceState` · `ResetToIdle` · `ClearRaceState` |
 | Queue | `JoinQueue` · `LeaveQueue` · `IsQueued` · `GetQueueCount` · `GetQueuePlayers` · `BroadcastQueueUpdate` · `FlushPendingToQueue` · `ClearPending` |
 | Flow | `StartRacePoll` · `StartWarmupPhase` · `StartCountdownSequence` · `SetupRaceWorld` · `StartIntermission` · `RunRaceCleanup` |
 | Checkpoints | `SetActiveCheckpoint` · `GetCurrentCP` · `HandleCheckpointAdvance` · `StartCheckpointVisuals` · `StopCheckpointVisuals` · `IsCheckpointVisualsActive` · `GetRespawnPoint` |
@@ -66,6 +72,35 @@ Modes: standard race, time trial, and duel.
 | Time trial | `IsInTimeTrial` |
 | Track tooling | `SaveTrack` · `AddTrackCheckpoint` · `DeleteLastCheckpoint` · `CancelTrackCreator` |
 | Spawn | `ConfirmRaceSpawn` |
+
+## Events
+
+Names live in `shared/events.lua` and are merged into `SPZ.Events`
+(`spz-core/shared/events.lua`). Other resources import
+`'@spz-core/shared/events.lua'` to see them — each resource has its own Lua state.
+
+| Event | When | Use for |
+|---|---|---|
+| `SPZ:racerFinished` | Once per **finisher**, on crossing | Feeds, telemetry, showcase. Field still incomplete. |
+| `SPZ:raceEnd` | Once per **race**, from `ProcessRaceResults` | Scoring, persistence, payouts. |
+| `SPZ:standings` | Every `Config.StandingsBroadcastInterval` | Betting, spectator boards. |
+| `SPZ:raceStateChanged` | Every lifecycle transition | Anything that mirrors race phase. |
+
+`SPZ:raceEnd` is fired by `ProcessRaceResults` and nowhere else. Firing it per finisher ran
+every listener twice per race — double progression, duplicate result rows, a Discord post
+per finisher, and the betting pool settling on the first crossing.
+
+## Anti-abuse
+
+| Claim | Server check |
+|---|---|
+| Checkpoint hit | Must be the gate the racer is due to cross, and the ped must be within range of it |
+| Incident report | Speed sanity-checked against `Config.Incidents.minImpactSpeed`, capped per race |
+| Rewind credit | Clamped per claim (history buffer), per lap (`maxCreditPerLapMs`), and epochs can never pass `now` |
+
+A run that credits any rewind time carries `rewind_ms > 0` into results and is barred from
+track records, personal bests and raceline storage. Rewind earns no credit at all inside a
+duel.
 
 ## Commands
 

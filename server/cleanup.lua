@@ -31,18 +31,7 @@ function RunRaceCleanup(results)
         exports["spz-core"]:AssignPlayerToBucket(source, 0)
         
         -- Clear race statebags
-        Player(source).state:set("inRace",       false, true)
-        Player(source).state:set("inQueue",      false, true)
-        Player(source).state:set("queueClass",   nil,   true)
-        Player(source).state:set("raceId",       nil,   true)
-        Player(source).state:set("raceClass",    nil,   true)
-        Player(source).state:set("raceTrack",    nil,   true)
-        Player(source).state:set("raceLap",      nil,   true)
-        Player(source).state:set("raceLaps",     nil,   true)
-        Player(source).state:set("personalBest", nil,   true)
-        Player(source).state:set("allTimeBest",  nil,   true)
-        Player(source).state:set("racePosition", nil,   true)
-        Player(source).state:set("raceTime",     nil,   true)
+        ClearRaceState(source)
 
         -- Trigger client-side teleport to safe zone only if not already teleported
         if pData and not pData.teleportedToSafeZone then

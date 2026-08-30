@@ -257,7 +257,10 @@ RegisterNetEvent("SPZ:tt:cpHit", function(logicalIdx)
             end
             s.cpTimes = {}   -- reset for the lap about to start
 
-            if GetResourceState("spz-raceline") == "started" then
+            -- A lap that won clock back off a rewind does not become a stored
+            -- line: those lines are replayed as ghost-bots and used as duel
+            -- targets, so a refunded time would seed an unbeatable ghost.
+            if (s.rewindCredit or 0) == 0 and GetResourceState("spz-raceline") == "started" then
                 TriggerEvent("spz-raceline:lapCompleted", src, track.name, lapTime)
             end
 
@@ -362,6 +365,11 @@ RegisterNetEvent("SPZ:tt:rewindTime", function(ms)
     local s   = TT[src]
     if not s or s.phase ~= "ACTIVE" or not s.lapStart then return end
 
+    -- A ghost duel pays real credits against a stored time. No clock credit is
+    -- granted inside one: the rewind still works, it just costs what it costs,
+    -- so a duel can never be won on refunded time.
+    if s.duel then return end
+
     local cfg    = Config.Rewind or {}
     local factor = math.max(0.0, math.min(1.0, cfg.timeCreditFactor or 1.0))
     if factor <= 0.0 then return end
@@ -370,7 +378,7 @@ RegisterNetEvent("SPZ:tt:rewindTime", function(ms)
     if ms <= 0 or ms > _maxRewindCredit(cfg, factor) then return end
 
     local used    = s.rewindCredit or 0
-    local allowed = math.max(0, (cfg.maxCreditPerLapMs or 60000) - used)
+    local allowed = math.max(0, (cfg.maxCreditPerLapMs or 15000) - used)
     ms = math.min(ms, allowed)
     if ms <= 0 then return end
 

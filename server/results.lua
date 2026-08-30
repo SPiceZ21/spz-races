@@ -30,6 +30,9 @@ function ProcessRaceResults()
                 sector_times  = pData.sector_times or {},
                 best_sectors  = pData.best_sectors or {},
                 personal_best = pData.personal_best or false,
+                -- ms of race clock won back by rewinding. Non-zero disqualifies
+                -- the time from track records and personal bests.
+                rewind_ms     = pData.rewind_credit_total or 0,
                 -- Real incident data (client-detected world impacts, server-
                 -- validated). Clean race = zero incidents. The old code was
                 -- `pData.cleanRace or true`, which is ALWAYS true — every racer
@@ -71,7 +74,7 @@ function ProcessRaceResults()
     BroadcastToRacers("SPZ:raceEnd", results)
 
     -- Server notification (for internal modules: spz-progression, spz-economy, leaderboard)
-    TriggerEvent("SPZ:raceEnd", results)
+    TriggerEvent(SPZ.Events.RACE_END, results)
 
     return results
 end

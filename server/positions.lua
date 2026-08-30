@@ -107,6 +107,7 @@ end
 
 -- 13.2 Periodic Broadcast
 local _posVersion = 0
+local _lastStandingsAt = 0
 
 Citizen.CreateThread(function()
     while true do
@@ -177,7 +178,15 @@ Citizen.CreateThread(function()
             -- Server-side standings feed for out-of-race modules (spz-betting):
             -- BroadcastToRacers only reaches racers, so spectators/other resources
             -- get the live order here. Same payload (humans + ghost-bots flagged).
-            TriggerEvent("SPZ:standings", payload, _posVersion)
+            --
+            -- Throttled independently of the racer HUD feed. Racers need 1 Hz to
+            -- keep the gap tower honest; a spectator board does not, and every
+            -- emit here fans out to every spectator through spz-betting.
+            local standingsEvery = Config.StandingsBroadcastInterval or 2500
+            if (now - _lastStandingsAt) >= standingsEvery then
+                _lastStandingsAt = now
+                TriggerEvent(SPZ.Events.STANDINGS, payload, _posVersion)
+            end
 
             -- Statebags for reactive UI: humans get their DISPLAY position within
             -- the merged field (so "P2/6" counts the bots ahead).
