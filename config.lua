@@ -53,6 +53,14 @@ Config.Clip = {
 }
 Config.SpawnTimeout         = 30000   -- ms hard ceiling when NOBODY has spawned yet
 
+-- Gap between grid vehicle creations. Only there to keep every car off the same
+-- network tick — it is NOT a pacing mechanism. Keep it small: the whole grid
+-- must be spawned well before the spawn monitor advances the session, or the
+-- spawn loop ends up running against a race that has already staged.
+--   16 players × 800ms ≈ 13s   (fits inside SpawnTimeout)
+--   16 players × 5000ms ≈ 75s  (the old value — outlived WARMUP)
+Config.SpawnStaggerMs       = 800
+
 -- Warmup doubles as spawn grace: once the FIRST racer is ready, the race moves
 -- on after this delay and slow clients keep spawning during the whole warmup
 -- (with automatic retries). They're only cut at warmup end.

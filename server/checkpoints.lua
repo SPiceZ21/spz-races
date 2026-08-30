@@ -65,10 +65,15 @@ local function HandleFinish(source, pData)
         dnf = {}
     }
 
-    -- Process progression rewards & send SPZ:progressionUpdate to finisher
-    if GetResourceState("spz-progression") == "started" then
-        TriggerEvent("SPZ:raceEnd", indResult)
-    end
+    -- Per-finisher notification for modules that want to react the moment a
+    -- racer crosses the line (telemetry, feeds, showcase). NOT "SPZ:raceEnd":
+    -- that name is the end-of-session contract, and firing it here ran every
+    -- SPZ:raceEnd listener once per finisher AND again from results.lua —
+    -- double XP/SR/iRating in spz-progression, duplicate race_results rows,
+    -- a Discord post per finisher, and the betting pool settling on the first
+    -- crossing. All scoring and persistence now happens exactly once, in
+    -- ProcessRaceResults.
+    TriggerEvent("SPZ:racerFinished", source, indResult)
 
     -- Send raceEnd event directly to this finisher so UI shows stats modal
     TriggerClientEvent("SPZ:raceEnd", source, indResult)
@@ -158,6 +163,26 @@ local function HandleCheckpointAdvance(source, pData)
     if UpdateAllPositions then UpdateAllPositions() end
 end
 
+-- Proximity check for a claimed crossing. The client decides WHEN it crossed
+-- (it owns the frame-accurate gate plane), but the server decides WHETHER it
+-- could have: without this, a modified client can spam sequential
+-- SPZ:checkpointHit calls and take a track record, the XP, and the betting pool
+-- without moving. Server-side ped coords lag the owning client by a network
+-- tick, so the radius is deliberately generous — it rejects teleport-scripting,
+-- not close racing.
+local CP_HIT_RADIUS = 75.0
+
+local function CanClaimCheckpoint(src, cp)
+    if not cp or not cp.coords then return true end   -- malformed track data: don't punish
+    local ped = GetPlayerPed(src)
+    if not ped or ped == 0 or not DoesEntityExist(ped) then return true end
+
+    local pos = GetEntityCoords(ped)
+    local dx, dy, dz = pos.x - cp.coords.x, pos.y - cp.coords.y, pos.z - cp.coords.z
+    local radius = math.max(CP_HIT_RADIUS, (cp.radius or 0.0) * 3.0)
+    return (dx * dx + dy * dy + dz * dz) <= (radius * radius)
+end
+
 -- ── 11.4 Hit validation ─────────────────────────────────────────────────────
 RegisterNetEvent("SPZ:checkpointHit", function(cpIndex)
     local src   = source
@@ -169,6 +194,14 @@ RegisterNetEvent("SPZ:checkpointHit", function(cpIndex)
     if cpIndex ~= pData.current_cp                    then
         print(string.format("[Security] CP skip by %s: expected %d, got %d",
             pData.name, pData.current_cp, cpIndex))
+        return
+    end
+
+    local cp = RaceSession.track and RaceSession.track.checkpoints
+               and RaceSession.track.checkpoints[cpIndex]
+    if not CanClaimCheckpoint(src, cp) then
+        print(string.format("[Security] CP %d claimed by %s from out of range — rejected",
+            cpIndex, pData.name))
         return
     end
 

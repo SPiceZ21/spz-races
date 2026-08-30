@@ -8,8 +8,15 @@ GlobalState:set("queueCount", 0,                  true)
 GlobalState:set("raceType",   "circuit",           true)
 
 -- ── State transition handler ──────────────────────────────────────────────────
+-- Every branch below is a one-shot side effect (spawn the world, run results).
+-- Statebag handlers fire on every set, not only on a real change, so a repeated
+-- write of the same state must not replay them.
+local lastHandled = nil
+
 AddStateBagChangeHandler("raceState", "global", function(bagName, key, value)
     if not value then return end
+    if value == lastHandled then return end
+    lastHandled = value
 
     if value == SPZ.RaceState.WAITING then
         -- Poll finished — vehicle + track selected; spin up race world.

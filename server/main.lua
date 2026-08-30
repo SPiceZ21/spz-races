@@ -37,11 +37,76 @@ function BroadcastToRacers(eventName, ...)
     end
 end
 
+-- ── ClearRaceState ────────────────────────────────────────────────────────────
+-- Every per-player race statebag, cleared in one place. The same block used to
+-- be copy-pasted into queue / checkpoints / dnf / cleanup and had already
+-- drifted between copies, which is how players ended up stuck with inQueue or
+-- inRace set and unable to join anything.
+local RACE_STATE_KEYS = {
+    "inRace", "inQueue", "queueClass", "queuePosition",
+    "raceId", "raceClass", "raceTrack", "raceLap", "raceLaps",
+    "personalBest", "allTimeBest", "racePosition", "raceTime",
+}
+
+function ClearRaceState(src, keepDnfFlag)
+    if not GetPlayerName(src) then return end
+    local st = Player(src).state
+    for _, key in ipairs(RACE_STATE_KEYS) do
+        st:set(key, nil, true)
+    end
+    st:set("inRace",  false, true)
+    st:set("inQueue", false, true)
+    if not keepDnfFlag then
+        st:set("dnf", nil, true)
+    end
+end
+
+exports("ClearRaceState", ClearRaceState)
+
 -- ── ResetToIdle ───────────────────────────────────────────────────────────────
+-- Abort path for a cycle that never reached the finish (empty queue, dead poll,
+-- nobody spawned). This used to drop the players table and nothing else, so an
+-- abort after SetupRaceWorld leaked the routing bucket for the server's whole
+-- uptime, left raceId/track/bucketId pointing at a dead session, and left every
+-- queued player with inQueue still set — permanently unable to rejoin.
 function ResetToIdle()
-    SetRaceState(SPZ.RaceState.IDLE)
+    for src, pData in pairs(RaceSession.players) do
+        if GetPlayerName(src) then
+            -- Only players who actually made it into the race world need the
+            -- world teardown; a cancelled poll leaves everyone in freeroam.
+            if RaceSession.bucketId and RaceSession.bucketId ~= 0 then
+                if GetResourceState("spz-vehicles") == "started" then
+                    pcall(function() exports["spz-vehicles"]:DespawnVehicle(src) end)
+                end
+                exports["spz-core"]:AssignPlayerToBucket(src, 0)
+                if not pData.teleportedToSafeZone then
+                    pData.teleportedToSafeZone = true
+                    TriggerClientEvent("SPZ:tpToSafeZone", src)
+                end
+            end
+            ClearRaceState(src)
+        end
+    end
+
+    if RaceSession.bucketId and RaceSession.bucketId ~= 0 then
+        exports["spz-core"]:DeleteBucket(RaceSession.bucketId)
+        print(string.format("[Race Engine] Aborted session — bucket %s released.", RaceSession.bucketId))
+    end
+
     RaceSession.players            = {}
+    RaceSession.raceId             = nil
+    RaceSession.track              = nil
+    RaceSession.selection          = nil
+    RaceSession.carClass           = nil
+    RaceSession.carClassId         = nil
+    RaceSession.trafficLevel       = nil
+    RaceSession.bucketId           = 0
+    RaceSession.startTime          = 0
+    RaceSession.finishWindowArmed  = false
     RaceSession.intermissionActive = false
+
+    SetRaceState(SPZ.RaceState.IDLE)
+    if BroadcastQueueUpdate then BroadcastQueueUpdate() end
 end
 
 exports("ResetToIdle", ResetToIdle)
@@ -107,7 +172,10 @@ RegisterNetEvent("SPZ:requestResync", function()
     if not pData then return end
 
     TriggerClientEvent("SPZ:nextCheckpoint", src, pData.current_cp)
-    GlobalState:set("raceState", RaceSession.state, true)
+    -- Do NOT re-write GlobalState.raceState here. It is already replicated to
+    -- every client, and the server's own AddStateBagChangeHandler fires on any
+    -- set — re-asserting the current value re-ran the lifecycle branch for that
+    -- state (a resync landing on ENDED replayed ProcessRaceResults).
 
     if RaceSession.state == SPZ.RaceState.LIVE then
         local ranked  = CalculatePositions()
