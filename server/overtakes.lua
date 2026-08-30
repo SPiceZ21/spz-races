@@ -81,13 +81,20 @@ local function captureStill(overSrc, msg, webhook)
     return true
 end
 
-local function fireClip(overSrc, overName, underName)
+local function fireClip(overSrc, underSrc, overName, underName)
     local track   = RaceSession.track and RaceSession.track.name or "a track"
     local msg     = ("**%s** overtook **%s** on **%s**"):format(overName, underName, track)
     local webhook = raceWebhook()
 
-    -- In-race flourish for everyone
-    BroadcastToRacers("SPZ:overtake", { over = overName, under = underName })
+    -- In-race flourish for everyone. The source ids ride along so a client can
+    -- tell whether IT made the pass — names are not identity (two racers can
+    -- share one), and the overtaker's car plays the nitrous effect.
+    BroadcastToRacers("SPZ:overtake", {
+        over     = overName,
+        under    = underName,
+        overSrc  = overSrc,
+        underSrc = underSrc,
+    })
 
     -- video → still → text, first that works wins
     if CLIP.enabled and GetResourceState("screencapture") == "started"
@@ -101,7 +108,7 @@ local function tryClip(overSrc, underSrc)
     local now = GetGameTimer()
     if LastClip[key] and (now - LastClip[key]) < COOLDOWN then return end
     LastClip[key] = now
-    fireClip(overSrc, racerName(overSrc), racerName(underSrc))
+    fireClip(overSrc, underSrc, racerName(overSrc), racerName(underSrc))
 end
 
 -- ── Position watch ────────────────────────────────────────────────────────────

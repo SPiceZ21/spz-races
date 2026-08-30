@@ -134,6 +134,69 @@ local function _tpToHeadStart(gracePeriodMs)
     TTReadyAt = GetGameTimer() + (gracePeriodMs or 1500)
 end
 
+-- ── Leaving the car ends the session ──────────────────────────────────────────
+-- A time trial IS the car: on foot there is no lap to time, the checkpoint
+-- detector still tracks the ped, and the session would sit open holding a
+-- routing bucket and a spawned vehicle indefinitely. Stepping out ends it.
+--
+-- Confirmed over a short window rather than on the first frame out of a seat:
+-- getting knocked through the windscreen, a ragdoll, or the moment between
+-- seats all read as "not in a vehicle" for a beat, and none of them mean the
+-- driver is done. The session only ends if they are STILL out when the window
+-- expires — climbing straight back in cancels it.
+local TT_EXIT_GRACE_MS = 2500
+
+local _ttOutSince = 0
+
+Citizen.CreateThread(function()
+    while true do
+        if TTActive
+        and GetGameTimer() >= TTReadyAt          -- car may not exist yet
+        and not TTRestartActive                  -- restart teleports the car
+        and not exports["spz-races"]:IsRewinding() then
+
+            local ped = PlayerPedId()
+            -- Second arg is `atGetIn`: a ped part-way through climbing in still
+            -- counts as in the car, so opening the door and getting back in
+            -- never trips the timer.
+            local inCar = IsPedInAnyVehicle(ped, true)
+
+            if inCar then
+                _ttOutSince = 0
+            else
+                local now = GetGameTimer()
+                if _ttOutSince == 0 then
+                    _ttOutSince = now
+                    lib.notify({
+                        title = "Time Trial",
+                        description = ("Get back in the car — leaving ends the run (%ds)")
+                            :format(math.floor(TT_EXIT_GRACE_MS / 1000)),
+                        type = "warning",
+                    })
+                elseif (now - _ttOutSince) >= TT_EXIT_GRACE_MS then
+                    -- Latch, so a slow teardown cannot re-arm the window and
+                    -- fire a second quit (and a second toast) 2.5s later. The
+                    -- branch below clears it once TTActive goes false.
+                    _ttOutSince = math.huge
+                    lib.notify({
+                        title = "Time Trial",
+                        description = "You left the car — time trial ended",
+                        type = "error",
+                    })
+                    -- The server owns the session: it despawns the car, releases
+                    -- the bucket, refunds a duel stake and fires SPZ:tt:End,
+                    -- which is what actually tears the client down.
+                    TriggerServerEvent("SPZ:tt:Quit")
+                end
+            end
+        else
+            _ttOutSince = 0
+        end
+
+        Citizen.Wait(250)
+    end
+end)
+
 -- ── Restart logic ─────────────────────────────────────────────────────────────
 
 local function _cancelRestart()

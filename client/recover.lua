@@ -8,6 +8,13 @@
 local RESPAWN_COOLDOWN = 2000   -- ms between respawns (anti-spam)
 local _lastRespawn     = 0
 
+-- Default bindings, declared once so the key that is REGISTERED and the key the
+-- HUD PRINTS can never drift apart. These are defaults only: a player who
+-- rebinds in Settings gets the new key, but the hint still shows this one --
+-- FiveM exposes no way to read back a live command binding.
+local KEY_RESPAWN = (Config and Config.RecoverKey) or "F6"
+local KEY_FLIP    = "X"
+
 local function inRace()
     return LocalPlayer.state.inRace == true
 end
@@ -42,7 +49,7 @@ local function respawnToLastCP()
 end
 
 RegisterCommand("spz_respawn_cp", respawnToLastCP, false)
-RegisterKeyMapping("spz_respawn_cp", "Race: back to last checkpoint", "keyboard", "F4")
+RegisterKeyMapping("spz_respawn_cp", "Race: back to last checkpoint", "keyboard", KEY_RESPAWN)
 
 -- ── Flip car upright ─────────────────────────────────────────────────────────
 
@@ -68,4 +75,17 @@ local function flipCar()
 end
 
 RegisterCommand("spz_flip_car", flipCar, false)
-RegisterKeyMapping("spz_flip_car", "Race: flip car upright", "keyboard", "X")
+RegisterKeyMapping("spz_flip_car", "Race: flip car upright", "keyboard", KEY_FLIP)
+
+-- ── Tell the HUD which keys to print ─────────────────────────────────────────
+-- The recovery keys live here, but the surface that shows them is spz-raceUI.
+-- Pushing them across keeps this file the single source for both.
+CreateThread(function()
+    while GetResourceState("spz-raceUI") ~= "started" do Wait(500) end
+    local rw = Config and Config.Rewind or {}
+    exports["spz-raceUI"]:SetKeyHints({
+        respawn = KEY_RESPAWN,
+        flip    = KEY_FLIP,
+        rewind  = (rw.enabled ~= false) and (rw.key or "F5") or nil,
+    })
+end)

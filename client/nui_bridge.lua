@@ -148,15 +148,9 @@ end)
 RegisterNetEvent("SPZ:spawnCheckpoints", function() _myRaceOver = false end)
 RegisterNetEvent("SPZ:tt:Begin",         function() _myRaceOver = false end)
 
--- Overtake flourish — a confirmed clean pass, broadcast to the whole race
-RegisterNetEvent("SPZ:overtake", function(data)
-    if not data then return end
-    lib.notify({
-        title = "OVERTAKE",
-        description = ("%s passed %s"):format(data.over or "?", data.under or "?"),
-        type = "inform", duration = 4000, position = "top",
-    })
-end)
+-- Overtake flourish moved to client/bonus.lua — it is race feedback (toast,
+-- sound, nitrous effect on the overtaker's car), not a bridge to a UI resource,
+-- and splitting one event across two files hid half of it.
 
 Citizen.CreateThread(function()
     while true do
@@ -311,6 +305,22 @@ RegisterNetEvent("SPZ:raceEnd", function(results)
         incidents  = myResult.collisions and #myResult.collisions or 0,
         cleanRace  = myResult.cleanRace or false,
     }
+
+    -- The stats card is about YOUR race. The full classification — who finished
+    -- where, gaps, DNFs — lives on the results board, so say how to reach it
+    -- rather than leaving the field's result undiscoverable.
+    if GetResourceState("spz-leaderboard") == "started" then
+        local key = "F6"   -- spz-leaderboard's default binding for /leaderboard
+        SetTimeout(2500, function()
+            lib.notify({
+                title       = "Race results",
+                description = ("Press %s for the full classification"):format(key),
+                type        = "inform",
+                duration    = 7000,
+                position    = "top",
+            })
+        end)
+    end
 end)
 
 RegisterNetEvent("SPZ:progressionUpdate", function(data)

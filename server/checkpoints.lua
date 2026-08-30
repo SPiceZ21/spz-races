@@ -78,9 +78,8 @@ local function HandleFinish(source, pData)
     -- that name is the end-of-session contract, and firing it here ran every
     -- SPZ:raceEnd listener once per finisher AND again from results.lua —
     -- double XP/SR/iRating in spz-progression, duplicate race_results rows,
-    -- a Discord post per finisher, and the betting pool settling on the first
-    -- crossing. All scoring and persistence now happens exactly once, in
-    -- ProcessRaceResults.
+    -- and a Discord post per finisher. All scoring and persistence now
+    -- happens exactly once, in ProcessRaceResults.
     TriggerEvent(SPZ.Events.RACER_FINISHED, source, indResult)
 
     -- Send raceEnd event directly to this finisher so UI shows stats modal
@@ -167,8 +166,7 @@ end
 -- Proximity check for a claimed crossing. The client decides WHEN it crossed
 -- (it owns the frame-accurate gate plane), but the server decides WHETHER it
 -- could have: without this, a modified client can spam sequential
--- SPZ:checkpointHit calls and take a track record, the XP, and the betting pool
--- without moving. Server-side ped coords lag the owning client by a network
+-- SPZ:checkpointHit calls and take a track record and the XP without moving. Server-side ped coords lag the owning client by a network
 -- tick, so the radius is deliberately generous — it rejects teleport-scripting,
 -- not close racing.
 local CP_HIT_RADIUS = 75.0
@@ -182,6 +180,38 @@ local function CanClaimCheckpoint(src, cp)
     local dx, dy, dz = pos.x - cp.coords.x, pos.y - cp.coords.y, pos.z - cp.coords.z
     local radius = math.max(CP_HIT_RADIUS, (cp.radius or 0.0) * 3.0)
     return (dx * dx + dy * dy + dz * dz) <= (radius * radius)
+end
+
+-- ── Progress history (for real time gaps) ───────────────────────────────────
+-- A gap is only honest in seconds if you can answer "how long ago was the car
+-- ahead standing where I am now?". That needs a timestamp per racer per gate,
+-- which the engine did not keep — so the live tower fell back to "+2 CP", a
+-- unit nobody can read as pace.
+--
+-- Progress index = gates cleared since GO, so it keeps counting across a lap
+-- boundary and is directly comparable between two racers on different laps:
+--   idx = (lap - 1) * numCPs + cpIndex
+--
+-- Stored value is elapsed-since-GO, on the racer's OWN epoch, so it matches the
+-- race clock they see (a rewind shifts that epoch, and the gap follows).
+function RecordCPProgress(pData, cpIndex, now)
+    local track  = RaceSession.track
+    local numCPs = (track and track.checkpoints and #track.checkpoints) or 0
+    if numCPs < 1 then return end
+
+    local idx     = ((pData.current_lap or 1) - 1) * numCPs + cpIndex
+    local elapsed = now - (pData.race_start_time or RaceSession.startTime or now)
+
+    pData.cp_history = pData.cp_history or {}
+    pData.cp_history[idx] = elapsed
+    pData.progress_idx    = idx
+end
+
+-- Elapsed-since-GO at a given progress index, or nil if this racer has not
+-- reached it yet.
+function CPProgressAt(pData, idx)
+    local h = pData and pData.cp_history
+    return h and h[idx] or nil
 end
 
 -- ── 11.4 Hit validation ─────────────────────────────────────────────────────
@@ -216,6 +246,10 @@ RegisterNetEvent("SPZ:checkpointHit", function(cpIndex)
     local now = GetGameTimer()
     pData.last_cp_time = now
 
+    -- Bank the crossing against a track-wide progress index so live gaps can be
+    -- stated in SECONDS instead of "+2 CP". See RecordCPProgress.
+    RecordCPProgress(pData, cpIndex, now)
+
     -- Must run before current_cp advances: sectors close on the CP just hit.
     RecordSectorHit(src, pData, cpIndex, now)
 
@@ -240,6 +274,20 @@ RegisterNetEvent("SPZ:rewindCheckpoint", function(targetCp)
 
     pData.current_cp     = targetCp
     pData.awaitingFinish = false
+
+    -- Those gates have to be re-crossed, so their banked crossing times are no
+    -- longer true. Drop everything at or beyond the rollback point; re-crossing
+    -- rewrites them, and the gap tower reads the racer at their real position.
+    local track  = RaceSession.track
+    local numCPs = (track and track.checkpoints and #track.checkpoints) or 0
+    if numCPs > 0 and pData.cp_history then
+        local from = ((pData.current_lap or 1) - 1) * numCPs + targetCp
+        for idx in pairs(pData.cp_history) do
+            if idx >= from then pData.cp_history[idx] = nil end
+        end
+        pData.progress_idx = math.max(0, from - 1)
+    end
+
     TriggerClientEvent("SPZ:nextCheckpoint", src, targetCp)
 end)
 

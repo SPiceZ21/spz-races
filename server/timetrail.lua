@@ -424,6 +424,19 @@ RegisterCommand("quittt", function(source)
     _endSession(src)
 end, false)
 
+-- ── Client-requested quit ─────────────────────────────────────────────────────
+-- Fired by client/timetrail.lua when the driver leaves the car (and by anything
+-- else client-side that needs to bail out of a run). Ending your OWN session is
+-- not a privileged action — it despawns your car, releases your bucket and
+-- refunds your own duel stake — so no further authority check is needed beyond
+-- "you are actually in a session".
+
+RegisterNetEvent("SPZ:tt:Quit", function()
+    local src = source
+    if not TT[src] then return end
+    _endSession(src)
+end)
+
 -- ── Disconnect cleanup ────────────────────────────────────────────────────────
 
 AddEventHandler("playerDropped", function()
