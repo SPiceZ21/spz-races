@@ -53,8 +53,9 @@ local function spawnShowcase(model)
     end)
 end
 
--- Fires several times per race (per-finisher + final). Only act on the real
--- race end (ENDED state = ProcessRaceResults), so we spawn exactly once.
+-- SPZ:raceEnd is now fired exactly once, from ProcessRaceResults. The state
+-- guard is kept as a cheap assertion of that contract — per-finisher
+-- notifications go out as SPZ:racerFinished instead.
 AddEventHandler("SPZ:raceEnd", function()
     if RaceSession.state ~= SPZ.RaceState.ENDED then return end
     local model = RaceSession.carClass and RaceSession.carClass.model

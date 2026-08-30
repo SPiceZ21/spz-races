@@ -185,7 +185,12 @@ Citizen.CreateThread(function()
                 if not e.bot then
                     local src = e.source
                     local pData = RaceSession.players[src]
-                    if pData then
+                    -- Finished racers stay in `merged` so the standings board
+                    -- keeps showing them, but their statebags were already
+                    -- cleared by HandleFinish and they have been teleported to
+                    -- the safe zone. Writing here resurrected the race HUD on a
+                    -- player who is no longer racing.
+                    if pData and not pData.finished and not pData.dnf then
                         Player(src).state:set("racePosition", i, true)
                         Player(src).state:set("raceLap", pData.current_lap, true)
                         -- Per-racer epoch: a rewind shifts race_start_time

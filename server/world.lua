@@ -57,22 +57,56 @@ function SetupRaceWorld()
         Config.GridColSpacing or 4.5
     )
 
+    -- Seed the whole grid up front. Populating this inside the spawn loop meant
+    -- the timeout monitor's "allReady" test ran against a table holding only the
+    -- players processed so far — one confirmed racer out of sixteen read as the
+    -- entire grid being ready.
     spawnConfirmed = {}
+    for i, src in ipairs(playersInOrder) do
+        spawnConfirmed[src] = false
+
+        -- Grid slots are assigned here, not inside the spawn thread, so every
+        -- racer has coords even if that thread aborts partway: the warmup retry
+        -- pass and the post-warmup TP-back both read gridCoords.
+        local pData = RaceSession.players[src]
+        if pData and grid[i] then
+            pData.gridIndex   = i
+            pData.gridCoords  = grid[i].coords
+            pData.gridHeading = grid[i].heading
+        end
+    end
+
     local chosenModel = (type(RaceSession.carClass) == "table" and RaceSession.carClass.model) or "sultan"
+    local spawnRaceId = RaceSession.raceId
+    local staggerMs   = Config.SpawnStaggerMs or 800
 
     Citizen.CreateThread(function()
         for i, src in ipairs(playersInOrder) do
             if i > 1 then
-                Citizen.Wait(5000)   -- 5s delay between spawning each player's vehicle one by one
+                -- Stagger exists so vehicle creations don't land on the same
+                -- network tick, not to pace the race clock. At 5s a 16-player
+                -- grid took 75s to spawn — long past the point the timeout
+                -- monitor had already moved the session to WARMUP, so this loop
+                -- kept spawning cars while StartWarmupSpawnGrace retried the
+                -- same sources, and on a full grid it could still be running at
+                -- COUNTDOWN.
+                Citizen.Wait(staggerMs)
             end
 
-            if RaceSession.players[src] then
-                local gridPos = grid[i]
-                local player  = RaceSession.players[src]
+            -- The session this loop was started for must still be the live one.
+            if RaceSession.raceId ~= spawnRaceId then
+                print("[World Setup] Grid spawn aborted — session changed mid-spawn.")
+                return
+            end
+            if RaceSession.state ~= SPZ.RaceState.WAITING
+            and RaceSession.state ~= SPZ.RaceState.WARMUP then
+                print(string.format("[World Setup] Grid spawn aborted at %s — too late to add cars.",
+                    tostring(RaceSession.state)))
+                return
+            end
 
-                player.gridIndex   = i
-                player.gridCoords  = gridPos.coords
-                player.gridHeading = gridPos.heading
+            if RaceSession.players[src] and grid[i] then
+                local gridPos = grid[i]
 
                 exports["spz-core"]:AssignPlayerToBucket(src, RaceSession.bucketId)
 
@@ -119,8 +153,6 @@ function SetupRaceWorld()
                 Player(src).state:set("racePosition", 0,                       true)
                 Player(src).state:set("raceTime",     0,                       true)
                 Player(src).state:set("dnf",          false,                   true)
-
-                spawnConfirmed[src] = false
             end
         end
     end)
