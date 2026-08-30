@@ -76,6 +76,8 @@ end
 ---@param finisher   table
 function LB_UpdateTrackRecord(track, trackType, carClass, finisher)
     if not finisher or finisher.dnf or not finisher.finish_time then return end
+    -- A rewound run gave itself clock back; it is not a record-eligible time.
+    if (finisher.rewind_ms or 0) > 0 then return end
     local profile = finisher.source and exports["spz-identity"]:GetProfile(finisher.source)
     if not profile then return end
 

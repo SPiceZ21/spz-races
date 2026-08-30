@@ -10,10 +10,16 @@ local function HandleFinish(source, pData)
     local track    = RaceSession.track
     local carClass = RaceSession.carClassId
 
-    local prevBest      = LB_GetPersonalBest(source, track.name, carClass)
-    pData.personal_best = (prevBest == nil) or (pData.finish_time < prevBest)
+    -- A run that won clock back off a rewind is not comparable to a clean one,
+    -- so it can be a finishing time but never a personal best or a record.
+    local rewound  = (pData.rewind_credit_total or 0) > 0
+    local prevBest = LB_GetPersonalBest(source, track.name, carClass)
+    pData.personal_best = (not rewound) and ((prevBest == nil) or (pData.finish_time < prevBest))
     if pData.personal_best then
         print(string.format("[Timing] New PB for %s on %s: %d ms", pData.name, track.name, pData.finish_time))
+    elseif rewound then
+        print(string.format("[Timing] %s finished with %d ms of rewind credit — not eligible for PB/record",
+            pData.name, pData.rewind_credit_total))
     end
 
     print(string.format("[Race] %s (%d) finished in %d ms (PB: %s)",
@@ -32,7 +38,8 @@ local function HandleFinish(source, pData)
 
     -- Sprints have no laps — the whole run is the "lap" for raceline storage.
     -- (Circuit laps were already handed over at each lap boundary.)
-    if track.type ~= "circuit" and GetResourceState("spz-raceline") == "started" then
+    if track.type ~= "circuit" and not rewound
+    and GetResourceState("spz-raceline") == "started" then
         TriggerEvent("spz-raceline:lapCompleted", source, track.name, pData.finish_time)
     end
 
@@ -57,6 +64,7 @@ local function HandleFinish(source, pData)
                 sector_times  = pData.sector_times or {},
                 best_sectors  = pData.best_sectors or {},
                 personal_best = pData.personal_best or false,
+                rewind_ms     = pData.rewind_credit_total or 0,
                 collisions    = pData.incidents or {},
                 cleanRace     = (#(pData.incidents or {}) == 0),
                 points_earned = (SPZ.PointsTable and SPZ.PointsTable[pData.position or 1]) or 0,
@@ -73,7 +81,7 @@ local function HandleFinish(source, pData)
     -- a Discord post per finisher, and the betting pool settling on the first
     -- crossing. All scoring and persistence now happens exactly once, in
     -- ProcessRaceResults.
-    TriggerEvent("SPZ:racerFinished", source, indResult)
+    TriggerEvent(SPZ.Events.RACER_FINISHED, source, indResult)
 
     -- Send raceEnd event directly to this finisher so UI shows stats modal
     TriggerClientEvent("SPZ:raceEnd", source, indResult)
@@ -91,18 +99,7 @@ local function HandleFinish(source, pData)
     end
 
     -- Clear race statebags for this player
-    Player(source).state:set("inRace",       false, true)
-    Player(source).state:set("inQueue",      false, true)
-    Player(source).state:set("queueClass",   nil,   true)
-    Player(source).state:set("raceId",       nil,   true)
-    Player(source).state:set("raceClass",    nil,   true)
-    Player(source).state:set("raceTrack",    nil,   true)
-    Player(source).state:set("racePosition", nil,   true)
-    Player(source).state:set("raceLap",      nil,   true)
-    Player(source).state:set("raceLaps",     nil,   true)
-    Player(source).state:set("personalBest", nil,   true)
-    Player(source).state:set("allTimeBest",  nil,   true)
-    Player(source).state:set("raceTime",     nil,   true)
+    ClearRaceState(source)
 
     -- Teleport finished player immediately to Safe Zone
     if pData and not pData.teleportedToSafeZone then
@@ -124,6 +121,7 @@ local function HandleCheckpointAdvance(source, pData)
             local now          = GetGameTimer()
             local lapStartTime = pData.lap_start_time or RaceSession.startTime
             local lapTime      = now - lapStartTime
+            local lapRewound   = (pData.rewind_credit_lap or 0) > 0
 
             pData.current_cp      = 1
             pData.current_lap     = pData.current_lap + 1
@@ -140,8 +138,11 @@ local function HandleCheckpointAdvance(source, pData)
             TriggerClientEvent("SPZ:lapComplete", source, pData.current_lap - 1, lapTime)
 
             -- spz-raceline stores the driven line iff this lap beats the
-            -- player's stored best for the track (server-measured time).
-            if GetResourceState("spz-raceline") == "started" then
+            -- player's stored best for the track (server-measured time). A
+            -- rewound lap is excluded: those lines become ghost-bots and duel
+            -- targets, so a line whose time was partly refunded would seed an
+            -- unbeatable ghost.
+            if not lapRewound and GetResourceState("spz-raceline") == "started" then
                 TriggerEvent("spz-raceline:lapCompleted", source, track.name, lapTime)
             end
 
@@ -275,7 +276,7 @@ RegisterNetEvent("SPZ:rewindTime", function(ms)
     if ms <= 0 or ms > _maxRewindCredit(cfg, factor) then return end
 
     local used    = pData.rewind_credit_lap or 0
-    local allowed = math.max(0, (cfg.maxCreditPerLapMs or 60000) - used)
+    local allowed = math.max(0, (cfg.maxCreditPerLapMs or 15000) - used)
     ms = math.min(ms, allowed)
     if ms <= 0 then return end
 
@@ -283,6 +284,10 @@ RegisterNetEvent("SPZ:rewindTime", function(ms)
     local start = RaceSession.startTime or now
 
     pData.rewind_credit_lap = used + ms
+    -- Whole-run total, never reset at a lap boundary. A time that won back any
+    -- clock is not comparable to one driven clean, so this flag follows the
+    -- result through to the leaderboard and blocks records/PBs.
+    pData.rewind_credit_total = (pData.rewind_credit_total or 0) + ms
     pData.race_start_time = math.min((pData.race_start_time or start) + ms, now)
     pData.lap_start_time  = math.min((pData.lap_start_time  or start) + ms, now)
     if pData.sector_start then

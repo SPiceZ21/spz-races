@@ -10,6 +10,9 @@ shared_scripts {
   '@ox_lib/init.lua',
   'config.lua',
   'shared/race_states.lua',
+  -- Core registry first: shared/events.lua MERGES the race names into
+  -- SPZ.Events rather than declaring its own table.
+  '@spz-core/shared/events.lua',
   'shared/events.lua',
   'shared/points.lua',
   'shared/sectors.lua',
