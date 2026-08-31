@@ -13,6 +13,7 @@
 
 local Z_THRESH     = 8.0    -- vertical tolerance
 local GATE_MARGIN  = 2.0    -- metres of slack outside the posts (wide cars)
+local ON_LINE      = 3.0    -- distance from the plane still counted as "on" it
 
 -- cp    : { coords, left, right, radius }
 -- pos   : player position (vector3)
@@ -74,12 +75,24 @@ function SPZ_GateCross(cp, pos, prev)
     local withinGate = t >= -GATE_MARGIN and t <= (glen + GATE_MARGIN)
     local zOk        = math.abs(pos.z - cz) < Z_THRESH
 
-    -- First sample after this checkpoint became active: seed the side to
-    -- "before" (-1). At the START you spawn ON the line, so there is no
-    -- approach to flip from — seeding "before" means the very first forward
-    -- move across the line registers, instead of the start point being skipped.
+    -- First sample after this checkpoint became active: seed from where the
+    -- player ACTUALLY is.
+    --
+    -- This used to seed "before" (-1) unconditionally, which is wrong whenever
+    -- the player is already past the plane when the checkpoint arms — and since
+    -- the plane is infinite, that is ordinary geometry on any circuit that bends
+    -- back on itself, not a mistake. The very next sample then read side = +1
+    -- against a fabricated prev of -1 and called it a forward crossing. Two
+    -- symptoms, one cause: standing past a gate inside the posts scored it
+    -- instantly (a checkpoint that could be taken from behind), and standing
+    -- past it outside the posts fired "Checkpoint missed" out of nowhere.
+    --
+    -- The one case that genuinely has no approach to flip from is the start
+    -- line, where the car sits ON the plane between the posts. That still seeds
+    -- "before", or the first checkpoint could never be scored.
     if prev == nil then
-        return false, -1
+        if withinGate and math.abs(d) < ON_LINE then return false, -1 end
+        return false, side
     end
 
     -- A hit is a genuine before→after flip while between the posts.
@@ -88,7 +101,16 @@ function SPZ_GateCross(cp, pos, prev)
         return true, side, false
     end
 
-    -- Same flip, but wide of the posts (or well above/below them): the player
-    -- went past this checkpoint without going through it.
-    return false, side, flipped
+    -- Same flip, but wide of the posts: the player went past this checkpoint
+    -- without going through it.
+    --
+    -- Gated on being NEAR the gate, because the plane has no width — a flip can
+    -- happen hundreds of metres off to the side, where the player has not missed
+    -- anything, they are simply somewhere else on the track. A real miss is
+    -- driving past just outside a post, so the window is one gate-width beyond
+    -- each post.
+    local nearGate = t >= -glen and t <= (glen * 2)
+    local missed   = flipped and zOk and nearGate
+
+    return false, side, missed
 end

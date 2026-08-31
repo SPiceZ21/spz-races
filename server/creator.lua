@@ -1,5 +1,16 @@
 -- server/creator.lua
 -- Server-side persistence and loading for custom track creator system
+--
+-- Every checkpoint carries a `heading`, and it is load-bearing: cp_cross.lua
+-- uses it to orient the gate plane so that a crossing counts in the direction of
+-- travel and not against it. Without it the plane's "forward" side falls out of
+-- whatever order the left/right posts happen to be in, and gates become
+-- scoreable from either direction.
+--
+-- The creator records it per gate, but all four conversion sites in this file
+-- used to drop it — save to JSON, load from JSON, publish to runtime, and hand
+-- back to the editor — so every custom track lost its direction the moment it
+-- was written. Keep `heading` in any new mapping added here.
 
 local function LoadCustomTracks()
     local file = LoadResourceFile(GetCurrentResourceName(), "data/custom_tracks.json")
@@ -22,10 +33,11 @@ local function LoadCustomTracks()
                 
                 for _, cp in ipairs(track.checkpoints) do
                     table.insert(loadedTrack.checkpoints, {
-                        coords = vector3(cp.coords.x, cp.coords.y, cp.coords.z),
-                        left   = vector3(cp.left.x, cp.left.y, cp.left.z),
-                        right  = vector3(cp.right.x, cp.right.y, cp.right.z),
-                        radius = cp.radius or 10.0
+                        coords  = vector3(cp.coords.x, cp.coords.y, cp.coords.z),
+                        left    = vector3(cp.left.x, cp.left.y, cp.left.z),
+                        right   = vector3(cp.right.x, cp.right.y, cp.right.z),
+                        radius  = cp.radius or 10.0,
+                        heading = cp.heading,
                     })
                 end
                 
@@ -89,10 +101,11 @@ RegisterNetEvent("SPZ:saveCustomTrack", function(payload)
     
     for i, cp in ipairs(payload.checkpoints) do
         table.insert(cleanTrack.checkpoints, {
-            coords = { x = cp.coords.x, y = cp.coords.y, z = cp.coords.z },
-            left   = { x = cp.left.x, y = cp.left.y, z = cp.left.z },
-            right  = { x = cp.right.x, y = cp.right.y, z = cp.right.z },
-            radius = cp.radius
+            coords  = { x = cp.coords.x, y = cp.coords.y, z = cp.coords.z },
+            left    = { x = cp.left.x, y = cp.left.y, z = cp.left.z },
+            right   = { x = cp.right.x, y = cp.right.y, z = cp.right.z },
+            radius  = cp.radius,
+            heading = cp.heading,
         })
     end
     
@@ -116,10 +129,11 @@ RegisterNetEvent("SPZ:saveCustomTrack", function(payload)
     
     for _, cp in ipairs(cleanTrack.checkpoints) do
         table.insert(loadedTrack.checkpoints, {
-            coords = vector3(cp.coords.x, cp.coords.y, cp.coords.z),
-            left   = vector3(cp.left.x, cp.left.y, cp.left.z),
-            right  = vector3(cp.right.x, cp.right.y, cp.right.z),
-            radius = cp.radius
+            coords  = vector3(cp.coords.x, cp.coords.y, cp.coords.z),
+            left    = vector3(cp.left.x, cp.left.y, cp.left.z),
+            right   = vector3(cp.right.x, cp.right.y, cp.right.z),
+            radius  = cp.radius,
+            heading = cp.heading,
         })
     end
     
@@ -190,10 +204,11 @@ lib.callback.register("spz-races:getTrackDetails", function(source, data)
     local cps = {}
     for i, cp in ipairs(track.checkpoints) do
         table.insert(cps, {
-            coords = { x = cp.coords.x, y = cp.coords.y, z = cp.coords.z },
-            left   = { x = cp.left.x, y = cp.left.y, z = cp.left.z },
-            right  = { x = cp.right.x, y = cp.right.y, z = cp.right.z },
-            radius = cp.radius or 10.0
+            coords  = { x = cp.coords.x, y = cp.coords.y, z = cp.coords.z },
+            left    = { x = cp.left.x, y = cp.left.y, z = cp.left.z },
+            right   = { x = cp.right.x, y = cp.right.y, z = cp.right.z },
+            radius  = cp.radius or 10.0,
+            heading = cp.heading,
         })
     end
 
