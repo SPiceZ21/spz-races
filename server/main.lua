@@ -137,6 +137,8 @@ function ResetToIdle()
     RaceSession.carClass           = nil
     RaceSession.carClassId         = nil
     RaceSession.trafficLevel       = nil
+    RaceSession.copChase           = false
+    GlobalState:set("raceCopChase", false, true)
     RaceSession.bucketId           = 0
     RaceSession.startTime          = 0
     RaceSession.finishWindowArmed  = false

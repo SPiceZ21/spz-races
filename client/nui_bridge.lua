@@ -17,6 +17,11 @@ RegisterNetEvent("SPZ:pollOpen", function(data)
         options  = data.options,
         title    = data.title,
         subtitle = data.subtitle,
+        -- Position in this player's own run of the ballot, and any switch the
+        -- phase carries (traffic votes NPC cops on/off this way).
+        step     = data.step,
+        steps    = data.steps,
+        toggle   = data.toggle,
     })
 end)
 
