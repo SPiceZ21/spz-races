@@ -35,11 +35,24 @@ local COLOUR_FINISH  = 2    -- green         — finish line
 local ALPHA_NEAR    = 225
 local ALPHA_AHEAD   = 170
 
--- How many gates ahead are shown as waypoints: the one you are driving at plus
--- the two after it. Three is the most that stays readable on the minimap at
--- speed; past that the lookahead competes with the route line instead of
--- supporting it.
-local LOOKAHEAD     = 3
+-- How many gates are shown as waypoints at once, counting the one you are
+-- driving at.
+--
+-- ONE by default: the minimap behaves like a satnav, showing the gate you are
+-- going to and the route line to it, then the next one, then the next. Showing
+-- the two after it as well put three markers and one route line on the same
+-- stretch of minimap, and at racing speed that reads as clutter around the
+-- line rather than as a preview of it.
+--
+-- Raise it (Config.CpBlips.lookahead = 3) to get the old preview back.
+local CPB           = (Config and Config.CpBlips) or {}
+local LOOKAHEAD     = CPB.lookahead or 1
+
+-- Gates outside the lookahead are hidden rather than drawn small and dark, so
+-- the track does not sit on the map as a dotted outline of where you are about
+-- to go. The FINISH is the exception — it is the destination, not a waypoint,
+-- and knowing where the race ends is never clutter.
+local HIDE_FAR      = CPB.hideFar ~= false
 
 local SCALE_ACTIVE  = 1.1
 local SCALE_NEAR    = 0.85
@@ -319,13 +332,15 @@ local function _styleBlips(idx)
             SetBlipRoute(blip,        false)
 
         else
-            -- Far CPs — dark orange dot, short range, no route
+            -- Far CPs — hidden entirely by default (alpha 0 keeps the blip alive
+            -- so it can simply be turned back up when it becomes the next gate,
+            -- rather than being destroyed and rebuilt every crossing).
             SetBlipSprite(blip,       SPRITE_PENDING)
             SetBlipColour(blip,       COLOUR_PENDING)
             SetBlipScale(blip,        SCALE_PENDING)
             SetBlipAsShortRange(blip, true)
             SetBlipPriority(blip,     1)
-            SetBlipAlpha(blip,        255)
+            SetBlipAlpha(blip,        HIDE_FAR and 0 or 255)
             SetBlipRoute(blip,        false)
         end
         ::continue::

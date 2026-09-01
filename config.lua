@@ -14,6 +14,19 @@ Config.MaxPlayersPerRace    = 16      -- hard cap on queue size
 Config.PollDuration         = 30      -- seconds the poll stays open
 Config.PollOptionsPerType   = 2       -- track options per poll (always 2)
 
+-- ── Checkpoint blips ───────────────────────────────────────────────────────
+-- How the route reads on the minimap while driving.
+--
+-- The default is satnav behaviour: ONE gate marked at a time, with the GPS
+-- route line running to it, advancing to the next as you cross. `lookahead = 3`
+-- restores the old preview (the active gate plus the two after it, fading with
+-- distance); `hideFar = false` puts a dim dot on every remaining gate, drawing
+-- the whole track outline on the map.
+Config.CpBlips = {
+    lookahead = 3,
+    hideFar   = false,
+}
+
 -- ── Cycle ──────────────────────────────────────────────────────────────────
 -- Rotation order. Repeats.
 -- "circuit" = multi-lap, "sprint" = point-to-point
@@ -344,3 +357,66 @@ Config.RecordBoards = {
 }
 Config.BoardRange   = 12.0     -- metres: render when the player is this close
 Config.BoardRefresh = 30000    -- ms between record re-fetches
+
+-- ── NPC cop chase ───────────────────────────────────────────────────────────
+-- Street-race heat. Racers pick this up as a wanted level from how they drive
+-- (speed on public road, wrecking traffic, mowing down peds); once they have
+-- stars, scripted police units spawn behind them and hunt.
+--
+-- The units NEVER shoot. They are drivers only: follow at low heat, ram/PIT at
+-- high heat. Vanilla dispatch stays off (spz-core kills it server-wide) — every
+-- car here is spawned, tasked and deleted by client/copchase.lua, LOCALLY, so
+-- each racer is chased by their own pack and nobody eats another player's cops.
+--
+-- Voted on per race: the traffic ballot carries an on/off switch, majority wins
+-- (`Default` breaks a tie and covers a poll where nobody touched it).
+Config.CopChase = {
+  Enabled  = true,     -- false removes the switch from the ballot entirely
+  Default  = false,    -- tie / no votes → this
+
+  -- ── Heat → stars ─────────────────────────────────────────────────────────
+  -- Heat is 0-100 and maps to 1 star per 20. Speeding alone tops out around
+  -- 2 stars; stars 3+ are earned by wrecking things.
+  SpeedKmh        = 130,   -- above this on a public road, heat climbs
+  SpeedHeatPerSec = 3.5,   -- heat/s while over the limit
+  HeatPerVehHit   = 9,     -- ramming an ambient vehicle
+  HeatPerPedHit   = 22,    -- hitting a ped
+  HeatDecayPerSec = 2.0,   -- heat/s bled off while driving clean
+  MaxStars        = 5,
+
+  -- ── Pursuit units ────────────────────────────────────────────────────────
+  -- Cars on your tail at each star level, and how hard they drive.
+  --   pit = false → they tail you and box you in, no contact on purpose
+  --   pitEvery     → seconds between ram attempts once PIT is unlocked
+  Levels = {
+    [1] = { units = 1, pit = false, pitEvery = 0,    speed = 38.0 },
+    [2] = { units = 2, pit = false, pitEvery = 0,    speed = 42.0 },
+    [3] = { units = 3, pit = true,  pitEvery = 13.0, speed = 46.0 },
+    [4] = { units = 4, pit = true,  pitEvery = 9.0,  speed = 50.0 },
+    [5] = { units = 6, pit = true,  pitEvery = 6.0,  speed = 55.0 },
+  },
+
+  Models     = { "police", "police2", "police3" },  -- cruisers (randomised)
+  PedModels  = { "s_m_y_cop_01", "s_m_y_sheriff_01" },
+  Sirens     = true,
+
+  SpawnBehind   = 130.0,   -- metres back down the road a new unit appears
+  SpawnMinDist  = 60.0,    -- never closer than this to the racer
+  DespawnDist   = 320.0,   -- a unit this far adrift is recycled
+  PitDurationMs = 4000,    -- how long a ram attempt runs before resuming chase
+
+  -- ── Losing them ──────────────────────────────────────────────────────────
+  -- No unit within EscapeDist for EscapeSeconds and the heat dumps: stars fall
+  -- away, the pack despawns, the race carries on.
+  EscapeDist    = 170.0,
+  EscapeSeconds = 12,
+
+  Hud = true,    -- draw the star readout (the vanilla one is hidden by spz-core)
+
+  -- Mirror the star count onto the game's own wanted level. OFF by design: the
+  -- stars here are ours, and writing them into the engine invites everything we
+  -- turned off back in — vanilla units, police reports, dispatch reacting to a
+  -- level it is not allowed to serve. Turn it on only if another resource of
+  -- yours reads GetPlayerWantedLevel and has to see the race heat.
+  UseNativeWanted = false,
+}

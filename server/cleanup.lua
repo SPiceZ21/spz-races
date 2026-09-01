@@ -46,6 +46,10 @@ function RunRaceCleanup(results)
 
     -- 3. Reset the global session state for the next cycle
     local lastCycleCount = RaceSession.cycleCount or 0
+
+    -- Cops are voted per race; clear the flag so the next poll starts from the
+    -- config default and no leftover pack chases anyone during intermission.
+    GlobalState:set("raceCopChase", false, true)
     
     RaceSession = {
         state        = SPZ.RaceState.IDLE,

@@ -173,6 +173,23 @@ local function BuildTrafficOptions()
     return raw, ui
 end
 
+-- The cop chase rides ALONG WITH the traffic ballot rather than as a fourth
+-- phase. It is the same question — how alive are the streets — and a whole
+-- extra screen for one yes/no would have cost more time than the choice is
+-- worth. One card click submits the level and the switch position together.
+local function ChaseToggle()
+    local cc = Config.CopChase or {}
+    if cc.Enabled == false then return nil end
+    return {
+        key      = "chase",
+        label    = "Cop Chase",
+        onLabel  = "COPS ON",
+        offLabel = "COPS OFF",
+        hint     = "Pick up a wanted level and police hunt you. Ramming and PIT only — they never shoot.",
+        default  = cc.Default == true,
+    }
+end
+
 -- ── Ballot delivery ──────────────────────────────────────────────────────────
 
 local TITLES = {
@@ -194,6 +211,11 @@ local function SendPhase(src, phase)
         duration = remaining,        -- their clock is the shared deadline
         title    = TITLES[phase].title,
         subtitle = TITLES[phase].subtitle,
+        -- Where this player is in their own run of the ballot. The UI shows it
+        -- as "2/3" so a fast voter can see the finish line coming.
+        step     = phase,
+        steps    = #PHASES,
+        toggle   = (phase == 3) and ChaseToggle() or nil,
     })
 end
 
@@ -227,6 +249,18 @@ local function WinnerOf(phase)
     return winners[math.random(1, #winners)]
 end
 
+--- Cop chase is a straight majority of the switch positions submitted with the
+--- traffic vote. A tie, or a poll nobody answered, falls to the config default —
+--- never to "on", since a surprise police pack is the more disruptive outcome.
+local function ChaseWon()
+    local cc = Config.CopChase or {}
+    if cc.Enabled == false then return false end
+    local t = PollRun.chase
+    if not t or (t.yes == 0 and t.no == 0) then return cc.Default == true end
+    if t.yes == t.no then return cc.Default == true end
+    return t.yes > t.no
+end
+
 function EndRacePoll()
     if not PollRun then return end
 
@@ -237,6 +271,7 @@ function EndRacePoll()
     local track     = PollRun.options[1][trackIdx]
     local selection = PollRun.options[2][vehicleIdx]
     local traffic   = PollRun.options[3][trafficIdx]
+    local copChase  = ChaseWon()
 
     -- Close every ballot still open (players who never finished, or joined at the
     -- very end) so nobody is left holding a dead menu.
@@ -259,7 +294,9 @@ function EndRacePoll()
     RaceSession.selection    = selection
     RaceSession.carClassId   = selection.class
     RaceSession.trafficLevel = (traffic and traffic.level) or "none"
-    GlobalState:set("raceTraffic", RaceSession.trafficLevel, true)
+    RaceSession.copChase     = copChase
+    GlobalState:set("raceTraffic",  RaceSession.trafficLevel, true)
+    GlobalState:set("raceCopChase", copChase, true)
 
     local meta = exports["spz-vehicles"]:GetClassMeta(selection.class)
     RaceSession.carClass = {
@@ -269,8 +306,9 @@ function EndRacePoll()
         model    = selection.model,
     }
 
-    print(("[Poll] Track: %s | Vehicle: %s | Traffic: %s")
-        :format(track.name, tostring(selection.model), RaceSession.trafficLevel))
+    print(("[Poll] Track: %s | Vehicle: %s | Traffic: %s | Cops: %s")
+        :format(track.name, tostring(selection.model), RaceSession.trafficLevel,
+                copChase and "on" or "off"))
 
     for src in pairs(RaceSession.players) do
         TriggerClientEvent("SPZ:pollResult", src, {
@@ -280,6 +318,7 @@ function EndRacePoll()
             type    = track.type,
             laps    = track.laps,
             traffic = RaceSession.trafficLevel,
+            chase   = copChase,
         })
     end
 
@@ -321,6 +360,7 @@ function StartRacePoll()
         options = { tracksRaw, vehRaw, trafRaw },
         ui      = { tracksUi, vehUi, trafUi },
         tally   = { {}, {}, {} },
+        chase   = { yes = 0, no = 0 },   -- switch submitted with the traffic vote
         ballots = {},
     }
 
@@ -364,6 +404,15 @@ RegisterNetEvent("SPZ:pollVote", function(data, sourceOverride)
     if not index or index < 1 or index > #PollRun.options[phase] then return end
 
     PollRun.tally[phase][index] = (PollRun.tally[phase][index] or 0) + 1
+
+    -- Traffic card and cop switch arrive in the same submission, so the switch
+    -- is counted here rather than on its own screen. Absent (older UI, or the
+    -- switch disabled in config) simply does not vote either way.
+    if phase == 3 and ChaseToggle() and type(data) == "table" and data.toggle ~= nil then
+        local key = data.toggle and "yes" or "no"
+        PollRun.chase[key] = PollRun.chase[key] + 1
+    end
+
     ballot.phase = phase + 1
 
     if ballot.phase <= #PHASES then

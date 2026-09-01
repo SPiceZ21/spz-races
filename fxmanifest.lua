@@ -66,6 +66,7 @@ client_scripts {
   'client/cp_cross.lua',
   'client/hit_detector.lua',
   'client/incidents.lua',
+  'client/copchase.lua',
   'client/nui_bridge.lua',
   'client/raceblips.lua',
   'client/trackboard.lua',
