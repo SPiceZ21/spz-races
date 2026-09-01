@@ -138,9 +138,9 @@ local function HandleCheckpointAdvance(source, pData)
 
             -- spz-raceline stores the driven line iff this lap beats the
             -- player's stored best for the track (server-measured time). A
-            -- rewound lap is excluded: those lines become ghost-bots and duel
-            -- targets, so a line whose time was partly refunded would seed an
-            -- unbeatable ghost.
+            -- rewound lap is excluded: those lines become the time-trial ghost and
+            -- duel targets, so a line whose time was partly refunded would seed
+            -- an unbeatable ghost.
             if not lapRewound and GetResourceState("spz-raceline") == "started" then
                 TriggerEvent("spz-raceline:lapCompleted", source, track.name, lapTime)
             end

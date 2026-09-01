@@ -63,11 +63,11 @@ local function _fmtGap(ms)
     return ("+%.2f"):format(ms / 1000)
 end
 
--- Unified gap string over the MERGED (human + bot) field.
+-- Gap string between two entries in the field.
 --
--- Real TIME gap, not a checkpoint count. Both kinds of entry carry the progress
--- index they have reached (gates cleared since GO) and can answer "what was
--- your elapsed time when you reached index N". The gap is then the plain
+-- Real TIME gap, not a checkpoint count. Every entry carries the progress index
+-- it has reached (gates cleared since GO) and can answer "what was your elapsed
+-- time when you reached index N". The gap is then the plain
 -- question a pit wall asks: how long ago was the leader standing where this car
 -- is now?
 --
@@ -120,20 +120,18 @@ Citizen.CreateThread(function()
         if RaceSession.state == SPZ.RaceState.LIVE then
             local now = GetGameTimer()
 
-            -- CalculatePositions ranks HUMANS only and sets pData.position — that
-            -- stays the scoring truth (results.lua uses it). Bots are merged in
-            -- below for DISPLAY only, so they never touch human scoring.
+            -- CalculatePositions sets pData.position — the scoring truth
+            -- results.lua reads. The list built below is the DISPLAY order sent
+            -- to the tower; it used to merge replayed ghost-bots into the field,
+            -- which is gone, so the two now describe the same set of racers.
             CalculatePositions()
-
-            local track  = RaceSession.track
-            local numCPs = (track and track.checkpoints and #track.checkpoints) or 1
 
             local merged = {}
             for src, pData in pairs(RaceSession.players) do
                 if not pData.dnf then
                     local st = Player(src).state
                     merged[#merged + 1] = {
-                        bot = false, source = src, name = pData.name,
+                        source = src, name = pData.name,
                         crew_tag = pData.crew_tag,
                         nation = st and st['spz:nation'] or nil,
                         raceNumber = st and st['spz:raceNumber'] or nil,
@@ -151,28 +149,6 @@ Citizen.CreateThread(function()
                     }
                 end
             end
-            if GetBotStandings then
-                for _, br in ipairs(GetBotStandings(now)) do
-                    -- A bot's schedule is analytic: it reached gate `c` of lap
-                    -- `l` at (l-1)*lapMs + splits[c]. So its elapsed at ANY
-                    -- index is exact, with no history to store.
-                    local bot = RaceSession.bots and RaceSession.bots[br.id]
-                    merged[#merged + 1] = {
-                        bot = true, source = br.id, name = br.name,
-                        lap = br.lap, cp = br.cp, finished = br.finished,
-                        ft = br.finish_time or 0, lct = br.last_cp_time or 0,
-                        idx = ((br.lap or 1) - 1) * numCPs + math.max(0, (br.cp or 1) - 1),
-                        elapsedAt = function(i)
-                            if not bot or i < 1 then return nil end
-                            local lap = math.floor((i - 1) / numCPs) + 1
-                            local cp  = i - (lap - 1) * numCPs
-                            local s   = bot.splits and bot.splits[cp]
-                            if not s then return nil end
-                            return (lap - 1) * bot.lapMs + s
-                        end,
-                    }
-                end
-            end
 
             table.sort(merged, function(a, b)
                 if a.finished ~= b.finished then return a.finished end
@@ -186,8 +162,7 @@ Citizen.CreateThread(function()
             local payload = {}
             for i, e in ipairs(merged) do
                 payload[i] = {
-                    source     = e.source,   -- number for humans, "bot_N" for bots
-                    bot        = e.bot,
+                    source     = e.source,
                     name       = e.name,
                     crew_tag   = e.crew_tag,
                     nation     = e.nation,
@@ -212,8 +187,7 @@ Citizen.CreateThread(function()
             -- Server-side standings feed for out-of-race modules (the live
             -- race board in spz-spectate):
             -- BroadcastToRacers only reaches racers, so freeroamers/spectators and
-            -- other resources get the live order here. Same payload (humans +
-            -- ghost-bots flagged).
+            -- other resources get the live order here. Same payload.
             --
             -- Throttled independently of the racer HUD feed. Racers need 1 Hz to
             -- keep the gap tower honest; a passive freeroam board does not, and
@@ -224,25 +198,22 @@ Citizen.CreateThread(function()
                 TriggerEvent(SPZ.Events.STANDINGS, payload, _posVersion)
             end
 
-            -- Statebags for reactive UI: humans get their DISPLAY position within
-            -- the merged field (so "P2/6" counts the bots ahead).
+            -- Statebags for reactive UI: each racer gets their DISPLAY position.
             for i, e in ipairs(merged) do
-                if not e.bot then
-                    local src = e.source
-                    local pData = RaceSession.players[src]
-                    -- Finished racers stay in `merged` so the standings board
-                    -- keeps showing them, but their statebags were already
-                    -- cleared by HandleFinish and they have been teleported to
-                    -- the safe zone. Writing here resurrected the race HUD on a
-                    -- player who is no longer racing.
-                    if pData and not pData.finished and not pData.dnf then
-                        Player(src).state:set("racePosition", i, true)
-                        Player(src).state:set("raceLap", pData.current_lap, true)
-                        -- Per-racer epoch: a rewind shifts race_start_time
-                        -- forward, so this clock winds back with the car.
-                        Player(src).state:set("raceTime",
-                            now - (pData.race_start_time or RaceSession.startTime or 0), true)
-                    end
+                local src   = e.source
+                local pData = RaceSession.players[src]
+                -- Finished racers stay in `merged` so the standings board keeps
+                -- showing them, but their statebags were already cleared by
+                -- HandleFinish and they have been teleported to the safe zone.
+                -- Writing here resurrected the race HUD on a player who is no
+                -- longer racing.
+                if pData and not pData.finished and not pData.dnf then
+                    Player(src).state:set("racePosition", i, true)
+                    Player(src).state:set("raceLap", pData.current_lap, true)
+                    -- Per-racer epoch: a rewind shifts race_start_time forward,
+                    -- so this clock winds back with the car.
+                    Player(src).state:set("raceTime",
+                        now - (pData.race_start_time or RaceSession.startTime or 0), true)
                 end
             end
         end

@@ -31,8 +31,19 @@ local COLOUR_NEAR    = 4    -- white         — 1 CP ahead
 local COLOUR_PENDING = 46   -- dark orange   — far CPs
 local COLOUR_FINISH  = 2    -- green         — finish line
 
+-- Lookahead gates fade with distance ahead, so the order reads at a glance.
+local ALPHA_NEAR    = 225
+local ALPHA_AHEAD   = 170
+
+-- How many gates ahead are shown as waypoints: the one you are driving at plus
+-- the two after it. Three is the most that stays readable on the minimap at
+-- speed; past that the lookahead competes with the route line instead of
+-- supporting it.
+local LOOKAHEAD     = 3
+
 local SCALE_ACTIVE  = 1.1
 local SCALE_NEAR    = 0.85
+local SCALE_AHEAD   = 0.72   -- two gates ahead
 local SCALE_PENDING = 0.6
 local SCALE_FINISH  = 1.5
 
@@ -237,18 +248,37 @@ local function _buildBlips(checkpoints)
     end
 end
 
+--- How far ahead of `idx` a checkpoint sits, or nil if it is behind.
+---
+--- Wraps on circuits, where the checkpoint two ahead of the last gate is gate
+--- two of the next lap. Only ever looks LOOKAHEAD gates forward, so this stays
+--- O(LOOKAHEAD) rather than scanning the whole track.
+local function _aheadRank(i, idx, total)
+    for n = 0, LOOKAHEAD - 1 do
+        local at = idx + n
+        if at > total then
+            if TrackType ~= "circuit" then break end
+            at = ((at - 1) % total) + 1
+        end
+        if at == i then return n end
+    end
+    return nil
+end
+
 local function _styleBlips(idx)
     local total = #CurrentCheckpoints
     if total == 0 then return end
-    local fi   = _finishIdx(total)
-    local near = _nearIdx(idx, total)
+    local fi = _finishIdx(total)
 
     for i, blip in ipairs(AllBlips) do
         if not DoesBlipExist(blip) then goto continue end
 
         local isFinish = (i == fi)
         local isActive = (i == idx)
-        local isNear   = (near ~= nil) and (i == near) and not isFinish
+
+        -- Rank 0 is the gate you are driving at; 1 and 2 are the two after it.
+        local rank   = _aheadRank(i, idx, total)
+        local isNear = (rank ~= nil) and rank > 0 and not isFinish
 
         if isActive then
             -- Active (next) CP — orange diamond, GPS route line ON, orange route
@@ -257,16 +287,25 @@ local function _styleBlips(idx)
             SetBlipScale(blip,        SCALE_ACTIVE)
             SetBlipAsShortRange(blip, false)
             SetBlipPriority(blip,     10)
+            SetBlipAlpha(blip,        255)
             SetBlipRoute(blip,        true)
             SetBlipRouteColour(blip,  COLOUR_ACTIVE)
 
         elseif isNear then
-            -- Near (idx+1) — white dot, no route
+            -- The next two after the active one.
+            --
+            -- Only the active gate carries a GPS route: the game draws one line
+            -- per routed blip and they overlap into an unreadable tangle, so the
+            -- lookahead is communicated by making the gates themselves visible
+            -- at range instead. They stay numbered and fade with distance ahead,
+            -- which is enough to read the shape of the next two corners without
+            -- competing with the line you are actually following.
             SetBlipSprite(blip,       SPRITE_PENDING)
             SetBlipColour(blip,       COLOUR_NEAR)
-            SetBlipScale(blip,        SCALE_NEAR)
+            SetBlipScale(blip,        rank == 1 and SCALE_NEAR or SCALE_AHEAD)
             SetBlipAsShortRange(blip, false)
-            SetBlipPriority(blip,     5)
+            SetBlipPriority(blip,     rank == 1 and 6 or 5)
+            SetBlipAlpha(blip,        rank == 1 and ALPHA_NEAR or ALPHA_AHEAD)
             SetBlipRoute(blip,        false)
 
         elseif isFinish then
@@ -276,6 +315,7 @@ local function _styleBlips(idx)
             SetBlipScale(blip,        SCALE_FINISH)
             SetBlipAsShortRange(blip, false)
             SetBlipPriority(blip,     9)
+            SetBlipAlpha(blip,        255)
             SetBlipRoute(blip,        false)
 
         else
@@ -285,6 +325,7 @@ local function _styleBlips(idx)
             SetBlipScale(blip,        SCALE_PENDING)
             SetBlipAsShortRange(blip, true)
             SetBlipPriority(blip,     1)
+            SetBlipAlpha(blip,        255)
             SetBlipRoute(blip,        false)
         end
         ::continue::
@@ -431,6 +472,27 @@ end)
 
 exports("GetCurrentCP", function()
     return CurrentCheckpoints[CurrentCPIndex], CurrentCPIndex
+end)
+
+--- The checkpoint at a given index, wrapping on circuits.
+---
+--- Used by the turn guide, which needs the gate AFTER the one you are driving
+--- at in order to work out which way the road turns there. On a circuit the
+--- checkpoint after the last one is the first one of the next lap; on a sprint
+--- there is nothing after the finish, so this returns nil and the caller falls
+--- back to the gate's own heading.
+exports("GetCheckpointAt", function(idx)
+    local total = #CurrentCheckpoints
+    if total == 0 or not idx then return nil end
+
+    if idx > total then
+        if TrackType ~= "circuit" then return nil end
+        idx = ((idx - 1) % total) + 1
+    elseif idx < 1 then
+        return nil
+    end
+
+    return CurrentCheckpoints[idx], idx
 end)
 
 -- Respawn point for the "back to last checkpoint" key: the coords of the last

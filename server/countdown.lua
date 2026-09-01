@@ -61,12 +61,23 @@ function StartWarmupPhase()
             TriggerClientEvent("SPZ:freezeRacer", src, true)
         end
 
-        -- Re-teleport each player back to their grid slot (still frozen)
+        -- Re-teleport each player onto their RACE start slot (still frozen).
+        --
+        -- Deliberately not the warmup grid slot they spawned on: that is a
+        -- staggered grid, and starting a race from it hands row 1 roughly 56
+        -- metres over row 8 on a full field — places decided before the lights.
+        -- The race placement collapses the field onto a ring at the start point
+        -- so every car covers the same distance (Config.RaceStartMode).
+        --
+        -- Falls back to the warmup slot for a session staged before this
+        -- existed, so an in-flight race can never be left with nowhere to go.
         for src, data in pairs(RaceSession.players) do
-            if data.gridCoords then
+            local coords  = data.raceCoords  or data.gridCoords
+            local heading = data.raceHeading or data.gridHeading or 0.0
+            if coords then
                 TriggerClientEvent("SPZ:tpToGrid", src, {
-                    coords  = data.gridCoords,
-                    heading = data.gridHeading or 0.0,
+                    coords  = coords,
+                    heading = heading,
                 })
             end
         end
@@ -183,9 +194,6 @@ function StartCountdownSequence()
 
         BroadcastToRacers("SPZ:go")
         print("[Countdown] RACE LIVE")
-
-        -- Backfill the grid with ghost-bots (uses the GO clock just set).
-        if SpawnRaceBots then SpawnRaceBots() end
 
         -- Start timeout watchdog
         StartRaceTimeoutWatchdog()

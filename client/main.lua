@@ -65,8 +65,20 @@ RegisterNetEvent("SPZ:tpToGrid", function(data)
     if DoesEntityExist(veh) and veh ~= 0 then
         -- Unfreeze to move it, reposition, then kill all momentum and re-freeze
         -- so nobody carries warmup speed onto the grid.
+        --
+        -- clearArea is FALSE, and that is the whole difference between a
+        -- single-point start working and the grid firing cars across the map.
+        -- The final argument to SetEntityCoords asks the engine to CLEAR the
+        -- destination — it shoves whatever is already standing there out of the
+        -- way. With every car re-staged onto the same coordinate, each arrival
+        -- was booting the cars that arrived before it, one after another, and no
+        -- collision flag touches that path because it is not a collision: it is
+        -- the engine doing exactly what it was asked.
+        --
+        -- With it off, cars simply land stacked, stay frozen until the lights,
+        -- and drive through each other on GO because they are ghosted.
         FreezeEntityPosition(veh, false)
-        SetEntityCoords(veh, c.x, c.y, c.z, false, false, false, true)
+        SetEntityCoords(veh, c.x, c.y, c.z, false, false, false, false)
         SetEntityHeading(veh, h)
         SetVehicleOnGroundProperly(veh)
         SetEntityVelocity(veh, 0.0, 0.0, 0.0)
@@ -75,7 +87,7 @@ RegisterNetEvent("SPZ:tpToGrid", function(data)
         SetVehicleHandbrake(veh, true)
         FreezeEntityPosition(veh, true)
     else
-        SetEntityCoords(ped, c.x, c.y, c.z, false, false, false, true)
+        SetEntityCoords(ped, c.x, c.y, c.z, false, false, false, false)
         SetEntityHeading(ped, h)
         FreezeEntityPosition(ped, true)
     end
@@ -95,15 +107,54 @@ RegisterNetEvent("SPZ:tpToGridPoint", function(coords)
     if not coords then return end
     local ped = PlayerPedId()
 
+    -- clearArea off here too: the warmup slots are separated, but the flag also
+    -- shoves anything else standing near the point, and a player arriving on
+    -- their own slot has no business pushing the neighbour who got there first.
     RequestCollisionAtCoord(coords.x, coords.y, coords.z)
-    SetEntityCoords(ped, coords.x, coords.y, coords.z + 1.0, false, false, false, true)
+    SetEntityCoords(ped, coords.x, coords.y, coords.z + 1.0, false, false, false, false)
 
-    -- Let the world stream in around the grid before the vehicle is created.
+    -- PIN the ped on its slot until its car exists.
+    --
+    -- The server creates the grid vehicle at these exact coordinates a moment
+    -- after this runs, and the engine's interpenetration resolver ejects
+    -- whatever is already standing there. Ghosting does not stop that: it
+    -- suppresses contact response between two entities, while this is the
+    -- placement resolver, which runs on creation regardless of any collision
+    -- exclusion. An unfrozen ped standing on its own grid slot is launched by
+    -- its own car appearing around it.
+    --
+    -- Freezing removes the ped from that resolution entirely. It is released
+    -- the moment the ped is in a vehicle (the spawn warped them in, so the
+    -- danger is over), and unconditionally on timeout so a failed spawn can
+    -- never leave someone welded to the tarmac.
+    FreezeEntityPosition(ped, true)
+
     local deadline = GetGameTimer() + 3000
     while not HasCollisionLoadedAroundEntity(ped) and GetGameTimer() < deadline do
         RequestCollisionAtCoord(coords.x, coords.y, coords.z)
         Citizen.Wait(50)
     end
+
+    -- Released as soon as the car EXISTS, not once we are sitting in it. The
+    -- ejection risk ends the moment creation has resolved, and holding the
+    -- freeze until the warp would gamble the whole race on
+    -- TaskWarpPedIntoVehicle working on a frozen ped — if it did not, the
+    -- player would sit welded to the grid until the timeout while the race
+    -- started without them.
+    Citizen.CreateThread(function()
+        local hardStop = GetGameTimer() + 8000
+        while GetGameTimer() < hardStop do
+            local p = PlayerPedId()
+            if GetVehiclePedIsIn(p, false) ~= 0 then break end
+
+            local pos = GetEntityCoords(p)
+            local veh = GetClosestVehicle(pos.x, pos.y, pos.z, 5.0, 0, 71)
+            if veh ~= 0 and DoesEntityExist(veh) then break end
+
+            Citizen.Wait(100)
+        end
+        FreezeEntityPosition(PlayerPedId(), false)
+    end)
 end)
 
 -- ── Staging ───────────────────────────────────────────────────────────────────
@@ -150,11 +201,16 @@ RegisterNetEvent("SPZ:tpToSafeZone", function()
     local sz  = (Config and Config.SafeZone)        or vector3(0.0, 0.0, 0.0)
     local sh  = (Config and Config.SafeZoneHeading) or 0.0
 
+    -- clearArea off: the safe zone is a SINGLE point that every racer is sent
+    -- to at the same moment when a race ends, so this is the same convergence
+    -- as the start line. With it on, each arriving car asks the engine to clear
+    -- the destination and boots whoever landed first — the whole field
+    -- scattering across the paddock a second after the results appear.
     if DoesEntityExist(veh) then
-        SetEntityCoords(veh, sz.x, sz.y, sz.z, false, false, false, true)
+        SetEntityCoords(veh, sz.x, sz.y, sz.z, false, false, false, false)
         SetEntityHeading(veh, sh)
     else
-        SetEntityCoords(ped, sz.x, sz.y, sz.z, false, false, false, true)
+        SetEntityCoords(ped, sz.x, sz.y, sz.z, false, false, false, false)
         SetEntityHeading(ped, sh)
     end
 

@@ -49,13 +49,36 @@ function SetupRaceWorld()
         print(string.format("[World Setup] Computed start heading: %.1f°", startHeading))
     end
 
-    local grid = SPZ.Math.GridPositions(
+    -- Two placements, because the two phases want opposite things.
+    --
+    -- WARMUP spreads the field over a staggered grid: nothing is being won yet
+    -- and separated slots are the safe way to put a full field on one road.
+    --
+    -- The RACE START collapses that to a ring on the start point, so no one is
+    -- handed places by their slot before the lights go out. Both are computed
+    -- here, up front, so every downstream consumer has coords even if the spawn
+    -- thread aborts partway.
+    local warmupGrid = SPZ.Math.GridPositions(
         RaceSession.track.start_coords,
         startHeading,
         #playersInOrder,
         Config.GridRowSpacing or 8.0,
-        Config.GridColSpacing or 4.5
+        Config.GridColSpacing or 4.5,
+        Config.WarmupSpawnMode or "grid"
     )
+
+    local raceGrid = SPZ.Math.GridPositions(
+        RaceSession.track.start_coords,
+        startHeading,
+        #playersInOrder,
+        Config.GridRowSpacing or 8.0,
+        Config.GridColSpacing or 4.5,
+        Config.RaceStartMode or "point"
+    )
+
+    -- Warmup slots are what the cars are CREATED on, so this is the one the
+    -- spawn loop below reads.
+    local grid = warmupGrid
 
     -- Seed the whole grid up front. Populating this inside the spawn loop meant
     -- the timeout monitor's "allReady" test ran against a table holding only the
@@ -69,10 +92,17 @@ function SetupRaceWorld()
         -- racer has coords even if that thread aborts partway: the warmup retry
         -- pass and the post-warmup TP-back both read gridCoords.
         local pData = RaceSession.players[src]
-        if pData and grid[i] then
+        if pData and warmupGrid[i] then
             pData.gridIndex   = i
-            pData.gridCoords  = grid[i].coords
-            pData.gridHeading = grid[i].heading
+            pData.gridCoords  = warmupGrid[i].coords
+            pData.gridHeading = warmupGrid[i].heading
+
+            -- Where this player is re-staged for the actual start. Falls back
+            -- to the warmup slot so a mode that returned nothing can never
+            -- leave a racer with no start position at all.
+            local rp = raceGrid[i] or warmupGrid[i]
+            pData.raceCoords  = rp.coords
+            pData.raceHeading = rp.heading
         end
     end
 
@@ -110,9 +140,16 @@ function SetupRaceWorld()
 
                 exports["spz-core"]:AssignPlayerToBucket(src, RaceSession.bucketId)
 
-                -- Ghost BEFORE any vehicle exists: with one-point spawning every car
-                -- overlaps, so collision must already be off on the very first frame
-                -- each remote vehicle streams in.
+                -- Ghosting is armed before any vehicle exists so collision is
+                -- already off on the frame each remote car streams in.
+                --
+                -- It is NOT what keeps the grid safe, and it never was. Cars are
+                -- spawned on separated slots (Config.SpawnMode) because the
+                -- engine's interpenetration resolver ejects overlapping
+                -- entities on creation, and no collision exclusion touches that
+                -- path. Ghosting handles racing contact; geometry handles the
+                -- grid. Putting the whole spawn on the flag is what threw cars
+                -- across the map.
 
                 local profile = Player(src).state.profile
                 local hasLicense = (profile and profile.license_tier or 0) >= (RaceSession.carClassId or 0)

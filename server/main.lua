@@ -14,6 +14,43 @@ RaceSession = {
     intermissionActive = false,
 }
 
+-- ── In-world HUD toggles ──────────────────────────────────────────────────────
+--
+-- Which of the two floating race readouts clients should draw. Published to
+-- GlobalState so it is server-authoritative and live: flipping a convar and
+-- running the refresh command changes every connected client's HUD without a
+-- resource restart or a reconnect.
+--
+-- Precedence is convar over Config. An UNSET convar reads back as the string
+-- default we pass in, which is how "not configured in server.cfg" is told apart
+-- from "explicitly set to 0" — GetConvarInt cannot express that, since it
+-- returns 0 both for "off" and for "absent".
+
+local function _hudFlag(convar, fallback)
+    local raw = GetConvar(convar, "__unset")
+    if raw == "__unset" then return fallback and true or false end
+    return raw == "1" or raw == "true"
+end
+
+function PublishHudConfig()
+    local cfg = (Config and Config.Hud) or {}
+
+    GlobalState:set("hudTurnGuide", _hudFlag("spz_hud_turn_guide", cfg.TurnGuide ~= false), true)
+    GlobalState:set("hudCpPill",    _hudFlag("spz_hud_cp_pill",    cfg.CpDistancePill == true), true)
+
+    print(("^2[spz-races] HUD: turn guide %s · CP pill %s^7"):format(
+        GlobalState.hudTurnGuide and "on" or "off",
+        GlobalState.hudCpPill and "on" or "off"))
+end
+
+CreateThread(PublishHudConfig)
+
+-- Re-read the convars without restarting anything.
+RegisterCommand("racehud", function(source)
+    if source ~= 0 and not exports["spz-core"]:IsAdmin(source) then return end
+    PublishHudConfig()
+end, true)
+
 -- ── SetRaceState ──────────────────────────────────────────────────────────────
 -- Single source of truth. Writes to GlobalState (replicated to all clients) and
 -- fires a server-local event for modules that prefer events over statebags.
@@ -132,8 +169,14 @@ function CreatePlayerRaceData(src)
         incidents       = {},    -- world impacts reported by the client during LIVE
         race_start_time = nil,
         gridIndex       = 0,
-        gridCoords      = nil,   -- set by world.lua after spawn
+        -- Two placements, both assigned by world.lua when the grid is built:
+        -- the warmup slot the car is CREATED on, and the race slot the player
+        -- is re-staged to for the start. See Config.WarmupSpawnMode /
+        -- Config.RaceStartMode.
+        gridCoords      = nil,
         gridHeading     = 0.0,
+        raceCoords      = nil,
+        raceHeading     = 0.0,
         last_cp_time    = nil,
     }
 end

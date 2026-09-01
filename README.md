@@ -47,7 +47,7 @@ Modes: standard race, time trial, and duel.
 | Server | `server/positions.lua` · `overtakes.lua` · `incidents.lua` | Live standings, pass clips, incidents |
 | Server | `server/dnf.lua` · `reconnect.lua` | DNF and mid-race rejoin |
 | Server | `server/results.lua` · `cleanup.lua` · `intermission.lua` | Results, teardown, next cycle |
-| Server | `server/timetrail.lua` · `duel.lua` · `bots.lua` | Alternate modes and AI |
+| Server | `server/timetrail.lua` · `duel.lua` | Alternate modes |
 | Server | `server/leaderboard/*.lua` | Records, standings, stats, race archive, callbacks |
 | Server | `server/creator.lua` · `dev_heading.lua` | Track creation tooling |
 | Client | `client/main.lua` · `nui_bridge.lua` | Race flow and UI delegation |
@@ -55,7 +55,7 @@ Modes: standard race, time trial, and duel.
 | Client | `client/raceblips.lua` · `trackboard.lua` · `bonus.lua` | Blips, record boards, bonus and overtake flourishes |
 | Client | `client/lockin.lua` · `recover.lua` · `incidents.lua` | Grid lock, recovery, incidents |
 | Client | `client/rewind.lua` · `showcase.lua` | Time rewind, post-race car showcase |
-| Client | `client/timetrail.lua` · `duel.lua` · `bots.lua` | Alternate modes |
+| Client | `client/timetrail.lua` · `duel.lua` | Alternate modes |
 | Client | `client/creator.lua` · `editor.lua` · `dev_heading.lua` | Track creation tooling |
 
 ## Exports

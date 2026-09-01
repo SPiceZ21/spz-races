@@ -152,38 +152,200 @@ RegisterNetEvent("SPZ:tt:Begin",         function() _myRaceOver = false end)
 -- sound, nitrous effect on the overtaker's car), not a bridge to a UI resource,
 -- and splitting one event across two files hid half of it.
 
+-- ── Turn guide ────────────────────────────────────────────────────────────────
+--
+-- The corner-call HUD: which way the next gate turns, how far away it is, and
+-- how fast you are going, anchored in world space just ahead of the car so it
+-- travels with you instead of sitting in a fixed corner of the screen.
+--
+-- The turn being announced is the one you make AT the next checkpoint, not the
+-- direction of the checkpoint itself. Those are different things and only the
+-- first is useful: pointing at a gate tells you where it is, which the blips
+-- already do. What a driver needs at speed is what the road does once they get
+-- there, which is the angle between the leg they are on and the leg after it.
+
+local TURN_ANCHOR_FWD  = 8.0    -- metres ahead of the car
+local TURN_ANCHOR_UP   = 2.0    -- metres above it
+
+-- ...and metres to the SIDE of it. Anchored dead ahead, the call sat on the
+-- piece of road the driver is about to drive through — the one part of the
+-- screen that must stay clear. It now rides the shoulder of the road INSTEAD,
+-- on the side the corner goes: a left-hander puts it left, a right-hander puts
+-- it right, so the readout is also pointing at where the car is going.
+local TURN_ANCHOR_SIDE = 4.5
+
+-- Straight, u-turn and anything doubling back have no side to be on: a
+-- "STRAIGHT" call that snaps the element back to centre would put it right back
+-- in front of the driver, and a u-turn's sign is meaningless (180° left and
+-- 180° right are the same corner, and the sign flips on tiny jitter). Those
+-- keep whatever side was last committed.
+--
+-- `_guideSide` is that commitment; `_guideSideCur` is where the element
+-- actually is, eased toward it, so a change of side slides across the road
+-- instead of teleporting.
+local _guideSide    = 1.0   -- -1 = left, +1 = right
+local _guideSideCur = 1.0
+
+-- Which readouts the server wants drawn. GlobalState is authoritative and
+-- replicated, so an admin flipping the convar and running /racehud changes this
+-- live — read it per frame rather than caching, because a cached copy would go
+-- stale exactly when someone is trying to toggle it and see the result.
+--
+-- Config is the fallback for the window before GlobalState has replicated, and
+-- for a client whose spz-races server half is not answering.
+local function _hudGuide()
+    local v = GlobalState.hudTurnGuide
+    if v == nil then return not (Config and Config.Hud and Config.Hud.TurnGuide == false) end
+    return v == true
+end
+
+local function _hudPill()
+    local v = GlobalState.hudCpPill
+    if v == nil then return (Config and Config.Hud and Config.Hud.CpDistancePill) == true end
+    return v == true
+end
+
+--- Signed angle in degrees from vector A to vector B, -180..180.
+--- Positive is a right-hand turn.
+local function _signedAngle(ax, ay, bx, by)
+    local dot   = ax * bx + ay * by
+    local cross = ax * by - ay * bx
+    return math.deg(math.atan(cross, dot))
+end
+
+--- Turn severity from the signed angle. The bands are deliberately wide at the
+--- top: below 12° a road is straight as far as the driver is concerned, and
+--- calling every gentle kink a turn trains people to ignore the readout.
+local function _turnLabel(angle)
+    local a = math.abs(angle)
+    local side = angle < 0 and "LEFT" or "RIGHT"
+
+    if a < 12 then return "STRAIGHT", "straight"
+    elseif a < 40 then return "SLIGHT " .. side, "slight"
+    elseif a < 100 then return side, "normal"
+    elseif a < 150 then return "HARD " .. side, "hard"
+    end
+    return "U-TURN", "uturn"
+end
+
 Citizen.CreateThread(function()
     while true do
         if (_distState == "LIVE" or _ttActive)
         and not _myRaceOver
         and GetResourceState("spz-raceUI") == "started" then
-            local cp = exports["spz-races"]:GetCurrentCP()
+            local cp, cpIndex = exports["spz-races"]:GetCurrentCP()
             if cp then
-                local pos  = GetEntityCoords(PlayerPedId())
+                local ped  = PlayerPedId()
+                local veh  = GetVehiclePedIsIn(ped, false)
+                local ent  = veh ~= 0 and veh or ped
+                local pos  = GetEntityCoords(ped)
                 local dx   = pos.x - cp.coords.x
                 local dy   = pos.y - cp.coords.y
                 local dist = math.floor(math.sqrt(dx*dx + dy*dy))
 
-                -- Anchor the pill slightly above the checkpoint ground point.
-                local onScreen, sx, sy = World3dToScreen2d(
-                    cp.coords.x, cp.coords.y, cp.coords.z + 1.0)
+                -- The leg you are driving now: car → next checkpoint.
+                local legX, legY = cp.coords.x - pos.x, cp.coords.y - pos.y
+                local legLen = math.sqrt(legX*legX + legY*legY)
 
-                exports["spz-raceUI"]:UpdateCPWaypoint({
-                    dist     = dist,
-                    onScreen = onScreen and true or false,
-                    x        = sx,
-                    y        = sy,
-                })
+                -- The leg after it: next checkpoint → the one beyond. Falls back
+                -- to the gate's own heading when there is no gate beyond it (the
+                -- finish), so the last call is still a real direction rather
+                -- than a shrug.
+                local angle = 0.0
+                local after = exports["spz-races"]:GetCheckpointAt((cpIndex or 0) + 1)
+
+                if legLen > 0.5 then
+                    local nx, ny = legX / legLen, legY / legLen
+                    if after then
+                        local ax, ay = after.coords.x - cp.coords.x, after.coords.y - cp.coords.y
+                        local aLen = math.sqrt(ax*ax + ay*ay)
+                        if aLen > 0.5 then
+                            angle = _signedAngle(nx, ny, ax / aLen, ay / aLen)
+                        end
+                    elseif cp.heading then
+                        local rad = math.rad(cp.heading)
+                        angle = _signedAngle(nx, ny, -math.sin(rad), math.cos(rad))
+                    end
+                end
+
+                local label, severity = _turnLabel(angle)
+
+                -- The two readouts have DIFFERENT anchors, which is the whole
+                -- reason they are separate elements rather than one panel.
+                local payload = { dist = dist }
+
+                if _hudGuide() then
+                    -- Which side of the road the call sits on. Only a real,
+                    -- signed corner moves it: the same 12° band that stops
+                    -- gentle kinks being called a turn, capped below the u-turn
+                    -- band where the sign stops meaning anything.
+                    local absAngle = math.abs(angle)
+                    if absAngle >= 12 and absAngle < 150 then
+                        _guideSide = angle < 0 and -1.0 or 1.0
+                    end
+
+                    -- Ease toward it in WALL time, not per frame: a fixed
+                    -- per-frame step crosses the road at whatever rate the
+                    -- client's framerate happens to be.
+                    local k = math.min(1.0, GetFrameTime() * 4.0)
+                    _guideSideCur = _guideSideCur + (_guideSide - _guideSideCur) * k
+
+                    -- Anchored to the CAR: the corner call rides with you down
+                    -- the road. Offset forward, up and sideways so it sits over
+                    -- the shoulder ahead rather than through the roof or over
+                    -- the racing line.
+                    local fwd = GetEntityForwardVector(ent)
+                    -- Right vector, derived from forward rather than read out of
+                    -- the entity matrix: forward is (-sin h, cos h), so right is
+                    -- (cos h, sin h) — which is exactly (fwd.y, -fwd.x). No
+                    -- ambiguity about what order GetEntityMatrix returns.
+                    local rx, ry = fwd.y, -fwd.x
+                    local side = _guideSideCur * TURN_ANCHOR_SIDE
+
+                    local gOn, gx, gy = World3dToScreen2d(
+                        pos.x + fwd.x * TURN_ANCHOR_FWD + rx * side,
+                        pos.y + fwd.y * TURN_ANCHOR_FWD + ry * side,
+                        pos.z + TURN_ANCHOR_UP)
+
+                    payload.guide = {
+                        onScreen = gOn and true or false,
+                        x        = gx,
+                        y        = gy,
+                        turn     = label,
+                        severity = severity,
+                        angle    = math.floor(angle + 0.5),
+                        -- 2.236936 m/s → mph. The reference HUD reads in mph and
+                        -- the speedometer does too, so this matches rather than
+                        -- inventing a second unit on the same screen.
+                        speed    = math.floor(GetEntitySpeed(ent) * 2.236936 + 0.5),
+                    }
+                end
+
+                if _hudPill() then
+                    -- Anchored to the CHECKPOINT, slightly above the ground
+                    -- point, with a stem drawn down to it: this one answers
+                    -- "where is the gate", including when it is behind geometry.
+                    local pOn, px, py = World3dToScreen2d(
+                        cp.coords.x, cp.coords.y, cp.coords.z + 1.0)
+
+                    payload.pill = {
+                        onScreen = pOn and true or false,
+                        x        = px,
+                        y        = py,
+                    }
+                end
+
+                exports["spz-raceUI"]:UpdateCPWaypoint(payload)
                 Citizen.Wait(0)
             else
-                exports["spz-raceUI"]:UpdateCPWaypoint({ dist = 0, onScreen = false })
+                exports["spz-raceUI"]:UpdateCPWaypoint({ dist = 0 })
                 Citizen.Wait(200)
             end
         else
             -- Not driving a route (finished, DNF, idle, cleanup, TT over) →
-            -- make sure the pill is gone rather than frozen on screen.
+            -- make sure both readouts are gone rather than frozen on screen.
             if GetResourceState("spz-raceUI") == "started" then
-                exports["spz-raceUI"]:UpdateCPWaypoint({ dist = 0, onScreen = false })
+                exports["spz-raceUI"]:UpdateCPWaypoint({ dist = 0 })
             end
             Citizen.Wait(500)
         end

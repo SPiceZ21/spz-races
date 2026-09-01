@@ -26,7 +26,7 @@ local TTHeadStart  = nil     -- { coords = vec3, heading = number }
 local TTRestartActive = false
 local TTRestartEndsAt = 0
 local RESTART_MS      = 3000   -- countdown duration
-local TT_RESTART_KEY  = "BACK" -- must match RegisterKeyMapping default below
+local TT_RESTART_KEY  = "BACK" -- must match RegisterKeyMapping default below (registry: Docs/keybinds.md)
 
 local CP_Z_THRESH = 8.0
 local DEBOUNCE_MS = 500
@@ -122,12 +122,15 @@ local function _tpToHeadStart(gracePeriodMs)
         local veh     = GetVehiclePedIsIn(ped)
         local sp      = TTHeadStart.coords
         local heading = TTHeadStart.heading or 0.0
+        -- clearArea off: several drivers can be running the same time trial on
+        -- the same track, so this start point is a convergence too. With it on
+        -- a restarting driver boots anyone else sitting on the line.
         if veh ~= 0 then
-            SetEntityCoords(veh, sp.x, sp.y, sp.z, false, false, false, true)
+            SetEntityCoords(veh, sp.x, sp.y, sp.z, false, false, false, false)
             SetEntityHeading(veh, heading)
             SetVehicleEngineOn(veh, true, true, false)
         else
-            SetEntityCoords(ped, sp.x, sp.y, sp.z, false, false, false, true)
+            SetEntityCoords(ped, sp.x, sp.y, sp.z, false, false, false, false)
             SetEntityHeading(ped, heading)
         end
     end, 400, 300, 600)
@@ -289,7 +292,7 @@ Citizen.CreateThread(function()
                 else
                     local dx, dy = pos.x - physCp.coords.x, pos.y - physCp.coords.y
                     local d = math.sqrt(dx*dx + dy*dy)
-                    Citizen.Wait(d > 80 and 100 or d > 30 and 20 or 0)
+                    Citizen.Wait(d > 120 and 100 or d > 40 and 20 or 0)
                 end
             else
                 Citizen.Wait(100)
