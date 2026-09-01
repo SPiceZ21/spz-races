@@ -17,14 +17,47 @@ Config.PollOptionsPerType   = 2       -- track options per poll (always 2)
 -- ── Checkpoint blips ───────────────────────────────────────────────────────
 -- How the route reads on the minimap while driving.
 --
--- The default is satnav behaviour: ONE gate marked at a time, with the GPS
--- route line running to it, advancing to the next as you cross. `lookahead = 3`
--- restores the old preview (the active gate plus the two after it, fading with
--- distance); `hideFar = false` puts a dim dot on every remaining gate, drawing
--- the whole track outline on the map.
+-- The way line is the game's own orange GPS route, painted along the road on the
+-- minimap. The track is plotted as POINTS — the checkpoints — and the game
+-- pathfinds the roads between them (StartGpsMultiRoute): player → gate 1 →
+-- gate 2 → gate 3, each leg solved in turn.
+--
+-- That chaining is the reason it is not SetBlipRoute. A blip route always runs
+-- from the PLAYER to one blip, so a route to gate 2 is the best road to gate 2 —
+-- which is generally not the road through gate 1. Routing every gate that way
+-- draws a fan of shortcuts rather than the course.
+--
+--   routeMode      "multi" chained road route (default) | "blip" per-gate blip
+--                  routes | "off" markers only
+--   routeHudColour HUD colour index for the multi-route line (15 = orange).
+--                  NOTE: HUD colours are a different scale from blip colours.
+--   lookahead      gates plotted ahead, counting the one you are driving at
+--   routeAll       blip mode only: route the whole lookahead, not just the first
+--   routeColour    blip mode only: blip colour id (17 = bright orange)
+--   hideFar        drop the gates past the lookahead instead of dimming them
+--
+-- Optional extra, off by default. The route line is road PATHFINDING to each
+-- gate, so where a track deliberately leaves the road network — an alley, the
+-- wrong side of a divided road, a dirt cut, a car park — the line takes the road
+-- version of that leg. `trail` adds a dotted line built from the checkpoint
+-- coordinates themselves, which is exact to the course, underneath it.
+--
+--   trail         the dotted course line
+--   trailSpacing  metres between dots
+--   trailMax      hard cap on dots (blip budget on a long leg)
 Config.CpBlips = {
-    lookahead = 3,
-    hideFar   = false,
+    routeMode      = "multi",
+    routeHudColour = 15,
+    lookahead      = 3,
+    routeAll       = true,
+    routeColour    = 17,
+    hideFar        = false,
+
+    trail        = false,
+    trailSpacing = 28.0,
+    trailMax     = 60,
+    trailColour  = 17,
+    trailScale   = 0.26,
 }
 
 -- ── Cycle ──────────────────────────────────────────────────────────────────
@@ -385,25 +418,64 @@ Config.CopChase = {
   MaxStars        = 5,
 
   -- ── Pursuit units ────────────────────────────────────────────────────────
-  -- Cars on your tail at each star level, and how hard they drive.
-  --   pit = false → they tail you and box you in, no contact on purpose
-  --   pitEvery     → seconds between ram attempts once PIT is unlocked
+  -- Each star level fields a PACK with roles, not a queue of identical cars
+  -- following you nose to tail:
+  --
+  --   tail       sits behind you and stays there. The pressure unit.
+  --   flank      pulls up alongside (alternating left/right) and tries to live
+  --              there — it is what turns a chase into being boxed in, and it is
+  --              also what puts a car in position for a PIT.
+  --   intercept  does not chase at all: it spawns on the road AHEAD of where you
+  --              are pointed and comes at you. This is the one that stops the
+  --              whole thing being a rear-view mirror game.
+  --
+  --   pit        contact allowed. A PIT is only thrown when a unit is actually
+  --              in position (alongside/behind quarter, close, and you are not
+  --              going so fast the hit would be a launch) — never on a timer
+  --              alone. pitEvery is the MINIMUM gap between attempts.
+  --   roadblock  seconds between roadblocks; 0 = never. Two cruisers parked
+  --              across the road ahead, called out before you reach them.
   Levels = {
-    [1] = { units = 1, pit = false, pitEvery = 0,    speed = 38.0 },
-    [2] = { units = 2, pit = false, pitEvery = 0,    speed = 42.0 },
-    [3] = { units = 3, pit = true,  pitEvery = 13.0, speed = 46.0 },
-    [4] = { units = 4, pit = true,  pitEvery = 9.0,  speed = 50.0 },
-    [5] = { units = 6, pit = true,  pitEvery = 6.0,  speed = 55.0 },
+    [1] = { tail = 1, flank = 0, intercept = 0, pit = false, pitEvery = 0,    roadblock = 0,  speed = 38.0 },
+    [2] = { tail = 2, flank = 0, intercept = 0, pit = false, pitEvery = 0,    roadblock = 0,  speed = 42.0 },
+    [3] = { tail = 2, flank = 1, intercept = 0, pit = true,  pitEvery = 11.0, roadblock = 0,  speed = 46.0 },
+    [4] = { tail = 2, flank = 2, intercept = 1, pit = true,  pitEvery = 8.0,  roadblock = 55, speed = 50.0 },
+    [5] = { tail = 3, flank = 2, intercept = 1, pit = true,  pitEvery = 5.0,  roadblock = 35, speed = 56.0 },
   },
 
   Models     = { "police", "police2", "police3" },  -- cruisers (randomised)
+  FastModels = { "police2", "police3" },            -- used from 4 stars up
   PedModels  = { "s_m_y_cop_01", "s_m_y_sheriff_01" },
   Sirens     = true,
 
-  SpawnBehind   = 130.0,   -- metres back down the road a new unit appears
+  SpawnBehind   = 130.0,   -- metres back down the road a tail unit appears
+  SpawnAhead    = 240.0,   -- metres up the road an intercept unit sets up
   SpawnMinDist  = 60.0,    -- never closer than this to the racer
-  DespawnDist   = 320.0,   -- a unit this far adrift is recycled
-  PitDurationMs = 4000,    -- how long a ram attempt runs before resuming chase
+  DespawnDist   = 340.0,   -- a unit this far adrift is recycled
+  PitDurationMs = 3500,    -- how long a ram attempt runs before resuming chase
+
+  -- ── Keeping up ───────────────────────────────────────────────────────────
+  -- A stock cruiser cannot live with a race-tuned car, and a pursuit you walk
+  -- away from in a straight line is not a pursuit. Engine output is scaled so
+  -- units hold station instead of falling off, and their cruise speed tracks
+  -- YOUR speed rather than sitting at a fixed number.
+  --
+  -- This is deliberately not a rubber band: the multiplier is fixed per star
+  -- level, so a genuinely faster car still pulls away — it just has to actually
+  -- be driven to do it.
+  PowerBoost   = { [1] = 0.15, [2] = 0.25, [3] = 0.40, [4] = 0.60, [5] = 0.85 },
+  SpeedMatch   = 1.12,     -- cruise target as a multiple of your current speed
+  SpeedFloor   = 30.0,     -- m/s: never crawl, even when you are stopped
+  SpeedCeiling = 82.0,     -- m/s: hard cap so a boosted cruiser stays plausible
+
+  -- ── Roadblocks ───────────────────────────────────────────────────────────
+  RoadblockAhead   = 320.0,  -- metres up the road it is set up
+  RoadblockWarnSec = 0,      -- 0 = warn as soon as it is placed
+  RoadblockLifeSec = 40,     -- torn down after this, or once you are past it
+
+  -- Radio chatter. Short callouts when the pack does something — a flanker
+  -- arriving, a PIT going in, a block going up. Off = silent pursuit.
+  Chatter = true,
 
   -- ── Losing them ──────────────────────────────────────────────────────────
   -- No unit within EscapeDist for EscapeSeconds and the heat dumps: stars fall

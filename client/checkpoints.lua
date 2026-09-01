@@ -21,6 +21,13 @@ local TrackType          = "circuit"   -- "circuit" | "sprint"
 
 -- ── Minimap blips ──────────────────────────────────────────────────────────
 local AllBlips = {}
+-- Declared up here so the teardown that owns every blip can own these too: the
+-- course trail is rebuilt constantly, and a path that clears the gates but
+-- leaves the trail behind strands sixty handles on the map.
+local TrailBlips = {}
+-- The GPS route is global render state rather than a blip, so the teardown has
+-- to know whether one is live.
+local MultiRouteOn = false
 
 local SPRITE_PENDING = 1
 local SPRITE_ACTIVE  = 164
@@ -35,24 +42,55 @@ local COLOUR_FINISH  = 2    -- green         — finish line
 local ALPHA_NEAR    = 225
 local ALPHA_AHEAD   = 170
 
--- How many gates are shown as waypoints at once, counting the one you are
--- driving at.
---
--- ONE by default: the minimap behaves like a satnav, showing the gate you are
--- going to and the route line to it, then the next one, then the next. Showing
--- the two after it as well put three markers and one route line on the same
--- stretch of minimap, and at racing speed that reads as clutter around the
--- line rather than as a preview of it.
---
--- Raise it (Config.CpBlips.lookahead = 3) to get the old preview back.
+-- How many gates ahead are shown as waypoints: the one you are driving at plus
+-- the two after it. Three is the most that stays readable on the minimap at
+-- speed; past that the lookahead competes with the route line instead of
+-- supporting it.
 local CPB           = (Config and Config.CpBlips) or {}
-local LOOKAHEAD     = CPB.lookahead or 1
+local LOOKAHEAD     = CPB.lookahead or 3
 
--- Gates outside the lookahead are hidden rather than drawn small and dark, so
--- the track does not sit on the map as a dotted outline of where you are about
--- to go. The FINISH is the exception — it is the destination, not a waypoint,
--- and knowing where the race ends is never clutter.
-local HIDE_FAR      = CPB.hideFar ~= false
+-- ── The route line ───────────────────────────────────────────────────────────
+--
+-- The orange GPS line painted along the road on the minimap, plotted through the
+-- checkpoints and pathfound between them by the game itself.
+--
+-- This is a GPS MULTI-ROUTE, not SetBlipRoute, and the difference is the whole
+-- feature. SetBlipRoute always routes from the PLAYER to one blip: route to
+-- gate 2 and the game finds the best road to gate 2, which is generally not the
+-- road through gate 1. Routing all three gates that way draws three separate
+-- player-to-gate lines, each one a shortcut past the gates before it.
+--
+-- StartGpsMultiRoute takes a LIST of points and pathfinds each leg in turn —
+-- player → gate 1 → gate 2 → gate 3 — so the line is the course, plotted as
+-- points, drawn on the roads that actually join them. Leg one re-solves from
+-- the car on its own as you drive, so it only needs rebuilding when the active
+-- gate changes.
+--
+--   mode = "multi"  the chained route above (default)
+--   mode = "blip"   the old per-gate SetBlipRoute lines
+--   mode = "off"    no line; the gate markers only
+--
+-- The caveat is the same for either: this is ROAD pathfinding, so where a track
+-- deliberately leaves the network — an alley, the wrong side of a divided road,
+-- a dirt cut, a car park — the line takes the road version of that leg.
+-- `trail = true` adds a dotted line built from the checkpoint coordinates
+-- themselves, exact to the course, underneath.
+local ROUTE_MODE    = CPB.routeMode or "multi"
+local ROUTE_ALL     = CPB.routeAll ~= false
+local ROUTE_COLOUR  = CPB.routeColour or 17      -- blip colour id (blip mode)
+-- HUD colour index — a DIFFERENT scale from blip colours, which is why this is
+-- its own setting rather than reusing the one above.
+local ROUTE_HUD     = CPB.routeHudColour or 15   -- orange
+
+local TRAIL         = CPB.trail == true          -- opt-in dotted course line
+local TRAIL_SPACING = CPB.trailSpacing or 28.0   -- metres between trail dots
+local TRAIL_MAX     = CPB.trailMax or 60         -- hard cap on dots (blip budget)
+local TRAIL_COLOUR  = CPB.trailColour or 17
+local TRAIL_SCALE   = CPB.trailScale or 0.26
+
+-- Gates past the lookahead: dim dots by default, so the rest of the track sits
+-- on the map as context. hideFar = true drops them entirely.
+local HIDE_FAR      = CPB.hideFar == true
 
 local SCALE_ACTIVE  = 1.1
 local SCALE_NEAR    = 0.85
@@ -232,6 +270,17 @@ local function _clearAllBlips()
         end
     end
     AllBlips = {}
+
+    for _, b in ipairs(TrailBlips) do
+        if DoesBlipExist(b) then RemoveBlip(b) end
+    end
+    TrailBlips = {}
+
+    -- The GPS route is global render state, not a blip: left on, it survives the
+    -- race and keeps drawing a line to a checkpoint that no longer exists.
+    SetGpsMultiRouteRender(false)
+    ClearGpsMultiRoute()
+    MultiRouteOn = false
 end
 
 local function _buildBlips(checkpoints)
@@ -258,6 +307,118 @@ local function _buildBlips(checkpoints)
         EndTextCommandSetBlipName(blip)
 
         AllBlips[i] = blip
+    end
+end
+
+-- ── Course trail ─────────────────────────────────────────────────────────────
+-- The hand-laid line: dots between the gates of the lookahead window, so what
+-- you follow on the map is the course itself rather than the game's road route
+-- to the next gate. Rebuilt on every crossing — it is a few dozen blips and the
+-- alternative (keeping the whole track's worth alive and toggling alpha) costs
+-- more blip handles than a 40-gate circuit can spare.
+
+local function _clearTrail()
+    for _, b in ipairs(TrailBlips) do
+        if DoesBlipExist(b) then RemoveBlip(b) end
+    end
+    TrailBlips = {}
+end
+
+local function _trailDot(x, y, z)
+    local b = AddBlipForCoord(x, y, z)
+    SetBlipSprite(b, 1)
+    SetBlipColour(b, TRAIL_COLOUR)
+    SetBlipScale(b, TRAIL_SCALE)
+    SetBlipAsShortRange(b, false)
+    SetBlipPriority(b, 2)
+    SetBlipAlpha(b, 190)
+    -- Nameless: sixty entries called "Checkpoint" in the legend is not a legend.
+    SetBlipHiddenOnLegend(b, true)
+    TrailBlips[#TrailBlips + 1] = b
+end
+
+-- ── GPS multi-route ──────────────────────────────────────────────────────────
+-- The chained road route through the lookahead gates. Rebuilt only when the
+-- active gate changes: the first leg is solved from the player continuously by
+-- the game, so it tracks the car without being touched.
+
+local function _clearMultiRoute()
+    if not MultiRouteOn then return end
+    SetGpsMultiRouteRender(false)
+    ClearGpsMultiRoute()
+    MultiRouteOn = false
+end
+
+local function _buildMultiRoute(idx)
+    _clearMultiRoute()
+    if ROUTE_MODE ~= "multi" then return end
+
+    local total = #CurrentCheckpoints
+    if total < 1 then return end
+
+    -- (hudColour, routeFromPlayer, displayOnFoot). Routing from the player is
+    -- what makes leg one live; without it the line starts at gate 1 and the
+    -- stretch being driven right now is the one stretch not drawn.
+    StartGpsMultiRoute(ROUTE_HUD, true, true)
+
+    local added = 0
+    for n = 0, LOOKAHEAD - 1 do
+        local at = idx + n
+        if at > total then
+            if TrackType ~= "circuit" then break end
+            at = ((at - 1) % total) + 1
+        end
+        local cp = CurrentCheckpoints[at]
+        if not cp then break end
+        AddPointToGpsMultiRoute(cp.coords.x, cp.coords.y, cp.coords.z)
+        added = added + 1
+    end
+
+    if added == 0 then
+        ClearGpsMultiRoute()
+        return
+    end
+
+    SetGpsMultiRouteRender(true)
+    MultiRouteOn = true
+end
+
+--- Walk the lookahead window gate by gate, dropping dots along each leg.
+--- Starts at the player, not at the active gate: the leg you are ON is the half
+--- you still have to drive, and a trail that begins at the gate ahead leaves the
+--- most important stretch unmarked.
+local function _buildTrail(idx)
+    _clearTrail()
+    if not TRAIL then return end
+
+    local total = #CurrentCheckpoints
+    if total < 1 then return end
+
+    local ped  = PlayerPedId()
+    local from = GetEntityCoords(ped)
+
+    for n = 0, LOOKAHEAD - 1 do
+        local at = idx + n
+        if at > total then
+            if TrackType ~= "circuit" then break end
+            at = ((at - 1) % total) + 1
+        end
+
+        local cp = CurrentCheckpoints[at]
+        if not cp then break end
+        local to = cp.coords
+
+        local dx, dy, dz = to.x - from.x, to.y - from.y, to.z - from.z
+        local len = math.sqrt(dx * dx + dy * dy)
+        local steps = math.floor(len / TRAIL_SPACING)
+
+        for s = 1, steps do
+            if #TrailBlips >= TRAIL_MAX then return end
+            local t = s / (steps + 1)
+            _trailDot(from.x + dx * t, from.y + dy * t, from.z + dz * t)
+        end
+
+        from = to
     end
 end
 
@@ -294,32 +455,30 @@ local function _styleBlips(idx)
         local isNear = (rank ~= nil) and rank > 0 and not isFinish
 
         if isActive then
-            -- Active (next) CP — orange diamond, GPS route line ON, orange route
+            -- Active (next) CP — orange diamond, and the head of the orange
+            -- route line on the road.
             SetBlipSprite(blip,       SPRITE_ACTIVE)
             SetBlipColour(blip,       COLOUR_ACTIVE)
             SetBlipScale(blip,        SCALE_ACTIVE)
             SetBlipAsShortRange(blip, false)
             SetBlipPriority(blip,     10)
             SetBlipAlpha(blip,        255)
-            SetBlipRoute(blip,        true)
-            SetBlipRouteColour(blip,  COLOUR_ACTIVE)
+            SetBlipRoute(blip,        ROUTE_MODE == "blip")
+            if ROUTE_MODE == "blip" then SetBlipRouteColour(blip, ROUTE_COLOUR) end
 
         elseif isNear then
-            -- The next two after the active one.
-            --
-            -- Only the active gate carries a GPS route: the game draws one line
-            -- per routed blip and they overlap into an unreadable tangle, so the
-            -- lookahead is communicated by making the gates themselves visible
-            -- at range instead. They stay numbered and fade with distance ahead,
-            -- which is enough to read the shape of the next two corners without
-            -- competing with the line you are actually following.
+            -- The next two after the active one — numbered, fading with distance
+            -- ahead, and ROUTED in the same orange so the line carries on past
+            -- the first gate instead of ending at it.
             SetBlipSprite(blip,       SPRITE_PENDING)
             SetBlipColour(blip,       COLOUR_NEAR)
             SetBlipScale(blip,        rank == 1 and SCALE_NEAR or SCALE_AHEAD)
             SetBlipAsShortRange(blip, false)
             SetBlipPriority(blip,     rank == 1 and 6 or 5)
             SetBlipAlpha(blip,        rank == 1 and ALPHA_NEAR or ALPHA_AHEAD)
-            SetBlipRoute(blip,        false)
+            local routed = (ROUTE_MODE == "blip") and ROUTE_ALL
+            SetBlipRoute(blip,        routed)
+            if routed then SetBlipRouteColour(blip, ROUTE_COLOUR) end
 
         elseif isFinish then
             -- Finish — green big circle, no route (unless it's also active)
@@ -354,12 +513,26 @@ Citizen.CreateThread(function()
         Citizen.Wait(2000)
         if not _isRaceActive() then goto continue end
 
-        local activeBlip = AllBlips[CurrentCPIndex]
-        if activeBlip and DoesBlipExist(activeBlip) then
-            if not IsBlipShortRange(activeBlip) then
-                -- Re-enable route in case it got cleared
-                SetBlipRoute(activeBlip,       true)
-                SetBlipRouteColour(activeBlip, COLOUR_ACTIVE)
+        if ROUTE_MODE == "multi" then
+            -- Something else rendering its own GPS (a player waypoint, another
+            -- resource) switches ours off. Re-asserting the render flag is
+            -- idempotent and does not rebuild the route, so it is simply set
+            -- again rather than tested for.
+            if MultiRouteOn then SetGpsMultiRouteRender(true) end
+
+        elseif ROUTE_MODE == "blip" then
+            -- Re-assert the whole routed set, not just the active gate: the line
+            -- is several overlapping routes and any one of them can be cleared
+            -- externally, leaving it ending short of where it should.
+            local total = #CurrentCheckpoints
+            for i, blip in ipairs(AllBlips) do
+                if DoesBlipExist(blip) and not IsBlipShortRange(blip) then
+                    local rank = _aheadRank(i, CurrentCPIndex, total)
+                    if rank == 0 or (rank and ROUTE_ALL) then
+                        SetBlipRoute(blip,       true)
+                        SetBlipRouteColour(blip, ROUTE_COLOUR)
+                    end
+                end
             end
         end
 
@@ -420,8 +593,30 @@ end)
 
 local function _applyActive(idx)
     _styleBlips(idx)
+    _buildMultiRoute(idx)   -- the chained road route through the next gates
+    _buildTrail(idx)        -- optional exact-to-course dotted line
     _refreshGates()   -- swap crossed gates to their "_b" (cleared) variant
 end
+
+-- The first leg of the trail runs from the PLAYER to the active gate, so it has
+-- to be re-laid as that leg is driven or the dots pile up behind the car. Only
+-- once the car has actually covered ground: a rebuild is sixty blip handles, and
+-- doing it on a timer alone would redraw the same trail while sitting still.
+Citizen.CreateThread(function()
+    local lastAt = nil
+    while true do
+        Citizen.Wait(1200)
+        if TRAIL and _isRaceActive() and #CurrentCheckpoints > 0 then
+            local pos = GetEntityCoords(PlayerPedId())
+            if not lastAt or #(pos - lastAt) > 45.0 then
+                lastAt = pos
+                _buildTrail(CurrentCPIndex)
+            end
+        else
+            lastAt = nil
+        end
+    end
+end)
 
 -- ── Net events ─────────────────────────────────────────────────────────────
 
