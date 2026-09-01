@@ -258,8 +258,8 @@ RegisterNetEvent("SPZ:tt:cpHit", function(logicalIdx)
             s.cpTimes = {}   -- reset for the lap about to start
 
             -- A lap that won clock back off a rewind does not become a stored
-            -- line: those lines are replayed as ghost-bots and used as duel
-            -- targets, so a refunded time would seed an unbeatable ghost.
+            -- line: those lines are replayed as the time-trial ghost and used as
+            -- duel targets, so a refunded time would seed an unbeatable ghost.
             if (s.rewindCredit or 0) == 0 and GetResourceState("spz-raceline") == "started" then
                 TriggerEvent("spz-raceline:lapCompleted", src, track.name, lapTime)
             end

@@ -31,7 +31,7 @@ local RaceEvents = {
     -- showcase) — never for scoring, because the field is still incomplete.
     RACER_FINISHED  = "SPZ:racerFinished",
 
-    -- Live running order, humans + ghost-bots. Throttled separately from the
+    -- Live running order. Throttled separately from the
     -- racer HUD feed (Config.StandingsBroadcastInterval).
     STANDINGS       = "SPZ:standings",
 

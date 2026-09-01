@@ -42,6 +42,33 @@ Config.PositionBroadcastInterval = 1000   -- ms between live position updates
 -- everyone watching from outside the race.
 Config.StandingsBroadcastInterval = 2500
 
+-- ── In-world race HUD elements ────────────────────────────────────────────────
+--
+-- Two separate readouts float over the world during a race. They answer
+-- different questions and are toggled independently, because servers disagree
+-- about how much help a racing line should give:
+--
+--   TurnGuide       anchored to YOUR CAR, ahead of it. Calls the turn you make
+--                   at the next gate, plus distance and speed. This is the
+--                   corner call — it tells you what the road does.
+--
+--   CpDistancePill  anchored to the CHECKPOINT, with a stem down to the gate
+--                   point. Tells you where the gate is and how far. Useful on
+--                   unfamiliar tracks and for spotting a gate hidden behind
+--                   geometry; redundant with the guide's distance if both are on.
+--
+-- These are DEFAULTS. Either can be overridden live from server.cfg without
+-- touching this file or restarting the resource:
+--
+--   setr spz_hud_turn_guide 1
+--   setr spz_hud_cp_pill 0
+--
+-- The convar wins when it is set; otherwise the value here applies.
+Config.Hud = {
+  TurnGuide      = true,
+  CpDistancePill = false,
+}
+
 -- Overtake auto-clips. A pass triggers a real VIDEO clip recorded from the
 -- overtaker's screen via `screencapture`, uploaded to FiveManage, and posted
 -- to Discord. Recording starts the instant the pass is detected (so the clip
@@ -140,12 +167,64 @@ Config.IntermissionTime     = 30      -- seconds between races
 
 -- ── Grid ───────────────────────────────────────────────────────────────────
 -- Passed to SPZ.Math.GridPositions
--- "grid" = staggered F1 grid · "point" = everyone at the start point
-Config.SpawnMode            = "point"
-Config.PointSpawnRadius     = 0.0     -- 0 = exact same spot (safe: ghosting is
-                                      -- armed before vehicles spawn); >0 = ring
+-- "grid" = staggered F1 grid · "point" = everyone on a ring at the start point
+--
+-- This was "point" with radius 0 — every car created at IDENTICAL coordinates,
+-- on the theory that ghosting made overlap safe. It does not, and this was the
+-- cause of the grid launching cars across the map:
+--
+--   SetEntityNoCollisionEntity suppresses contact RESPONSE between two entities
+--   on the client that sets it. It does not touch the engine's interpenetration
+--   resolver, which fires when a vehicle is created or a ped is teleported into
+--   a space something else already occupies, and whose entire job is to eject
+--   whatever is overlapping. Two cars at the same coordinate are overlapping by
+--   definition, and stay overlapping for the whole race — every physics
+--   re-evaluation is another chance to be thrown.
+--
+-- Grid mode is the fix, because it removes the overlap instead of trying to
+-- survive it. Point mode is a RING, not a stack, and its radius is floored
+-- (see SPZ.Math.GridPositions) — a zero-radius ring for more than one car is
+-- not a configuration, it is the bug.
+--
+-- The two phases want opposite shapes, so they are set separately:
+--
+--   WARMUP  grid. Free-driving before the race, nothing is being won or lost,
+--           and spread-out slots are the safest way to put sixteen cars on a
+--           road at once.
+--
+--   RACE    point, radius 0 — every car on the SAME coordinate. A staggered
+--           grid hands row 1 roughly 56 metres over row 8 on a full field,
+--           which is a result decided before the lights. One point is the only
+--           genuinely equal start.
+--
+--           This works at the re-stage and NOT at creation, and the difference
+--           matters. Here the cars already exist, they are frozen either side
+--           of the teleport, and they are ghosted against each other, so
+--           nothing simulates contact while they sit stacked; on GO they simply
+--           drive through one another. The teleport must not pass clearArea —
+--           see SPZ:tpToGrid, where each arrival was booting the cars already
+--           on the line.
+--
+--           A radius above 0 turns this into a ring instead (spread but still
+--           equal-distance), floored and capped for the reasons below.
+Config.WarmupSpawnMode      = "grid"
+Config.RaceStartMode        = "point"
+
+Config.PointSpawnRadius     = 0.0     -- 0 = one point · >0 = ring of that radius
+Config.PointSpawnMaxRadius  = 12.0    -- metres; past this the ring is wider than
+                                      -- the road, so it falls back to a grid and
+                                      -- logs why. ~14 cars at the default arc.
+
 Config.GridRowSpacing       = 8.0     -- metres front-to-back (grid mode)
 Config.GridColSpacing       = 4.5     -- metres side-to-side (grid mode)
+Config.GridCarsPerRow       = 2       -- rows are what decide a race before the
+                                      -- lights: 16 cars at 2 abreast is 8 rows
+                                      -- and 56 m of stagger, at 4 abreast it is
+                                      -- 4 rows and 24 m. Raise it only as far as
+                                      -- the start line is genuinely wide.
+
+-- Fallback for anything still reading the old single-mode key.
+Config.SpawnMode            = Config.WarmupSpawnMode
 
 -- ── Safe Zone ──────────────────────────────────────────────────────────────
 -- Location players are sent after race cleanup. Set to your paddock / lobby spawn.
@@ -171,21 +250,10 @@ Config.GateRange            = 130.0
 -- GPS route colour index (GTA colour palette, 51 = bright yellow).
 Config.GpsRouteColour       = 51
 
--- ── Ghost-bots (cold-start field filler) ────────────────────────────────────
--- Thin races are backfilled with "ghost-bots": real stored human lines
--- (spz-raceline) replayed as SOLID, non-collidable cars driven by their
--- recorded timing. They fill the grid, appear in the live standings and push
--- your visible position, but grant NO rewards and do NOT affect
--- iRating/XP — humans are scored only against humans.
---
--- Requires stored lines on the track (someone must have driven it). A brand-new
--- track with zero lines simply gets no bots until one is set.
-Config.Bots = {
-  enabled     = true,
-  targetField = 6,       -- top the grid up to this many total cars
-  onlyWhenSolo = false,  -- true = bots only when you are the single human
-  labelRange  = 80.0,    -- metres within which the floating "BOT" label draws
-}
+-- Ghost-bots (the cold-start field filler that backfilled thin races with
+-- replayed stored lines) were REMOVED. The standings, the results grid, the map
+-- blips and the race board are humans only again. Ghost DUELS below and the
+-- time-trial ghost in spz-raceline are separate features and still live.
 
 -- ── Ghost duels (async PvP wagers) ──────────────────────────────────────────
 -- /duel <player|id> <track> <stake> — race an opponent's STORED best line (a
@@ -227,9 +295,11 @@ Config.ShortTrackLaps  = 3
 -- gate you scrub back past has to be re-driven at racing speed.
 Config.Rewind = {
   enabled           = true,
-  -- Paired with the respawn key in client/recover.lua (F6): a missed checkpoint
-  -- offers both, so they sit next to each other on the keyboard.
-  key               = "F5",
+  -- NOT F5: spz-carspawner owns that key, and two commands on one key both fire.
+  -- A held key wants a letter anyway — F5 was chosen to sit beside the respawn
+  -- key, which stopped being a reason once respawn moved to F4.
+  -- Registry: Docs/keybinds.md
+  key               = "B",
   bufferSeconds     = 10,     -- how far back you can scrub
   recordIntervalMs  = 66,     -- ~15 Hz history sampling
   playbackSpeedMult = 2.5,    -- scrub speed vs real time (10s buffer plays back in 4s)

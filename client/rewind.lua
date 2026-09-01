@@ -473,7 +473,7 @@ end
 
 RegisterCommand("+spz_rewind", _startRewind, false)
 RegisterCommand("-spz_rewind", _finishRewind, false)
-RegisterKeyMapping("+spz_rewind", "Race: Rewind Time", "keyboard", RCfg.key or "R")
+RegisterKeyMapping("+spz_rewind", "Race: Rewind Time", "keyboard", RCfg.key or "B")   -- registry: Docs/keybinds.md
 
 AddEventHandler("onResourceStop", function(res)
     if res == GetCurrentResourceName() and _rewinding then _finishRewind() end

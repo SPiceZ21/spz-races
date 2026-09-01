@@ -2,7 +2,7 @@
 -- Two in-race recovery keys:
 --   F4  — teleport back to the last checkpoint you crossed (missed a gate / went
 --         off-track). Points you at the next checkpoint. Race-only.
---   X   — flip the car upright if it's rolled/upside down.
+--   K   — flip the car upright if it's rolled/upside down.
 -- Both rebindable in Settings → Key Bindings.
 
 local RESPAWN_COOLDOWN = 2000   -- ms between respawns (anti-spam)
@@ -12,8 +12,13 @@ local _lastRespawn     = 0
 -- HUD PRINTS can never drift apart. These are defaults only: a player who
 -- rebinds in Settings gets the new key, but the hint still shows this one --
 -- FiveM exposes no way to read back a live command binding.
-local KEY_RESPAWN = (Config and Config.RecoverKey) or "F6"
-local KEY_FLIP    = "X"
+-- Registry: Docs/keybinds.md — check it before claiming a key.
+-- The fallback is F4, matching Config.RecoverKey. It used to be F6, which
+-- spz-leaderboard owns: a config typo would have silently double-bound it.
+local KEY_RESPAWN = (Config and Config.RecoverKey) or "F4"
+-- NOT X: ox_lib binds X to cancel its progress bar, so a flip during any
+-- progress bar cancelled the action as well as righting the car.
+local KEY_FLIP    = "K"
 
 local function inRace()
     return LocalPlayer.state.inRace == true
@@ -86,6 +91,6 @@ CreateThread(function()
     exports["spz-raceUI"]:SetKeyHints({
         respawn = KEY_RESPAWN,
         flip    = KEY_FLIP,
-        rewind  = (rw.enabled ~= false) and (rw.key or "F5") or nil,
+        rewind  = (rw.enabled ~= false) and (rw.key or "B") or nil,
     })
 end)

@@ -33,8 +33,8 @@ local function _promptMissedCheckpoint()
     _lastMissAt = now
 
     local rewindKey  = (Config and Config.Rewind and Config.Rewind.enabled ~= false)
-                       and (Config.Rewind.key or "F5") or nil
-    local respawnKey = (Config and Config.RecoverKey) or "F6"
+                       and (Config.Rewind.key or "B") or nil
+    local respawnKey = (Config and Config.RecoverKey) or "F4"
 
     -- Rewind can be disabled server-side; do not offer a key that does nothing.
     local msg = rewindKey
@@ -74,9 +74,16 @@ Citizen.CreateThread(function()
                 else
                     if missed then _promptMissedCheckpoint() end
                     -- Poll fast when close so a fast car can't tunnel the plane.
+                    -- The 40 m band is set to sit OUTSIDE cp_cross's tracking
+                    -- corridor (50 m deep, plus lateral slack): the whole
+                    -- corridor has to be sampled at 20 ms or better, because a
+                    -- 100 ms poll covers five metres at racing speed and a car
+                    -- could enter the corridor and cross the plane inside a
+                    -- single sample. Widen one without the other and gates start
+                    -- being missed at speed.
                     local dx, dy = pos.x - cp.coords.x, pos.y - cp.coords.y
                     local dist   = math.sqrt(dx*dx + dy*dy)
-                    Citizen.Wait(dist > 80 and 100 or dist > 30 and 20 or 0)
+                    Citizen.Wait(dist > 120 and 100 or dist > 40 and 20 or 0)
                 end
             else
                 Citizen.Wait(100)
