@@ -409,6 +409,20 @@ RegisterNetEvent("SPZ:lapComplete", function(lapNum, lapTime)
     })
 end)
 
+-- Session fastest lap. Broadcast to everyone in the race, so the banner shows
+-- both "you took it" and "someone else did" — a purple lap you cannot see
+-- being beaten is half a feature.
+RegisterNetEvent("SPZ:fastestLap", function(payload)
+    if GetResourceState("spz-raceUI") ~= "started" then return end
+    if type(payload) ~= "table" then return end
+
+    exports["spz-raceUI"]:ShowFastestLap({
+        name = payload.name,
+        ms   = payload.ms,
+        mine = payload.source == GetPlayerServerId(PlayerId()),
+    })
+end)
+
 local _lastPosBroadcast = 0
 local _lastPosVersion   = 0
 

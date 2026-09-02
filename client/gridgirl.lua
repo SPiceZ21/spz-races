@@ -24,16 +24,24 @@ local WALK_IN_SIDE   = 9.0   -- metres off to the side she starts from
 local WALK_IN_AHEAD  = 4.0   -- ...and how far up the road, so she crosses in
 local MARK_AHEAD     = 6.0   -- her mark, up the road from the start line
 
--- The walk is fitted to the time available rather than run at a fixed speed:
--- the start sequence is configurable (Config.StagingTimeSeconds +
--- Config.CountdownSeconds) and a fixed 1.2 m/s stroll simply did not arrive in
--- time on a short one — she was still walking when the lights went out.
+-- The walk is fitted to the time available: the server says when GO is, the
+-- wind-up is reserved out of that, and whatever is left is the walk.
 --
--- So the server says when GO is, the wind-up is reserved out of that, and
--- whatever is left is the walk. The speed is clamped at both ends: too slow
--- and she drifts, too fast and a walk cycle turns into a moonwalk.
-local WALK_SPEED_MIN = 0.9
-local WALK_SPEED_MAX = 2.2
+-- She kept missing her mark and getting snapped to it, for two reasons that had
+-- nothing to do with the timing arithmetic:
+--
+--   * config flag 17 ("never leaves its assigned area") was being set at spawn,
+--     which is at the SIDE of the road. It pinned her to the exact spot she was
+--     meant to walk away from. It is now set on arrival instead.
+--   * a movement task issued in the same frame as CreatePed is dropped on the
+--     floor. There is a short settle before the task is given.
+--
+-- Pacing is still budgeted rather than exact, because the walk is not a
+-- metronome — the ped steers around obstacles and the arrival test has a radius
+-- of its own — so she aims to be there in WALK_BUDGET of the window and the
+-- remainder is slack she is welcome not to need.
+local WALK_BUDGET    = 0.7     -- fraction of the window the walk is paced for
+local ARRIVE_RADIUS  = 1.5     -- close enough to be standing on her mark
 local ARRIVE_MARGIN_MS = 700   -- settle on the mark before the wind-up starts
 
 -- `grid_girl_race_start` is 72.6 seconds / 1480 frames: a whole performance —
@@ -61,6 +69,13 @@ local ANIM_FALLBACK  = 72.6    -- clip length, if GetAnimDuration is unavailable
 
 local girl = nil
 local flagTimer = nil          -- token for the pending swing, so a restart cancels it
+
+-- Bumped every time a grid forms. The spawn runs on a thread that waits for
+-- assets and collision, so a second SPZ:gridFormed arriving during that wait
+-- used to leave TWO setup threads driving the same global: one spawning a ped
+-- while the other walked it, which reads on screen as the girl flickering.
+-- Each thread checks the generation it started with and bails if it is stale.
+local generation = 0
 
 local function heldEntity(e) return e and e ~= 0 and DoesEntityExist(e) end
 
@@ -103,6 +118,9 @@ RegisterNetEvent("SPZ:gridFormed", function(data)
     if not data or not data.coords then return end
     cleanup()
 
+    generation = generation + 1
+    local myGen = generation
+
     local c   = data.coords
     local rad = math.rad(data.heading or 0.0)
     local forward = vec3(-math.sin(rad), math.cos(rad), 0.0)
@@ -117,12 +135,27 @@ RegisterNetEvent("SPZ:gridFormed", function(data)
     local goAt = GetGameTimer() + (tonumber(data.goInMs) or 14000)
 
     Citizen.CreateThread(function()
+        local function stale() return generation ~= myGen end
+
         if not loadAssets() then
             print("^3[spz-races] Flag girl assets did not stream in — skipping.^7")
             return
         end
 
         local ex, ey = entry.x, entry.y
+
+        -- Ask for the world around her entry point BEFORE spawning her. Without
+        -- it the ground query answers against whatever happens to be streamed,
+        -- so she is created at the wrong height and visibly snaps once the real
+        -- surface arrives — the flicker as she appears.
+        RequestCollisionAtCoord(ex, ey, entry.z)
+        local collisionBy = GetGameTimer() + 1500
+        while not HasCollisionLoadedAroundEntity(PlayerPedId()) and GetGameTimer() < collisionBy do
+            Citizen.Wait(50)
+        end
+
+        if stale() then return end
+
         local ez = groundZ(ex, ey, entry.z)
 
         girl = CreatePed(4, PED_MODEL, ex, ey, ez, 0.0, false, false)
@@ -136,9 +169,19 @@ RegisterNetEvent("SPZ:gridFormed", function(data)
         SetBlockingOfNonTemporaryEvents(girl, true)
         SetPedCanRagdoll(girl, false)
         SetPedCanBeTargetted(girl, false)
-        SetPedConfigFlag(girl, 17, true)    -- never leaves its assigned area
         SetPedConfigFlag(girl, 128, true)   -- ignores combat / danger reactions
         SetEntityNoCollisionEntity(girl, PlayerPedId(), true)
+
+        -- NOT config flag 17 ("never leaves its assigned area") — not here.
+        -- Her assigned area is where she spawned, at the SIDE of the road, so
+        -- setting it before the walk pinned her to the spot she was supposed to
+        -- walk away from. It goes on once she is on her mark, where keeping her
+        -- put is actually what is wanted.
+
+        -- The ped needs a frame or two after creation before it will accept a
+        -- movement task; issuing one immediately is quietly dropped.
+        Citizen.Wait(200)
+        if stale() or not heldEntity(girl) then return end
 
         -- Only the WIND-UP is reserved, never the whole clip — see the note on
         -- FLAG_LEAD_MS. Whatever is left over is the walk.
@@ -154,23 +197,30 @@ RegisterNetEvent("SPZ:gridFormed", function(data)
 
         local arrived = false
         if walkMs > 800 then
-            local speed = walkDist / (walkMs / 1000)
-            if speed < WALK_SPEED_MIN then speed = WALK_SPEED_MIN end
-            if speed <= WALK_SPEED_MAX then
-                TaskGoStraightToCoord(girl, mx, my, mz, speed, -1, 0.0, 0.0)
+            -- TaskGoStraightToCoord's speed argument is a MOVE RATE, not metres
+            -- per second: 1.0 is a walk, 2.0 a run. Feeding it a computed m/s
+            -- figure was meaningless — it happened to land near 1.2, which is
+            -- why she moved at all, and why no amount of adjusting the number
+            -- fixed the arrival. Pick the gait that covers the distance instead.
+            local WALK_RATE, RUN_RATE = 1.0, 2.0
+            local WALK_MPS = 1.4           -- roughly what rate 1.0 covers
+            local rate = (walkDist / WALK_MPS) * 1000 <= (walkMs * WALK_BUDGET)
+                         and WALK_RATE or RUN_RATE
 
-                -- Hold until she is there or her share of the window is spent.
-                local arriveBy = GetGameTimer() + walkMs
-                while heldEntity(girl) and GetGameTimer() < arriveBy do
-                    if #(GetEntityCoords(girl) - vec3(mx, my, mz)) < 1.0 then
-                        arrived = true
-                        break
-                    end
-                    Citizen.Wait(100)
+            TaskGoStraightToCoord(girl, mx, my, mz, rate, walkMs, 0.0, 0.0)
+
+            -- Hold until she is there or her share of the window is spent.
+            local arriveBy = GetGameTimer() + walkMs
+            while heldEntity(girl) and GetGameTimer() < arriveBy do
+                if stale() then return end
+                if #(GetEntityCoords(girl) - vec3(mx, my, mz)) < ARRIVE_RADIUS then
+                    arrived = true
+                    break
                 end
+                Citizen.Wait(100)
             end
         end
-        if not heldEntity(girl) then return end
+        if stale() or not heldEntity(girl) then return end
 
         -- On the mark and facing back down the grid: she came from up the road,
         -- so her heading is the start heading reversed. Snapped rather than
@@ -179,6 +229,8 @@ RegisterNetEvent("SPZ:gridFormed", function(data)
         ClearPedTasks(girl)
         SetEntityCoordsNoOffset(girl, mx, my, mz, false, false, false)
         SetEntityHeading(girl, ((data.heading or 0.0) + 180.0) % 360.0)
+        -- Now that her mark IS her assigned area, pin her to it.
+        SetPedConfigFlag(girl, 17, true)
         if not arrived and walkMs > 800 then
             print("^3[spz-races] Flag girl did not reach her mark in time — snapped to it.^7")
         end
@@ -228,10 +280,24 @@ RegisterNetEvent("SPZ:gridFormed", function(data)
     end)
 end)
 
--- GO. The swing is already running and lands about now; all that is left is to
--- take her off the road once the field has gone past.
+-- GO. The swing is already running and lands about now.
+--
+-- She is standing in the lane the split grid opens up, which is precisely where
+-- sixteen cars are about to accelerate. Solid, she is a bollard in the middle of
+-- the launch: the field piles into her. Invincible and ragdoll-proof stops HER
+-- being hurt and does nothing for the cars hitting her.
+--
+-- So collision comes off at the moment the field is released. Up to here she
+-- needed it — it is what let her walk on the road rather than through it — and
+-- from here nobody should be able to touch her at all. Frozen at the same time
+-- so that losing collision cannot drop her through the world in the seconds
+-- before she is removed.
 RegisterNetEvent("SPZ:go", function()
     if not heldEntity(girl) then return end
+
+    SetEntityCollision(girl, false, false)
+    FreezeEntityPosition(girl, true)
+
     Citizen.SetTimeout(5000, cleanup)
 end)
 

@@ -2,7 +2,9 @@
 -- The camera move that opens a race.
 --
 -- Runs from the moment the grid is formed to the moment the lights go out: a
--- slow push down the centre line toward the front of the field, then a blend
+-- slow push in from BEHIND the field, up the centre line and toward the flag
+-- girl, settling just behind the grid — where the player's own car sits in the
+-- foreground and she is framed beyond it, both in one clean shot. Then a blend
 -- back into the driver's own view on GO. The player is frozen for all of it
 -- (SPZ:freezeRacer is asserted before SPZ:gridFormed is sent), so nothing is
 -- taken away from them that they had — the alternative is staring at a
@@ -17,14 +19,28 @@
 --     and the race starts underneath it; a camera still interpolating is
 --     cosmetic, a countdown that waits for one is not.
 
-local CAM_HEIGHT_START = 3.2    -- metres up at the wide end
-local CAM_HEIGHT_END   = 1.35   -- ...and at the close end, roughly bonnet height
-local CAM_BACK_START   = 22.0   -- metres up the road, ahead of the grid
-local CAM_BACK_END     = 9.0
-local CAM_SIDE         = 4.5    -- offset off the centre line, so the shot is
-                                -- three-quarter rather than dead-on
-local FOV_START        = 50.0
-local FOV_END          = 38.0
+-- The move runs from behind the field to just behind it, travelling FORWARD up
+-- the centre line toward the flag girl. Offsets are in the grid's own frame:
+-- +forward is down the track, +right is the passenger side.
+--
+-- It used to run the other way — starting up the road ahead of the grid and
+-- looking back at it — which framed the field but put the flag girl's back to
+-- the camera and never showed what the driver was about to look at. Coming in
+-- from behind instead means the car is always in the foreground and she is
+-- always beyond it, which is the shot: car, road, starter.
+local CAM_FWD_START    = -20.0  -- metres BEHIND the grid at the wide end
+local CAM_FWD_END      = -5.0   -- ...and where it settles, just off the tail
+local CAM_HEIGHT_START = 5.5    -- high and back, looking over the field
+local CAM_HEIGHT_END   = 1.9    -- down to just above roof height
+local CAM_SIDE_START   = 3.0    -- slight three-quarter, not dead-on...
+local CAM_SIDE_END     = 1.6    -- ...easing toward the centre line as it closes
+local FOV_START        = 55.0
+local FOV_END          = 42.0
+
+-- Where she stands, from client/gridgirl.lua (MARK_AHEAD). The camera looks at
+-- her the whole way in, so the two files have to agree on where she is.
+local GIRL_AHEAD       = 6.0
+local LOOK_HEIGHT      = 1.1    -- chest height on her mark
 
 -- The push is NOT a fixed length. It runs the whole window the server gives
 -- (staging + countdown), so it arrives at its closest framing exactly as the
@@ -63,15 +79,16 @@ RegisterNetEvent("SPZ:gridFormed", function(data)
     local forward = vec3(-math.sin(rad), math.cos(rad), 0.0)
     local right   = vec3(math.cos(rad), math.sin(rad), 0.0)
 
-    -- Both framings look back down the road at the grid from up ahead — the
-    -- same direction the flag girl faces, so she is in shot on the way past.
-    local wide  = c + (forward * CAM_BACK_START) + (right * CAM_SIDE) + vec3(0.0, 0.0, CAM_HEIGHT_START)
-    local close = c + (forward * CAM_BACK_END)   + (right * (CAM_SIDE * 0.6)) + vec3(0.0, 0.0, CAM_HEIGHT_END)
+    -- Both framings sit BEHIND the grid and look forward past it, so the move
+    -- is a push in toward the start line rather than a pull back off it.
+    local wide  = c + (forward * CAM_FWD_START) + (right * CAM_SIDE_START) + vec3(0.0, 0.0, CAM_HEIGHT_START)
+    local close = c + (forward * CAM_FWD_END)   + (right * CAM_SIDE_END)   + vec3(0.0, 0.0, CAM_HEIGHT_END)
 
-    -- Aimed at the grid itself rather than at the player's own car: on a split
-    -- grid the two packs straddle the centre line, and pointing at one of them
-    -- puts the other out of frame.
-    local look = c + vec3(0.0, 0.0, 1.0)
+    -- Aimed at the flag girl on her mark, which is also straight up the centre
+    -- line: on a split grid the two packs straddle that line, so both are in
+    -- frame on the way in, and the shot settles on the person about to start
+    -- the race.
+    local look = c + (forward * GIRL_AHEAD) + vec3(0.0, 0.0, LOOK_HEIGHT)
 
     camA = CreateCamWithParams("DEFAULT_SCRIPTED_CAMERA",
         wide.x, wide.y, wide.z, 0.0, 0.0, 0.0, FOV_START, false, 0)
