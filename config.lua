@@ -71,10 +71,18 @@ Config.WarmupTimeSeconds    = 90      -- free-drive after TP before countdown (0
                                       -- tuner menu (/savecustom etc.) to set up their car
 
 -- ── Countdown ──────────────────────────────────────────────────────────────
-Config.StagingTimeSeconds   = 3       -- brief SILENT grid settle after warmup TP-back
+-- Staging is also the START SEQUENCE window: the grid is formed and frozen,
+-- the camera is pushing down the centre line and the flag girl is walking out
+-- to her mark. At 3 seconds none of that could land — she was still walking
+-- when the lights went out and the camera move was longer than the phase that
+-- contained it. Everything downstream is timed off (staging + countdown), so
+-- this is the one number to change if the intro should breathe more.
+Config.StagingTimeSeconds   = 9       -- silent grid settle + start-sequence run-up
                                       -- (no on-screen count; keeps players frozen while
                                       --  the TP settles, then the 3-2-1-GO plays)
-Config.CountdownSeconds     = 3       -- 3-2-1-GO
+Config.CountdownSeconds     = 5       -- 5-4-3-2-1-GO. Long enough for the flag
+                                      -- girl's swing to read as the start
+                                      -- signal rather than a shrug after it.
 
 -- ── Race ───────────────────────────────────────────────────────────────────
 Config.RaceTimeout          = 3600000  -- 60 minutes — DNF anyone not finished (was 5 mins)
@@ -253,8 +261,38 @@ Config.IntermissionTime     = 30      -- seconds between races
 --
 --           A radius above 0 turns this into a ring instead (spread but still
 --           equal-distance), floored and capped for the reasons below.
+--           SPLIT is that idea in two: the field halves onto two points set
+--           side by side, eight and eight on a full grid, with a lane down the
+--           middle. Every car in a pack still covers the same distance as its
+--           pack-mates and the two packs are level with each other, so the
+--           start stays fair — and the open centre is where the flag girl
+--           stands (client/gridgirl.lua). Same stacking rules as point mode,
+--           and the same reason it is only safe at the re-stage.
 Config.WarmupSpawnMode      = "grid"
-Config.RaceStartMode        = "point"
+Config.RaceStartMode        = "split"
+
+-- Metres between the two start points in split mode. Wide enough to walk
+-- between and be seen from both packs; narrow enough to stay on the road.
+Config.SplitPointGap        = 7.0
+
+-- ── Flag girl ──────────────────────────────────────────────────────────────
+-- The ped who starts the race from the lane the split grid opens up
+-- (client/gridgirl.lua). She walks out during staging and drops the field away
+-- on GO.
+--
+-- `random@street_race / grid_girl_race_start` is 72.6 seconds and 1480 frames:
+-- a full performance, with the actual drop somewhere inside it rather than at
+-- the end. To land that drop on the lights the client has to enter the clip
+-- part way through, which means knowing WHERE the drop is — and that cannot be
+-- read off the animation file, only watched.
+--
+-- Set this to the time in seconds at which her arms come down. Run /flagdrop
+-- <seconds> in game to scrub the clip until you see it; the command prints the
+-- phase for each offset.
+--
+-- Left nil she performs the clip from the top through the whole run-up, which
+-- looks right but is not synchronised to the countdown.
+Config.FlagAnimDropTime     = nil
 
 Config.PointSpawnRadius     = 0.0     -- 0 = one point · >0 = ring of that radius
 Config.PointSpawnMaxRadius  = 12.0    -- metres; past this the ring is wider than

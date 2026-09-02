@@ -27,6 +27,7 @@ function LB_GetRaceArchive(limit, page)
                rs.player_count, rs.duration_ms, rs.created_at,
                w.username     AS winner_name,
                w.avatar_url   AS winner_avatar,
+               w.rank         AS winner_rank,
                rr.finish_time AS winner_time
         FROM race_sessions rs
         LEFT JOIN race_results rr
@@ -52,6 +53,7 @@ function LB_GetRaceArchive(limit, page)
             raced_at     = r.created_at or "",
             winner       = r.winner_name,          -- nil when nobody finished
             winner_avatar = r.winner_avatar,
+            winner_rank  = r.winner_rank,          -- "S-1" … "C-5", drives the UI badge
             winner_time  = r.winner_time,
         }
     end
@@ -84,7 +86,7 @@ function LB_GetRaceResults(raceId)
         SELECT rr.position, rr.finish_time, rr.best_lap, rr.lap_times,
                rr.points_earned, rr.sr_change, rr.irating_change, rr.xp_earned,
                rr.personal_best, rr.dnf, rr.dnf_reason,
-               p.id AS player_id, p.username, p.avatar_url
+               p.id AS player_id, p.username, p.avatar_url, p.rank
         FROM race_results rr
         JOIN players p ON p.id = rr.player_id
         WHERE rr.race_id = ?
@@ -109,6 +111,7 @@ function LB_GetRaceResults(raceId)
             player_id      = r.player_id,
             name           = r.username or "Racer",
             avatar         = r.avatar_url,
+            rank_title     = r.rank,
             finish_time    = r.finish_time,
             best_lap       = r.best_lap,
             lap_times      = laps,

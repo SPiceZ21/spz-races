@@ -62,6 +62,8 @@ server_scripts {
 
 client_scripts {
   'client/main.lua',
+  'client/gridgirl.lua',
+  'client/startcam.lua',
   'client/checkpoints.lua',
   'client/cp_cross.lua',
   'client/hit_detector.lua',

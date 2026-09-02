@@ -48,6 +48,47 @@ function SPZ.Math.GridPositions(origin, heading, count, rowSpacing, colSpacing, 
     local grid = {}
     mode = mode or (Config and Config.SpawnMode) or "grid"
 
+    -- Split mode: TWO start points side by side, half the field on each.
+    --
+    -- A sixteen-car field is eight cars on the left point and eight on the
+    -- right, with a gap down the middle wide enough for the flag girl to stand
+    -- in (see client/gridgirl.lua). It is point mode twice over, so it inherits
+    -- point mode's guarantee — every car in a pack covers the same distance —
+    -- while keeping the two halves clear of each other and leaving the centre
+    -- line open.
+    --
+    -- Each pack is placed by delegating back to point mode about its own
+    -- centre, so the radius rules, the ring fallback and the "radius 0 stacks
+    -- them, and that is only safe at the re-stage" contract all live in exactly
+    -- one place rather than being restated here.
+    if mode == "split" then
+        local gap = (Config and Config.SplitPointGap) or 6.0
+        local rad = math.rad(heading)
+        local right = vec3(math.cos(rad), math.sin(rad), 0.0)
+
+        -- Odd fields put the extra car on the left pack; nothing rides on which
+        -- side that is, only that the two halves stay within one of each other.
+        local leftCount  = math.ceil(count / 2)
+        local rightCount = count - leftCount
+
+        local packs = {
+            { origin = origin - (right * (gap / 2)), count = leftCount  },
+            { origin = origin + (right * (gap / 2)), count = rightCount },
+        }
+
+        for _, pack in ipairs(packs) do
+            if pack.count > 0 then
+                local slots = SPZ.Math.GridPositions(
+                    pack.origin, heading, pack.count, rowSpacing, colSpacing, "point")
+                for _, slot in ipairs(slots) do
+                    grid[#grid + 1] = slot
+                end
+            end
+        end
+
+        return grid
+    end
+
     -- Point mode: everyone spawns around the start point instead of on a
     -- staggered grid. Slots fan out on a ring — visually "all at the point",
     -- physically non-overlapping.

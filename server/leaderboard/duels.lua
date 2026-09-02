@@ -15,8 +15,10 @@ function LB_GetDuelFeed(limit)
             d.created_at, d.settled_at,
             c.username   AS challenger,
             c.avatar_url AS challenger_avatar,
+            c.rank       AS challenger_rank,
             o.username   AS opponent,
-            o.avatar_url AS opponent_avatar
+            o.avatar_url AS opponent_avatar,
+            o.rank       AS opponent_rank
           FROM duels d
           JOIN players c ON c.id = d.challenger_id
           JOIN players o ON o.id = d.opponent_id
@@ -41,8 +43,10 @@ function LB_GetDuelFeed(limit)
             margin_ms         = result and (target - result) or nil,   -- +ve = challenger faster
             challenger        = r.challenger or "Racer",
             challenger_avatar = r.challenger_avatar,
+            challenger_rank   = r.challenger_rank,
             opponent          = r.opponent or "Racer",
             opponent_avatar   = r.opponent_avatar,
+            opponent_rank     = r.opponent_rank,
             created_at        = r.created_at,
             settled_at        = r.settled_at,
         }

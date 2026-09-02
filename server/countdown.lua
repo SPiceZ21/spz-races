@@ -136,6 +136,9 @@ local function _runThreeTwoOne()
         for source, data in pairs(RaceSession.players) do
             TriggerClientEvent("SPZ:countdown", source, {
                 seconds = remaining,
+                -- Length of the whole count, so the HUD can draw a staging
+                -- tree with one lamp per second instead of assuming three.
+                totalSeconds = Config.CountdownSeconds or 5,
                 track   = RaceSession.track.name,
                 class   = type(RaceSession.carClass) == "table" and RaceSession.carClass.name or tostring(RaceSession.carClass),
                 laps    = RaceSession.track.laps,
@@ -157,6 +160,33 @@ function StartCountdownSequence()
     -- Freeze all players at their grid positions
     for source, _ in pairs(RaceSession.players) do
         TriggerClientEvent("SPZ:freezeRacer", source, true)
+    end
+
+    -- The grid is formed and nobody can move: hand the clients the centre line
+    -- so the flag girl can walk out to it and the start camera can frame it.
+    --
+    -- Sent once, here, rather than on every countdown tick — it is a property
+    -- of the grid, not of the clock, and the walk-in has to start well before
+    -- the last three seconds to land on time.
+    local startCoords  = RaceSession.track.start_coords
+    local startHeading = RaceSession.startHeading or RaceSession.track.start_heading or 0.0
+
+    -- How long until the lights go out, from THIS moment. Everything in the
+    -- start sequence is timed backwards off this single number rather than
+    -- each piece guessing its own duration: the camera push lands on GO, and
+    -- the flag girl's walk and swing are fitted into what is left. Change the
+    -- two config values and the whole sequence re-times itself.
+    local goInMs = ((Config.StagingTimeSeconds or 9) + (Config.CountdownSeconds or 5)) * 1000
+
+    for source, data in pairs(RaceSession.players) do
+        TriggerClientEvent("SPZ:gridFormed", source, {
+            coords    = startCoords,
+            heading   = startHeading,
+            goInMs    = goInMs,
+            staging   = Config.StagingTimeSeconds or 9,
+            countdown = Config.CountdownSeconds or 5,
+            gridPos   = data.gridIndex or 0,
+        })
     end
 
     Citizen.CreateThread(function()

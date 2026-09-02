@@ -49,6 +49,12 @@ function SetupRaceWorld()
         print(string.format("[World Setup] Computed start heading: %.1f°", startHeading))
     end
 
+    -- Kept on the session because the countdown needs the same centre line the
+    -- grid was built around: the flag girl walks to it and the start camera
+    -- frames it. Recomputing the heading there would risk the two drifting
+    -- apart on a track that has no explicit start_heading.
+    RaceSession.startHeading = startHeading
+
     -- Two placements, because the two phases want opposite things.
     --
     -- WARMUP spreads the field over a staggered grid: nothing is being won yet
@@ -73,7 +79,7 @@ function SetupRaceWorld()
         #playersInOrder,
         Config.GridRowSpacing or 8.0,
         Config.GridColSpacing or 4.5,
-        Config.RaceStartMode or "point"
+        Config.RaceStartMode or "split"
     )
 
     -- Warmup slots are what the cars are CREATED on, so this is the one the
