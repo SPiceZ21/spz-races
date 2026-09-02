@@ -133,6 +133,24 @@ local function HandleCheckpointAdvance(source, pData)
                 pData.best_lap = lapTime
             end
 
+            -- Session fastest lap, across the whole field. Nothing tracked this
+            -- before, so the quickest lap of a race was a number nobody was
+            -- ever told: it existed in each driver's own overlay as "PB" and
+            -- nowhere else. A rewound lap is excluded for the same reason the
+            -- raceline capture excludes it — part of that time was refunded.
+            if not lapRewound and (not RaceSession.fastestLap or lapTime < RaceSession.fastestLap) then
+                RaceSession.fastestLap   = lapTime
+                RaceSession.fastestLapBy = pData.name
+
+                for target in pairs(RaceSession.players) do
+                    TriggerClientEvent("SPZ:fastestLap", target, {
+                        name   = pData.name,
+                        ms     = lapTime,
+                        source = source,
+                    })
+                end
+            end
+
             print(string.format("[Race] %s lap %d done in %d ms", pData.name, pData.current_lap - 1, lapTime))
             TriggerClientEvent("SPZ:lapComplete", source, pData.current_lap - 1, lapTime)
 
