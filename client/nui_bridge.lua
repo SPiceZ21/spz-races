@@ -72,6 +72,7 @@ RegisterNetEvent("SPZ:countdown", function(data)
     if GetResourceState("spz-raceUI") ~= "started" then return end
     exports["spz-raceUI"]:ShowCountdown({
         number  = data.seconds,
+        totalSeconds = data.totalSeconds,
         isGo    = false,
         track   = data.track,
         class   = data.class,

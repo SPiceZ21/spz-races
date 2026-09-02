@@ -116,7 +116,8 @@ function LB_GetActivityFeed(limit)
     if cached then return cached end
 
     local rows = MySQL.query.await(
-        [[SELECT p.username AS player, p.avatar_url AS avatar, rs.track AS detail,
+        [[SELECT p.username AS player, p.avatar_url AS avatar, p.rank AS rank_title,
+                 rs.track AS detail, rs.car_class,
                  rr.position, rr.created_at AS timestamp
           FROM race_results rr
           JOIN players p        ON p.id      = rr.player_id
@@ -130,8 +131,12 @@ function LB_GetActivityFeed(limit)
     for _, row in ipairs(rows) do
         local action = row.position == 1 and "won a race at" or ("finished P" .. row.position .. " at")
         table.insert(feed, {
-            player    = row.player or "Racer",
-            avatar    = row.avatar,
+            player     = row.player or "Racer",
+            avatar     = row.avatar,
+            rank_title = row.rank_title,
+            car_class  = type(row.car_class) == "number"
+                         and (LBConfig.TierToClass[row.car_class] or "D")
+                         or row.car_class,
             action    = action,
             detail    = row.detail or "Track",
             title     = (row.player or "Racer") .. " " .. action .. " " .. (row.detail or "Track"),
