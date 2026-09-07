@@ -57,7 +57,22 @@ Config.CpBlips = {
     trailSpacing = 28.0,
     trailMax     = 60,
     trailColour  = 17,
-    trailScale   = 0.26,
+    -- Dot size for the dotted course line. Sized against trailSpacing: at 28 m
+    -- apart these read as a line of distinct dots. Push the dots much past this
+    -- without opening the spacing up as well and the line closes into a solid
+    -- smear that hides the road under it.
+    trailScale   = 0.45,
+
+    -- Gate marker sizes on the minimap. These are a LADDER, not five
+    -- independent dials: the descending order is what tells a driver at speed
+    -- which gate is next. Scale them together, or the cue goes away.
+    scale = {
+        active  = 1.55,   -- the gate you are driving at
+        near    = 1.20,   -- the one after it
+        ahead   = 0.98,   -- two gates ahead
+        pending = 0.82,   -- the rest of the course, as context
+        finish  = 2.00,   -- the line
+    },
 }
 
 -- ── Cycle ──────────────────────────────────────────────────────────────────

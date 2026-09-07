@@ -86,17 +86,23 @@ local TRAIL         = CPB.trail == true          -- opt-in dotted course line
 local TRAIL_SPACING = CPB.trailSpacing or 28.0   -- metres between trail dots
 local TRAIL_MAX     = CPB.trailMax or 60         -- hard cap on dots (blip budget)
 local TRAIL_COLOUR  = CPB.trailColour or 17
-local TRAIL_SCALE   = CPB.trailScale or 0.26
+local TRAIL_SCALE   = CPB.trailScale or 0.45
 
 -- Gates past the lookahead: dim dots by default, so the rest of the track sits
 -- on the map as context. hideFar = true drops them entirely.
 local HIDE_FAR      = CPB.hideFar == true
 
-local SCALE_ACTIVE  = 1.1
-local SCALE_NEAR    = 0.85
-local SCALE_AHEAD   = 0.72   -- two gates ahead
-local SCALE_PENDING = 0.6
-local SCALE_FINISH  = 1.5
+-- Gate sizes. The ORDER matters more than any single value: active > near >
+-- ahead > pending is how the map says which gate is next without you reading
+-- the numbers on them, and the finish sits above all of it. Raising one of
+-- these past the tier above it flattens that, so move the whole ladder rather
+-- than one rung.
+local CPS           = CPB.scale or {}
+local SCALE_ACTIVE  = CPS.active  or 1.55
+local SCALE_NEAR    = CPS.near    or 1.20
+local SCALE_AHEAD   = CPS.ahead   or 0.98   -- two gates ahead
+local SCALE_PENDING = CPS.pending or 0.82
+local SCALE_FINISH  = CPS.finish  or 2.00
 
 
 -- ── Helpers ────────────────────────────────────────────────────────────────
