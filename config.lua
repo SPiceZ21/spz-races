@@ -53,7 +53,7 @@ Config.CpBlips = {
     routeColour    = 17,
     hideFar        = false,
 
-    trail        = false,
+    trail        = true,
     trailSpacing = 28.0,
     trailMax     = 60,
     trailColour  = 17,
