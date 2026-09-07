@@ -232,7 +232,6 @@ RegisterNetEvent("SPZ:tt:cpHit", function(logicalIdx)
         s.phase      = "ACTIVE"
         s.currentCp  = 2
         s.cpTimes    = {}
-        s.rewindCredit = 0            -- per-lap credit budget resets with the lap
         TT_StartSectorClock(s, now)
 
         TriggerClientEvent("SPZ:tt:LapStarted", src, {
@@ -257,10 +256,19 @@ RegisterNetEvent("SPZ:tt:cpHit", function(logicalIdx)
             end
             s.cpTimes = {}   -- reset for the lap about to start
 
-            -- A lap that won clock back off a rewind does not become a stored
-            -- line: those lines are replayed as the time-trial ghost and used as
-            -- duel targets, so a refunded time would seed an unbeatable ghost.
-            if (s.rewindCredit or 0) == 0 and GetResourceState("spz-raceline") == "started" then
+            -- Every TT lap is eligible: rewind does not run in this mode, so no
+            -- lap here can carry refunded time into a stored line, the ghost or
+            -- a duel target.
+            --
+            -- The skip is announced to the driver. This hand-off is the one
+            -- link in the chain that spz-raceline cannot report on — if it never
+            -- fires, that resource has nothing to say and the lap just quietly
+            -- fails to save, which is indistinguishable from it being ignored.
+            local rlState = GetResourceState("spz-raceline")
+            if rlState ~= "started" then
+                TriggerClientEvent("spz-raceline:lapVerdict", src, track.name,
+                    ("spz-raceline is '%s', not started — lap not offered"):format(tostring(rlState)))
+            else
                 TriggerEvent("spz-raceline:lapCompleted", src, track.name, lapTime)
             end
 
@@ -306,7 +314,6 @@ RegisterNetEvent("SPZ:tt:cpHit", function(logicalIdx)
         s.lapStart   = now
         s.phase      = "ACTIVE"
         s.currentCp  = 1
-        s.rewindCredit = 0            -- per-lap credit budget resets with the lap
         TT_StartSectorClock(s, now)
 
         TriggerClientEvent("SPZ:tt:LapStarted", src, {
@@ -326,73 +333,10 @@ RegisterNetEvent("SPZ:tt:cpHit", function(logicalIdx)
     TriggerClientEvent("SPZ:tt:NextCp", src, s.currentCp, _phys(s, s.currentCp))
 end)
 
--- ── Net: rewind rollback — client scrubbed back before its last CP hit ───────
--- Backward-only and clamped here regardless of what the client claims: this
--- can only push currentCp EARLIER (more of the lap to re-drive), never skip
--- one, so a stale or spoofed target is a harmless no-op at worst.
-RegisterNetEvent("SPZ:tt:rewindCheckpoint", function(targetCp)
-    local src = source
-    local s   = TT[src]
-    if not s then return end
-
-    targetCp = tonumber(targetCp)
-    if not targetCp or targetCp < 1 or targetCp >= s.currentCp then return end
-
-    s.currentCp = targetCp
-    TriggerClientEvent("SPZ:tt:NextCp", src, targetCp, _phys(s, targetCp))
-end)
-
--- ── Net: rewind clock credit — the lap timer scrubs back with the car ────────
--- The client scrubbed `ms` of driving away, so the same `ms` comes off the lap
--- clock: the car and its time land on the same moment. Clamped hard here since
--- this number reaches the leaderboard:
---   • one claim can never exceed the history buffer (× the credit factor)
---   • the running total per lap is capped at maxCreditPerLapMs
---   • lapStart can never move past now, so elapsed stays >= 0
--- A credit only ever gives back time the player already spent driving, so no
--- lap can come out shorter than the driving actually done.
--- Ceiling for a SINGLE scrub: the whole history buffer, plus the real time it
--- takes to play that buffer back at the scrub speed (the clock is put back on
--- the car's moment, so both halves count), plus a second of slack.
-local function _maxRewindCredit(cfg, factor)
-    local bufMs = (cfg.bufferSeconds or 10) * 1000
-    local mult  = math.max(0.1, cfg.playbackSpeedMult or 2.5)
-    return math.floor((bufMs * (1.0 + 1.0 / mult) + 1000) * factor)
-end
-
-RegisterNetEvent("SPZ:tt:rewindTime", function(ms)
-    local src = source
-    local s   = TT[src]
-    if not s or s.phase ~= "ACTIVE" or not s.lapStart then return end
-
-    -- A ghost duel pays real credits against a stored time. No clock credit is
-    -- granted inside one: the rewind still works, it just costs what it costs,
-    -- so a duel can never be won on refunded time.
-    if s.duel then return end
-
-    local cfg    = Config.Rewind or {}
-    local factor = math.max(0.0, math.min(1.0, cfg.timeCreditFactor or 1.0))
-    if factor <= 0.0 then return end
-
-    ms = math.floor(tonumber(ms) or 0)
-    if ms <= 0 or ms > _maxRewindCredit(cfg, factor) then return end
-
-    local used    = s.rewindCredit or 0
-    local allowed = math.max(0, (cfg.maxCreditPerLapMs or 15000) - used)
-    ms = math.min(ms, allowed)
-    if ms <= 0 then return end
-
-    local now = GetGameTimer()
-    s.rewindCredit = used + ms
-    s.lapStart     = math.min(s.lapStart + ms, now)
-    if s.sector_start then s.sector_start = math.min(s.sector_start + ms, now) end
-
-    -- Splits already banked this lap were measured against the old epoch; pull
-    -- them onto the new one so the delta tower keeps comparing like with like.
-    if s.cpTimes then
-        for i, t in pairs(s.cpTimes) do s.cpTimes[i] = math.max(0, t - ms) end
-    end
-end)
+-- Time trial has no rewind: no rollback event, no clock credit, no per-lap
+-- allowance. The lap clock here is a plain interval, and a TT lap is only ever
+-- the driving that was actually done. Rewind lives in races only
+-- (client/rewind.lua, server/checkpoints.lua).
 
 -- ── Net: restart — head-start teleport again, out lap ────────────────────────
 

@@ -36,11 +36,14 @@ local MARK_AHEAD     = 6.0   -- her mark, up the road from the start line
 --   * a movement task issued in the same frame as CreatePed is dropped on the
 --     floor. There is a short settle before the task is given.
 --
--- Pacing is still budgeted rather than exact, because the walk is not a
--- metronome — the ped steers around obstacles and the arrival test has a radius
--- of its own — so she aims to be there in WALK_BUDGET of the window and the
--- remainder is slack she is welcome not to need.
-local WALK_BUDGET    = 0.7     -- fraction of the window the walk is paced for
+-- She always moves at her own natural walk. Nothing scales her pace to fit the
+-- clock: a sped-up gait reads as a glitch, and the run fallback that used to
+-- exist made her jog to her mark like she was late for it. When the window is
+-- too short, the APPROACH shortens instead — she starts closer and still walks.
+local WALK_RATE      = 1.0     -- TaskGoStraightToCoord move rate: 1.0 = walk
+local WALK_MPS       = 1.4     -- roughly what that rate covers, for fitting
+local MIN_APPROACH   = 0.15    -- never collapse the entrance to nothing
+local PED_SETTLE_MS  = 200     -- a task issued the frame after CreatePed is dropped
 local ARRIVE_RADIUS  = 1.5     -- close enough to be standing on her mark
 local ARRIVE_MARGIN_MS = 700   -- settle on the mark before the wind-up starts
 
@@ -142,13 +145,30 @@ RegisterNetEvent("SPZ:gridFormed", function(data)
             return
         end
 
-        local ex, ey = entry.x, entry.y
+        -- Fit the APPROACH to the time available, never the pace.
+        --
+        -- She walks at her own natural speed, always. When the window is too
+        -- short for the full walk-in, she starts closer instead of hurrying —
+        -- a flag girl jogging to her mark looks wrong in a way that a shorter
+        -- entrance simply does not.
+        local walkMs   = (goAt - GetGameTimer()) - FLAG_LEAD_MS - ARRIVE_MARGIN_MS - PED_SETTLE_MS
+        local entryPt  = entry
+        local naturalMs = (#(entry - mark) / WALK_MPS) * 1000
+
+        if walkMs > 0 and naturalMs > walkMs then
+            local frac = math.max(MIN_APPROACH, walkMs / naturalMs)
+            entryPt = mark + ((entry - mark) * frac)
+            print(("^3[spz-races] Flag girl start sequence is short — walking in from %.1f m instead of %.1f m.^7")
+                :format(#(entryPt - mark), #(entry - mark)))
+        end
+
+        local ex, ey = entryPt.x, entryPt.y
 
         -- Ask for the world around her entry point BEFORE spawning her. Without
         -- it the ground query answers against whatever happens to be streamed,
         -- so she is created at the wrong height and visibly snaps once the real
         -- surface arrives — the flicker as she appears.
-        RequestCollisionAtCoord(ex, ey, entry.z)
+        RequestCollisionAtCoord(ex, ey, entryPt.z)
         local collisionBy = GetGameTimer() + 1500
         while not HasCollisionLoadedAroundEntity(PlayerPedId()) and GetGameTimer() < collisionBy do
             Citizen.Wait(50)
@@ -156,7 +176,7 @@ RegisterNetEvent("SPZ:gridFormed", function(data)
 
         if stale() then return end
 
-        local ez = groundZ(ex, ey, entry.z)
+        local ez = groundZ(ex, ey, entryPt.z)
 
         girl = CreatePed(4, PED_MODEL, ex, ey, ez, 0.0, false, false)
         SetModelAsNoLongerNeeded(PED_MODEL)
@@ -180,34 +200,25 @@ RegisterNetEvent("SPZ:gridFormed", function(data)
 
         -- The ped needs a frame or two after creation before it will accept a
         -- movement task; issuing one immediately is quietly dropped.
-        Citizen.Wait(200)
+        Citizen.Wait(PED_SETTLE_MS)
         if stale() or not heldEntity(girl) then return end
 
-        -- Only the WIND-UP is reserved, never the whole clip — see the note on
-        -- FLAG_LEAD_MS. Whatever is left over is the walk.
-        local walkMs = (goAt - GetGameTimer()) - FLAG_LEAD_MS - ARRIVE_MARGIN_MS
+        -- Re-read the remaining window: the settle above, and the streaming
+        -- waits before it, have eaten into what was measured at the top.
+        walkMs = (goAt - GetGameTimer()) - FLAG_LEAD_MS - ARRIVE_MARGIN_MS
 
-        -- Walk in from the side, at whatever pace lands her on the mark in
-        -- time. A window too short for any credible walk (someone set the
-        -- staging phase to a second or two) puts her straight on the mark
-        -- rather than sprinting across the shot.
         local mx, my = mark.x, mark.y
         local mz = groundZ(mx, my, mark.z)
-        local walkDist = #(vec3(mx, my, mz) - vec3(ex, ey, ez))
 
         local arrived = false
         if walkMs > 800 then
-            -- TaskGoStraightToCoord's speed argument is a MOVE RATE, not metres
-            -- per second: 1.0 is a walk, 2.0 a run. Feeding it a computed m/s
-            -- figure was meaningless — it happened to land near 1.2, which is
-            -- why she moved at all, and why no amount of adjusting the number
-            -- fixed the arrival. Pick the gait that covers the distance instead.
-            local WALK_RATE, RUN_RATE = 1.0, 2.0
-            local WALK_MPS = 1.4           -- roughly what rate 1.0 covers
-            local rate = (walkDist / WALK_MPS) * 1000 <= (walkMs * WALK_BUDGET)
-                         and WALK_RATE or RUN_RATE
-
-            TaskGoStraightToCoord(girl, mx, my, mz, rate, walkMs, 0.0, 0.0)
+            -- Always the walk rate. TaskGoStraightToCoord's speed argument is a
+            -- MOVE RATE (1.0 walk, 2.0 run), not metres per second — the code
+            -- here used to compute an m/s figure and pass it straight in, which
+            -- was meaningless, and then fall back to a run when the sum said
+            -- the walk would not fit. The approach length is what flexes now;
+            -- her gait never does.
+            TaskGoStraightToCoord(girl, mx, my, mz, WALK_RATE, walkMs, 0.0, 0.0)
 
             -- Hold until she is there or her share of the window is spent.
             local arriveBy = GetGameTimer() + walkMs

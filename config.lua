@@ -374,7 +374,11 @@ Config.ShortTrackLaps  = 3
 -- Hold the key to scrub the car backward along its recent path; release to
 -- resume driving from that point with the momentum it had back then. Bounded
 -- only by the rolling history buffer — no use cap, no cooldown beyond a short
--- settle after release. Works in live Race (LIVE state) and Time Trial.
+-- settle after release.
+--
+-- RACES ONLY (LIVE state). Time trial has no rewind at all: the clock is the
+-- whole point of that mode, and a TT lap feeds the stored line, the ghost and
+-- duel targets — refunded time there seeds a target nobody can match honestly.
 -- No leaderboard exploit: checkpoints must still be crossed for real, so every
 -- gate you scrub back past has to be re-driven at racing speed.
 Config.Rewind = {

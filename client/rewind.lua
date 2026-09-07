@@ -3,6 +3,8 @@
 -- along its recently recorded path; release to resume driving from that
 -- point with the momentum it had back then.
 --
+-- Races only — never in time trial. See _shouldRecord below for why.
+--
 -- The clock rewinds with the car (Config.Rewind.timeCreditFactor): scrubbing
 -- back N seconds hands N seconds back to the race/lap timer, so the car and its
 -- time land at the same moment. Everything that reads that clock — the HUD, the
@@ -18,8 +20,8 @@
 local RCfg = Config and Config.Rewind or {}
 
 -- Disabled: still publish the exports other files poll every frame
--- (checkpoint/incident detection, the TT clock), so turning rewind off never
--- turns into "attempt to index a nil value" somewhere else.
+-- (checkpoint/incident detection, the raceline capture), so turning rewind off
+-- never turns into "attempt to index a nil value" somewhere else.
 if RCfg.enabled == false then
     exports("IsRewinding", function() return false end)
     exports("GetRewindCreditMs", function() return 0 end)
@@ -37,20 +39,22 @@ AddStateBagChangeHandler("raceState", "global", function(_, _, value)
     if value then _raceState = value end
 end)
 
+-- Races only. Time trial is the mode where the clock is the whole point, and a
+-- rewind there is a lap you did not drive: the refunded time seeds the stored
+-- line, the ghost and the duel targets, so every one of those becomes a target
+-- nobody can match honestly. It is not recorded, not offered, and not credited
+-- in TT — the gate is here, at the recorder, so nothing downstream has to
+-- re-check the mode.
 local function _shouldRecord()
     if _myRaceOver then return false end
-    if _raceState == "LIVE" then return true end
-    if _G.SPZ_InTimeTrial then return true end
-    return false
+    if _G.SPZ_InTimeTrial then return false end
+    return _raceState == "LIVE"
 end
 
 -- The checkpoint the player was heading toward at the moment being recorded —
 -- snapshotted per frame so a rewind landing can tell the server which gate to
--- re-arm. Race and TT track this under different exports/index spaces.
+-- re-arm.
 local function _currentCpIndex()
-    if _G.SPZ_InTimeTrial then
-        return exports["spz-races"]:GetTTCpIndex()
-    end
     local _, idx = exports["spz-races"]:GetCurrentCP()
     return idx
 end
@@ -93,8 +97,6 @@ end)
 local function _clearBuffer() _buffer = {} end
 
 RegisterNetEvent("SPZ:spawnCheckpoints", function() _myRaceOver = false; _clearBuffer() end)
-RegisterNetEvent("SPZ:tt:Begin",         function() _myRaceOver = false; _clearBuffer() end)
-RegisterNetEvent("SPZ:tt:Restarted",     _clearBuffer)
 RegisterNetEvent("SPZ:tpToGrid",         _clearBuffer)
 RegisterNetEvent("SPZ:tpToSafeZone",     function() _myRaceOver = true;  _clearBuffer() end)
 
@@ -306,11 +308,7 @@ local function _finishRewind()
     if _lastApplied and _lastApplied.cp then
         local nowCp = _currentCpIndex()
         if nowCp and _lastApplied.cp < nowCp then
-            if _G.SPZ_InTimeTrial then
-                TriggerServerEvent("SPZ:tt:rewindCheckpoint", _lastApplied.cp)
-            else
-                TriggerServerEvent("SPZ:rewindCheckpoint", _lastApplied.cp)
-            end
+            TriggerServerEvent("SPZ:rewindCheckpoint", _lastApplied.cp)
         end
     end
 
@@ -338,11 +336,7 @@ local function _finishRewind()
         -- discarding un-driven history wants the first, anything moving a clock
         -- wants the second.
         TriggerEvent("SPZ:rewind:applied", credit, rewound)
-        if _G.SPZ_InTimeTrial then
-            TriggerServerEvent("SPZ:tt:rewindTime", credit)
-        else
-            TriggerServerEvent("SPZ:rewindTime", credit)
-        end
+        TriggerServerEvent("SPZ:rewindTime", credit)
     end
 
     _rewindEnt   = nil
@@ -485,10 +479,10 @@ end)
 exports("IsRewinding", function() return _rewinding end)
 
 -- Clock credit earned by the scrub CURRENTLY in progress, in ms (0 when not
--- rewinding). Anything that measures against the lap clock while the car is
+-- rewinding). Anything that measures against the race clock while the car is
 -- being scrubbed subtracts this so it stays on the same moment as the car:
--- the TT timer counts backward, the raceline capture keeps its per-point `t`
--- honest, and the ghost winds back alongside you. It resets to 0 the instant
+-- the race HUD's clocks run backward and the raceline capture keeps its
+-- per-point `t` honest. It resets to 0 the instant
 -- the rewind commits — the committed amount arrives as SPZ:rewind:applied
 -- (client event, ms) exactly once, so nothing double-counts.
 exports("GetRewindCreditMs", function() return _liveCredit end)

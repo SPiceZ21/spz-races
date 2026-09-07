@@ -155,8 +155,7 @@ Citizen.CreateThread(function()
     while true do
         if TTActive
         and GetGameTimer() >= TTReadyAt          -- car may not exist yet
-        and not TTRestartActive                  -- restart teleports the car
-        and not exports["spz-races"]:IsRewinding() then
+        and not TTRestartActive then             -- restart teleports the car
 
             local ped = PlayerPedId()
             -- Second arg is `atGetIn`: a ped part-way through climbing in still
@@ -273,8 +272,7 @@ local _ttSide, _ttSideIdx = nil, nil   -- crossing-side state for the active CP
 Citizen.CreateThread(function()
     while true do
         if TTActive and TTTrack and not TTRestartActive
-        and GetGameTimer() >= TTReadyAt
-        and not exports["spz-races"]:IsRewinding() then
+        and GetGameTimer() >= TTReadyAt then
             local physCp = TTTrack.checkpoints[_physIdx(TTCpIndex)]
             if physCp then
                 -- Reset crossing state when the active CP changes.
@@ -305,32 +303,19 @@ Citizen.CreateThread(function()
 end)
 
 -- ── Timer HUD thread ──────────────────────────────────────────────────────────
--- The lap clock rewinds with the car: while a scrub is in progress the live
--- credit is subtracted so the timer visibly runs backward, and on release the
--- committed credit is folded into TTLapStart (below) so the displayed time and
--- the server's banked lap time agree from that frame on.
+-- A plain interval off TTLapStart. Nothing scrubs this clock: rewind does not
+-- run in time trial, so the lap time on screen is the lap time that was driven.
 
 Citizen.CreateThread(function()
     while true do
         if TTActive and TTLapStart > 0 then
             local elapsed = GetGameTimer() - TTLapStart
-                          - exports["spz-races"]:GetRewindCreditMs()
             UI("tt_timer", { formatted = FmtTime(math.max(0, math.floor(elapsed))) })
             Citizen.Wait(50)
         else
             Citizen.Wait(200)
         end
     end
-end)
-
--- Rewind committed: shift the lap clock forward by the credited amount, which
--- is the same as winding the elapsed time back. Clamped so a long scrub through
--- the start of a lap can never produce a start time in the future.
-AddEventHandler("SPZ:rewind:applied", function(ms)
-    if not TTActive or TTLapStart <= 0 then return end
-    ms = tonumber(ms) or 0
-    if ms <= 0 then return end
-    TTLapStart = math.min(TTLapStart + ms, GetGameTimer())
 end)
 
 -- ── Full cleanup ──────────────────────────────────────────────────────────────

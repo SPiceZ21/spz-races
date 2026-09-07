@@ -126,6 +126,8 @@ local function HandleCheckpointAdvance(source, pData)
             pData.current_lap     = pData.current_lap + 1
             pData.lap_start_time  = now
             pData.rewind_credit_lap = 0   -- per-lap credit budget resets with the lap
+            TriggerClientEvent("SPZ:rewindCredit", source, 0,
+                (Config.Rewind or {}).maxCreditPerLapMs or 15000)
             StartSectorClock(pData, now)
 
             table.insert(pData.lap_times, lapTime)
@@ -350,6 +352,12 @@ RegisterNetEvent("SPZ:rewindTime", function(ms)
     local start = RaceSession.startTime or now
 
     pData.rewind_credit_lap = used + ms
+
+    -- The per-lap allowance is the one genuinely limited resource in a rewind,
+    -- and until now the only way to discover you had spent it was to hold the
+    -- key and watch nothing happen. The speedometer draws it as a gauge.
+    TriggerClientEvent("SPZ:rewindCredit", src,
+        pData.rewind_credit_lap, cfg.maxCreditPerLapMs or 15000)
     -- Whole-run total, never reset at a lap boundary. A time that won back any
     -- clock is not comparable to one driven clean, so this flag follows the
     -- result through to the leaderboard and blocks records/PBs.
