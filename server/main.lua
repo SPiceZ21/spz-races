@@ -35,11 +35,9 @@ end
 function PublishHudConfig()
     local cfg = (Config and Config.Hud) or {}
 
-    GlobalState:set("hudTurnGuide", _hudFlag("spz_hud_turn_guide", cfg.TurnGuide ~= false), true)
-    GlobalState:set("hudCpPill",    _hudFlag("spz_hud_cp_pill",    cfg.CpDistancePill == true), true)
+    GlobalState:set("hudCpPill", _hudFlag("spz_hud_cp_pill", cfg.CpDistancePill == true), true)
 
-    print(("^2[spz-races] HUD: turn guide %s · CP pill %s^7"):format(
-        GlobalState.hudTurnGuide and "on" or "off",
+    print(("^2[spz-races] HUD: CP pill %s^7"):format(
         GlobalState.hudCpPill and "on" or "off"))
 end
 

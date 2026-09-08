@@ -21,10 +21,6 @@ local TrackType          = "circuit"   -- "circuit" | "sprint"
 
 -- ── Minimap blips ──────────────────────────────────────────────────────────
 local AllBlips = {}
--- Declared up here so the teardown that owns every blip can own these too: the
--- course trail is rebuilt constantly, and a path that clears the gates but
--- leaves the trail behind strands sixty handles on the map.
-local TrailBlips = {}
 -- The GPS route is global render state rather than a blip, so the teardown has
 -- to know whether one is live.
 local MultiRouteOn = false
@@ -73,8 +69,6 @@ local LOOKAHEAD     = CPB.lookahead or 3
 -- The caveat is the same for either: this is ROAD pathfinding, so where a track
 -- deliberately leaves the network — an alley, the wrong side of a divided road,
 -- a dirt cut, a car park — the line takes the road version of that leg.
--- `trail = true` adds a dotted line built from the checkpoint coordinates
--- themselves, exact to the course, underneath.
 local ROUTE_MODE    = CPB.routeMode or "multi"
 local ROUTE_ALL     = CPB.routeAll ~= false
 local ROUTE_COLOUR  = CPB.routeColour or 17      -- blip colour id (blip mode)
@@ -82,11 +76,6 @@ local ROUTE_COLOUR  = CPB.routeColour or 17      -- blip colour id (blip mode)
 -- its own setting rather than reusing the one above.
 local ROUTE_HUD     = CPB.routeHudColour or 15   -- orange
 
-local TRAIL         = CPB.trail == true          -- opt-in dotted course line
-local TRAIL_SPACING = CPB.trailSpacing or 28.0   -- metres between trail dots
-local TRAIL_MAX     = CPB.trailMax or 60         -- hard cap on dots (blip budget)
-local TRAIL_COLOUR  = CPB.trailColour or 17
-local TRAIL_SCALE   = CPB.trailScale or 0.45
 
 -- Gates past the lookahead: dim dots by default, so the rest of the track sits
 -- on the map as context. hideFar = true drops them entirely.
@@ -277,11 +266,6 @@ local function _clearAllBlips()
     end
     AllBlips = {}
 
-    for _, b in ipairs(TrailBlips) do
-        if DoesBlipExist(b) then RemoveBlip(b) end
-    end
-    TrailBlips = {}
-
     -- The GPS route is global render state, not a blip: left on, it survives the
     -- race and keeps drawing a line to a checkpoint that no longer exists.
     SetGpsMultiRouteRender(false)
@@ -314,33 +298,6 @@ local function _buildBlips(checkpoints)
 
         AllBlips[i] = blip
     end
-end
-
--- ── Course trail ─────────────────────────────────────────────────────────────
--- The hand-laid line: dots between the gates of the lookahead window, so what
--- you follow on the map is the course itself rather than the game's road route
--- to the next gate. Rebuilt on every crossing — it is a few dozen blips and the
--- alternative (keeping the whole track's worth alive and toggling alpha) costs
--- more blip handles than a 40-gate circuit can spare.
-
-local function _clearTrail()
-    for _, b in ipairs(TrailBlips) do
-        if DoesBlipExist(b) then RemoveBlip(b) end
-    end
-    TrailBlips = {}
-end
-
-local function _trailDot(x, y, z)
-    local b = AddBlipForCoord(x, y, z)
-    SetBlipSprite(b, 1)
-    SetBlipColour(b, TRAIL_COLOUR)
-    SetBlipScale(b, TRAIL_SCALE)
-    SetBlipAsShortRange(b, false)
-    SetBlipPriority(b, 2)
-    SetBlipAlpha(b, 190)
-    -- Nameless: sixty entries called "Checkpoint" in the legend is not a legend.
-    SetBlipHiddenOnLegend(b, true)
-    TrailBlips[#TrailBlips + 1] = b
 end
 
 -- ── GPS multi-route ──────────────────────────────────────────────────────────
@@ -389,44 +346,6 @@ local function _buildMultiRoute(idx)
     MultiRouteOn = true
 end
 
---- Walk the lookahead window gate by gate, dropping dots along each leg.
---- Starts at the player, not at the active gate: the leg you are ON is the half
---- you still have to drive, and a trail that begins at the gate ahead leaves the
---- most important stretch unmarked.
-local function _buildTrail(idx)
-    _clearTrail()
-    if not TRAIL then return end
-
-    local total = #CurrentCheckpoints
-    if total < 1 then return end
-
-    local ped  = PlayerPedId()
-    local from = GetEntityCoords(ped)
-
-    for n = 0, LOOKAHEAD - 1 do
-        local at = idx + n
-        if at > total then
-            if TrackType ~= "circuit" then break end
-            at = ((at - 1) % total) + 1
-        end
-
-        local cp = CurrentCheckpoints[at]
-        if not cp then break end
-        local to = cp.coords
-
-        local dx, dy, dz = to.x - from.x, to.y - from.y, to.z - from.z
-        local len = math.sqrt(dx * dx + dy * dy)
-        local steps = math.floor(len / TRAIL_SPACING)
-
-        for s = 1, steps do
-            if #TrailBlips >= TRAIL_MAX then return end
-            local t = s / (steps + 1)
-            _trailDot(from.x + dx * t, from.y + dy * t, from.z + dz * t)
-        end
-
-        from = to
-    end
-end
 
 --- How far ahead of `idx` a checkpoint sits, or nil if it is behind.
 ---
@@ -600,29 +519,9 @@ end)
 local function _applyActive(idx)
     _styleBlips(idx)
     _buildMultiRoute(idx)   -- the chained road route through the next gates
-    _buildTrail(idx)        -- optional exact-to-course dotted line
     _refreshGates()   -- swap crossed gates to their "_b" (cleared) variant
 end
 
--- The first leg of the trail runs from the PLAYER to the active gate, so it has
--- to be re-laid as that leg is driven or the dots pile up behind the car. Only
--- once the car has actually covered ground: a rebuild is sixty blip handles, and
--- doing it on a timer alone would redraw the same trail while sitting still.
-Citizen.CreateThread(function()
-    local lastAt = nil
-    while true do
-        Citizen.Wait(1200)
-        if TRAIL and _isRaceActive() and #CurrentCheckpoints > 0 then
-            local pos = GetEntityCoords(PlayerPedId())
-            if not lastAt or #(pos - lastAt) > 45.0 then
-                lastAt = pos
-                _buildTrail(CurrentCPIndex)
-            end
-        else
-            lastAt = nil
-        end
-    end
-end)
 
 -- ── Net events ─────────────────────────────────────────────────────────────
 
@@ -690,26 +589,6 @@ exports("GetCurrentCP", function()
     return CurrentCheckpoints[CurrentCPIndex], CurrentCPIndex
 end)
 
---- The checkpoint at a given index, wrapping on circuits.
----
---- Used by the turn guide, which needs the gate AFTER the one you are driving
---- at in order to work out which way the road turns there. On a circuit the
---- checkpoint after the last one is the first one of the next lap; on a sprint
---- there is nothing after the finish, so this returns nil and the caller falls
---- back to the gate's own heading.
-exports("GetCheckpointAt", function(idx)
-    local total = #CurrentCheckpoints
-    if total == 0 or not idx then return nil end
-
-    if idx > total then
-        if TrackType ~= "circuit" then return nil end
-        idx = ((idx - 1) % total) + 1
-    elseif idx < 1 then
-        return nil
-    end
-
-    return CurrentCheckpoints[idx], idx
-end)
 
 -- Respawn point for the "back to last checkpoint" key: the coords of the last
 -- checkpoint actually crossed (fallback: the first checkpoint / start), with a

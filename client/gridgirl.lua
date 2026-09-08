@@ -73,6 +73,11 @@ local ANIM_FALLBACK  = 72.6    -- clip length, if GetAnimDuration is unavailable
 local girl = nil
 local flagTimer = nil          -- token for the pending swing, so a restart cancels it
 
+-- Set at GO, when she is on her mark and frozen: from that point her height is
+-- fixed and the ground keeper has nothing left to do, so it stops rather than
+-- rewriting the same coordinate under a playing animation.
+local pinned = false
+
 -- Bumped every time a grid forms. The spawn runs on a thread that waits for
 -- assets and collision, so a second SPZ:gridFormed arriving during that wait
 -- used to leave TWO setup threads driving the same global: one spawning a ped
@@ -86,6 +91,7 @@ local function cleanup()
     -- Invalidate any scheduled swing first: a timer that fires after the ped is
     -- gone is harmless, but one that fires into the NEXT race's ped is not.
     flagTimer = nil
+    pinned    = false
     if heldEntity(girl) then
         SetEntityAsMissionEntity(girl, true, true)
         DeleteEntity(girl)
@@ -115,6 +121,61 @@ end
 local function groundZ(x, y, z)
     local ok, gz = GetGroundZFor_3dCoord(x, y, z + 2.0, false)
     return ok and gz or z
+end
+
+-- ── Ghosting ────────────────────────────────────────────────────────────────
+--
+-- She has no collision at all, from the moment she spawns: she passes through
+-- walls, through players and through their cars, and none of them can touch
+-- her. Collision used to come off only at GO, which left the whole walk-in and
+-- the entire countdown with a solid ped standing in the lane the field is about
+-- to launch down — a bollard, in the one place nobody can afford one.
+--
+-- Taking it away costs the one thing it was also doing: holding her up. So the
+-- surface is driven directly instead, by `keepOnGround` below.
+local function ghost(ped)
+    SetEntityCollision(ped, false, false)
+    -- Redundant while collision is off, and kept anyway: it is the guarantee
+    -- that survives if anything later re-enables collision on her.
+    SetEntityNoCollisionEntity(ped, PlayerPedId(), true)
+end
+
+-- How far off the surface she has to be before her height is rewritten. Under
+-- this she is left alone, so a walk cycle's own bob is not fought frame by
+-- frame and the position is not rewritten on frames that do not need it.
+local GROUND_TOL = 0.08
+
+-- Probe height above her. Has to clear the tallest step she can walk over
+-- without reaching up through a bridge deck she is walking under.
+local GROUND_PROBE_UP = 1.5
+
+-- Rides her Z onto the ground for as long as she is ours and unpinned.
+--
+-- Covers both ways a collisionless ped goes wrong: sinking through the map, and
+-- holding a level line across a road that is cambered or climbing. When the
+-- probe finds no surface at all — she is inside geometry, or under it — the
+-- last height that DID answer is used, which is what stops a bad probe turning
+-- into a ped falling forever.
+local function keepOnGround(myGen, isPinned)
+    Citizen.CreateThread(function()
+        local lastGoodZ = nil
+
+        while generation == myGen and heldEntity(girl) and not isPinned() do
+            local p = GetEntityCoords(girl)
+            local ok, gz = GetGroundZFor_3dCoord(p.x, p.y, p.z + GROUND_PROBE_UP, false)
+
+            if ok then
+                lastGoodZ = gz
+                if math.abs(p.z - gz) > GROUND_TOL then
+                    SetEntityCoordsNoOffset(girl, p.x, p.y, gz, false, false, false)
+                end
+            elseif lastGoodZ and p.z < lastGoodZ - 1.0 then
+                SetEntityCoordsNoOffset(girl, p.x, p.y, lastGoodZ, false, false, false)
+            end
+
+            Citizen.Wait(0)
+        end
+    end)
 end
 
 RegisterNetEvent("SPZ:gridFormed", function(data)
@@ -190,7 +251,10 @@ RegisterNetEvent("SPZ:gridFormed", function(data)
         SetPedCanRagdoll(girl, false)
         SetPedCanBeTargetted(girl, false)
         SetPedConfigFlag(girl, 128, true)   -- ignores combat / danger reactions
-        SetEntityNoCollisionEntity(girl, PlayerPedId(), true)
+
+        -- No collision from here on, with the ground driven under her instead.
+        ghost(girl)
+        keepOnGround(myGen, function() return pinned end)
 
         -- NOT config flag 17 ("never leaves its assigned area") — not here.
         -- Her assigned area is where she spawned, at the SIDE of the road, so
@@ -293,20 +357,15 @@ end)
 
 -- GO. The swing is already running and lands about now.
 --
--- She is standing in the lane the split grid opens up, which is precisely where
--- sixteen cars are about to accelerate. Solid, she is a bollard in the middle of
--- the launch: the field piles into her. Invincible and ragdoll-proof stops HER
--- being hurt and does nothing for the cars hitting her.
---
--- So collision comes off at the moment the field is released. Up to here she
--- needed it — it is what let her walk on the road rather than through it — and
--- from here nobody should be able to touch her at all. Frozen at the same time
--- so that losing collision cannot drop her through the world in the seconds
--- before she is removed.
+-- She has been collisionless since she spawned, so the field launching through
+-- her is already a non-event. What is left to do is nail her down: frozen on
+-- her mark for the few seconds before she is removed, which also retires the
+-- ground keeper — a frozen ped cannot drift off the surface, and rewriting her
+-- coordinate under a playing animation for no reason is worse than not.
 RegisterNetEvent("SPZ:go", function()
     if not heldEntity(girl) then return end
 
-    SetEntityCollision(girl, false, false)
+    pinned = true
     FreezeEntityPosition(girl, true)
 
     Citizen.SetTimeout(5000, cleanup)
@@ -343,6 +402,11 @@ RegisterCommand("flagdrop", function(_, args)
         SetEntityInvincible(girl, true)
         SetBlockingOfNonTemporaryEvents(girl, true)
         SetEntityHeading(girl, (GetEntityHeading(ped) + 180.0) % 360.0)
+
+        -- Same ghosting as the real thing, so what is being scrubbed here
+        -- behaves like what turns up on the grid.
+        ghost(girl)
+        keepOnGround(generation, function() return false end)
 
         local len = GetAnimDuration(ANIM_DICT, ANIM_CLIP)
         if not len or len <= 0 then len = ANIM_FALLBACK end

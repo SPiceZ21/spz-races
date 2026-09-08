@@ -36,15 +36,9 @@ Config.PollOptionsPerType   = 2       -- track options per poll (always 2)
 --   routeColour    blip mode only: blip colour id (17 = bright orange)
 --   hideFar        drop the gates past the lookahead instead of dimming them
 --
--- Optional extra, off by default. The route line is road PATHFINDING to each
--- gate, so where a track deliberately leaves the road network — an alley, the
--- wrong side of a divided road, a dirt cut, a car park — the line takes the road
--- version of that leg. `trail` adds a dotted line built from the checkpoint
--- coordinates themselves, which is exact to the course, underneath it.
---
---   trail         the dotted course line
---   trailSpacing  metres between dots
---   trailMax      hard cap on dots (blip budget on a long leg)
+-- Note that the route line is road PATHFINDING to each gate, so where a track
+-- deliberately leaves the road network — an alley, the wrong side of a divided
+-- road, a dirt cut, a car park — the line takes the road version of that leg.
 Config.CpBlips = {
     routeMode      = "multi",
     routeHudColour = 15,
@@ -52,16 +46,6 @@ Config.CpBlips = {
     routeAll       = true,
     routeColour    = 17,
     hideFar        = false,
-
-    trail        = true,
-    trailSpacing = 28.0,
-    trailMax     = 60,
-    trailColour  = 17,
-    -- Dot size for the dotted course line. Sized against trailSpacing: at 28 m
-    -- apart these read as a line of distinct dots. Push the dots much past this
-    -- without opening the spacing up as well and the line closes into a solid
-    -- smear that hides the road under it.
-    trailScale   = 0.45,
 
     -- Gate marker sizes on the minimap. These are a LADDER, not five
     -- independent dials: the descending order is what tells a driver at speed
@@ -113,29 +97,19 @@ Config.StandingsBroadcastInterval = 2500
 
 -- ── In-world race HUD elements ────────────────────────────────────────────────
 --
--- Two separate readouts float over the world during a race. They answer
--- different questions and are toggled independently, because servers disagree
--- about how much help a racing line should give:
---
---   TurnGuide       anchored to YOUR CAR, ahead of it. Calls the turn you make
---                   at the next gate, plus distance and speed. This is the
---                   corner call — it tells you what the road does.
---
 --   CpDistancePill  anchored to the CHECKPOINT, with a stem down to the gate
 --                   point. Tells you where the gate is and how far. Useful on
 --                   unfamiliar tracks and for spotting a gate hidden behind
---                   geometry; redundant with the guide's distance if both are on.
+--                   geometry.
 --
--- These are DEFAULTS. Either can be overridden live from server.cfg without
--- touching this file or restarting the resource:
+-- This is a DEFAULT. It can be overridden live from server.cfg without touching
+-- this file or restarting the resource:
 --
---   setr spz_hud_turn_guide 1
 --   setr spz_hud_cp_pill 0
 --
 -- The convar wins when it is set; otherwise the value here applies.
 Config.Hud = {
-  TurnGuide      = true,
-  CpDistancePill = false,
+  CpDistancePill = true,
 }
 
 -- Overtake auto-clips. A pass triggers a real VIDEO clip recorded from the
