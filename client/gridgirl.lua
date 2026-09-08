@@ -13,62 +13,108 @@
 --     own countdown, instead of one client's ped lagging for everybody;
 --   * cleanup is unconditional — no netId to chase if a client drops.
 
-local PED_MODEL  = `g_f_y_lost_01`
+-- ── The roster ───────────────────────────────────────────────────────────────
+--
+-- Six models, drawn in random ORDER rather than at random: the list is shuffled
+-- and then worked through one race at a time, and only reshuffled once it is
+-- empty. Independent random picks would hand you the same girl three races
+-- running often enough to look broken; a shuffled bag guarantees all six appear
+-- before any of them repeats.
+--
+-- `props` and `components` are what each model actually offers. The component
+-- count is not used as a slot index — GTA's component slots are fixed IDs and a
+-- model simply has fewer variations in some of them — but `props = 0` is load
+-- bearing: a model with no prop variations must not be asked for a random one,
+-- which is how you get a floating hat or nothing at all.
+local PED_MODELS = {
+    { model = `a_f_y_runner_01`,    props = 1, components = 5 },
+    { model = `csb_anita`,          props = 1, components = 5 },
+    { model = `csb_stripper_01`,    props = 0, components = 7 },
+    { model = `mp_f_deadhooker`,    props = 0, components = 5 },
+    { model = `s_f_y_bartender_01`, props = 0, components = 4 },
+    { model = `s_f_y_hooker_01`,    props = 1, components = 5 },
+}
+
+local pedBag = {}
+
+--- The next model in the shuffled order, refilling when the bag runs dry.
+---
+--- `idx` is the SERVER'S pick, sent with the grid. It is used whenever there is
+--- one, because she has to be the same girl on every screen — she is a local ped
+--- created independently on each client, so without a shared choice one driver
+--- would be waved off by a bartender and another by a runner in the same race.
+---
+--- Wrapped rather than trusted: the server's roster size and this table's are
+--- two numbers in two files, and an index off the end of the list must resolve
+--- to a girl rather than to nil.
+---
+--- With no index — /flagdrop, or a server that has not been restarted yet — it
+--- falls back to a local shuffled bag, which still guarantees all six appear
+--- before any of them repeats.
+local function nextPed(idx)
+    if idx then
+        return PED_MODELS[((math.floor(idx) - 1) % #PED_MODELS) + 1]
+    end
+
+    if #pedBag == 0 then
+        for i = 1, #PED_MODELS do pedBag[i] = PED_MODELS[i] end
+        -- Fisher-Yates.
+        for i = #pedBag, 2, -1 do
+            local j = math.random(i)
+            pedBag[i], pedBag[j] = pedBag[j], pedBag[i]
+        end
+    end
+    return table.remove(pedBag)
+end
+
+--- Dress her. Component variations come from the game rather than from the
+--- table above, because it knows the real per-slot counts for the model that
+--- actually loaded; the table only decides whether props are asked for at all.
+local function dress(ped, spec)
+    SetPedRandomComponentVariation(ped, 0)
+    if (spec.props or 0) > 0 then
+        SetPedRandomProps(ped)
+    else
+        ClearAllPedProps(ped)
+    end
+end
+
 local ANIM_DICT  = "random@street_race"
 local ANIM_CLIP  = "grid_girl_race_start"
 
--- Where she comes from and where she ends up, both relative to the start point
--- and expressed in the grid's own frame: +right is the passenger side of the
--- field, +forward is down the track.
-local WALK_IN_SIDE   = 9.0   -- metres off to the side she starts from
-local WALK_IN_AHEAD  = 4.0   -- ...and how far up the road, so she crosses in
-local MARK_AHEAD     = 6.0   -- her mark, up the road from the start line
+-- Her mark, relative to the start point and expressed in the grid's own frame:
+-- +forward is down the track. UP the road from the start line rather than level
+-- with it — standing level with the front row puts her inside the two packs
+-- instead of in front of them, and out of shot for the cars on the far side.
+local MARK_AHEAD = 6.0
 
--- The walk is fitted to the time available: the server says when GO is, the
--- wind-up is reserved out of that, and whatever is left is the walk.
---
--- She kept missing her mark and getting snapped to it, for two reasons that had
--- nothing to do with the timing arithmetic:
---
---   * config flag 17 ("never leaves its assigned area") was being set at spawn,
---     which is at the SIDE of the road. It pinned her to the exact spot she was
---     meant to walk away from. It is now set on arrival instead.
---   * a movement task issued in the same frame as CreatePed is dropped on the
---     floor. There is a short settle before the task is given.
---
--- She always moves at her own natural walk. Nothing scales her pace to fit the
--- clock: a sped-up gait reads as a glitch, and the run fallback that used to
--- exist made her jog to her mark like she was late for it. When the window is
--- too short, the APPROACH shortens instead — she starts closer and still walks.
-local WALK_RATE      = 1.0     -- TaskGoStraightToCoord move rate: 1.0 = walk
-local WALK_MPS       = 1.4     -- roughly what that rate covers, for fitting
-local MIN_APPROACH   = 0.15    -- never collapse the entrance to nothing
-local PED_SETTLE_MS  = 200     -- a task issued the frame after CreatePed is dropped
-local ARRIVE_RADIUS  = 1.5     -- close enough to be standing on her mark
-local ARRIVE_MARGIN_MS = 700   -- settle on the mark before the wind-up starts
+-- She is PLACED on her mark, not walked to it. The walk-in was a fixed budget
+-- fitted into whatever the start sequence had left, and it lost that fight
+-- constantly: a short countdown left no window, a long asset load ate the rest,
+-- and the failure mode was her sprinting or snapping to the mark in view. Being
+-- there from the first frame has no failure mode.
 
--- `grid_girl_race_start` is 72.6 seconds / 1480 frames: a whole performance —
--- idling, playing to the grid, and somewhere inside it the actual drop — not a
--- three second swing. Two consequences, and both used to be wrong here:
+-- ── The flag animation ───────────────────────────────────────────────────────
 --
---   * it cannot be reserved wholesale ahead of GO. Doing that left a negative
---     walk window on any sane start sequence, so she snapped to her mark and
---     began the clip immediately, putting the drop about a minute AFTER the
---     lights.
---   * it has to be entered PART WAY THROUGH. The drop is at some phase inside
---     the clip, and the only way to land it on GO is to start playing at
---     (drop − lead) and let it run.
+-- `grid_girl_race_start` is a 72-second performance — idling, playing to the
+-- grid, and somewhere inside it the actual swing — not a three second drop.
 --
--- Which frame the drop is on cannot be read off the file from here, so it is
--- config rather than a guess baked into the code: set Config.FlagAnimDropTime
--- to the time in seconds at which she actually drops her arms, and the wind-up
--- is scheduled backwards from it. Use /flagdrop (below) to find it.
+-- It is started at a FIXED OFFSET FROM GO, and nothing tries to align a frame
+-- inside the clip with the lights any more. That alignment needed the drop's
+-- timestamp inside the animation, which cannot be read from script, so it lived
+-- in config as a number somebody had to find by hand with /flagdrop — and when
+-- it was wrong, or simply unset, the swing landed a minute late or ran from the
+-- top while the grid was still forming.
 --
--- Left unset, she simply performs the clip from the top while the grid forms,
--- which is a flag girl doing her job in the middle of the road — just not one
--- whose swing is synchronised to the lights.
-local FLAG_LEAD_MS   = 2500    -- visible wind-up before the drop
-local ANIM_FALLBACK  = 72.6    -- clip length, if GetAnimDuration is unavailable
+-- One offset, measured from the moment the countdown ends, is a thing that can
+-- be set by watching it once.
+local FLAG_AFTER_GO_MS = 2000   -- Config.FlagAnimAfterGoMs overrides this
+
+-- How long she stays after the animation starts, so the clip is actually seen
+-- before she is removed.
+local LINGER_MS = 5000
+
+local ANIM_FALLBACK = 72.6      -- clip length, if GetAnimDuration is unavailable
 
 local girl = nil
 local flagTimer = nil          -- token for the pending swing, so a restart cancels it
@@ -102,17 +148,17 @@ end
 -- Model + anim dict, or nil if either never streams in. Everything downstream
 -- is skipped rather than half-done: a T-posing ped standing on the start line
 -- is worse than no ped at all.
-local function loadAssets()
-    RequestModel(PED_MODEL)
+local function loadAssets(model)
+    RequestModel(model)
     RequestAnimDict(ANIM_DICT)
 
     local deadline = GetGameTimer() + 5000
-    while (not HasModelLoaded(PED_MODEL) or not HasAnimDictLoaded(ANIM_DICT))
+    while (not HasModelLoaded(model) or not HasAnimDictLoaded(ANIM_DICT))
       and GetGameTimer() < deadline do
         Citizen.Wait(50)
     end
 
-    return HasModelLoaded(PED_MODEL) and HasAnimDictLoaded(ANIM_DICT)
+    return HasModelLoaded(model) and HasAnimDictLoaded(ANIM_DICT)
 end
 
 -- Ground the point she walks to. The start coordinate is the vehicle grid's
@@ -201,48 +247,28 @@ RegisterNetEvent("SPZ:gridFormed", function(data)
     local c   = data.coords
     local rad = math.rad(data.heading or 0.0)
     local forward = vec3(-math.sin(rad), math.cos(rad), 0.0)
-    local right   = vec3(math.cos(rad), math.sin(rad), 0.0)
 
-    -- Her mark is UP the road from the start line, not on it: standing level
-    -- with the front row would put her inside the two packs rather than in
-    -- front of them, and out of shot for the cars on the far side.
-    local mark  = c + (forward * MARK_AHEAD)
-    local entry = c + (forward * WALK_IN_AHEAD) + (right * WALK_IN_SIDE)
-
-    local goAt = GetGameTimer() + (tonumber(data.goInMs) or 14000)
+    local mark = c + (forward * MARK_AHEAD)
 
     Citizen.CreateThread(function()
         local function stale() return generation ~= myGen end
 
-        if not loadAssets() then
+        -- Drawn before the load so the wait is spent on the model that is
+        -- actually going to be used.
+        local spec = nextPed(data.flagGirl)
+
+        if not loadAssets(spec.model) then
             print("^3[spz-races] Flag girl assets did not stream in — skipping.^7")
             return
         end
 
-        -- Fit the APPROACH to the time available, never the pace.
-        --
-        -- She walks at her own natural speed, always. When the window is too
-        -- short for the full walk-in, she starts closer instead of hurrying —
-        -- a flag girl jogging to her mark looks wrong in a way that a shorter
-        -- entrance simply does not.
-        local walkMs   = (goAt - GetGameTimer()) - FLAG_LEAD_MS - ARRIVE_MARGIN_MS - PED_SETTLE_MS
-        local entryPt  = entry
-        local naturalMs = (#(entry - mark) / WALK_MPS) * 1000
+        if stale() then return end
 
-        if walkMs > 0 and naturalMs > walkMs then
-            local frac = math.max(MIN_APPROACH, walkMs / naturalMs)
-            entryPt = mark + ((entry - mark) * frac)
-            print(("^3[spz-races] Flag girl start sequence is short — walking in from %.1f m instead of %.1f m.^7")
-                :format(#(entryPt - mark), #(entry - mark)))
-        end
-
-        local ex, ey = entryPt.x, entryPt.y
-
-        -- Ask for the world around her entry point BEFORE spawning her. Without
-        -- it the ground query answers against whatever happens to be streamed,
-        -- so she is created at the wrong height and visibly snaps once the real
-        -- surface arrives — the flicker as she appears.
-        RequestCollisionAtCoord(ex, ey, entryPt.z)
+        -- Ask for the world around her mark BEFORE spawning her. Without it the
+        -- ground query answers against whatever happens to be streamed, so she
+        -- is created at the wrong height and visibly snaps once the real surface
+        -- arrives — the flicker as she appears.
+        RequestCollisionAtCoord(mark.x, mark.y, mark.z)
         local collisionBy = GetGameTimer() + 1500
         while not HasCollisionLoadedAroundEntity(PlayerPedId()) and GetGameTimer() < collisionBy do
             Citizen.Wait(50)
@@ -250,11 +276,17 @@ RegisterNetEvent("SPZ:gridFormed", function(data)
 
         if stale() then return end
 
-        local ez = groundZ(ex, ey, entryPt.z)
+        local mz = groundZ(mark.x, mark.y, mark.z)
 
-        girl = CreatePed(4, PED_MODEL, ex, ey, ez, 0.0, false, false)
-        SetModelAsNoLongerNeeded(PED_MODEL)
+        -- Facing back down the grid: the field is behind her mark, so her
+        -- heading is the start heading reversed.
+        local heading = ((data.heading or 0.0) + 180.0) % 360.0
+
+        girl = CreatePed(4, spec.model, mark.x, mark.y, mz, heading, false, false)
+        SetModelAsNoLongerNeeded(spec.model)
         if not heldEntity(girl) then girl = nil return end
+
+        dress(girl, spec)
 
         -- She is scenery. Nothing in the race may knock her over, and she must
         -- not react to sixteen engines revving in her face and run away — which
@@ -264,117 +296,25 @@ RegisterNetEvent("SPZ:gridFormed", function(data)
         SetPedCanRagdoll(girl, false)
         SetPedCanBeTargetted(girl, false)
         SetPedConfigFlag(girl, 128, true)   -- ignores combat / danger reactions
+        -- Her mark IS her assigned area now that she never leaves it, so this
+        -- can go on at spawn rather than on arrival.
+        SetPedConfigFlag(girl, 17, true)
 
         -- Cars and players pass through her; the road still holds her up.
         passThroughField(girl)
         keepAboveGround(myGen, function() return pinned end)
 
-        -- NOT config flag 17 ("never leaves its assigned area") — not here.
-        -- Her assigned area is where she spawned, at the SIDE of the road, so
-        -- setting it before the walk pinned her to the spot she was supposed to
-        -- walk away from. It goes on once she is on her mark, where keeping her
-        -- put is actually what is wanted.
-
-        -- The ped needs a frame or two after creation before it will accept a
-        -- movement task; issuing one immediately is quietly dropped.
-        Citizen.Wait(PED_SETTLE_MS)
-        if stale() or not heldEntity(girl) then return end
-
-        -- Re-read the remaining window: the settle above, and the streaming
-        -- waits before it, have eaten into what was measured at the top.
-        walkMs = (goAt - GetGameTimer()) - FLAG_LEAD_MS - ARRIVE_MARGIN_MS
-
-        local mx, my = mark.x, mark.y
-        local mz = groundZ(mx, my, mark.z)
-
-        local arrived = false
-        if walkMs > 800 then
-            -- Always the walk rate. TaskGoStraightToCoord's speed argument is a
-            -- MOVE RATE (1.0 walk, 2.0 run), not metres per second — the code
-            -- here used to compute an m/s figure and pass it straight in, which
-            -- was meaningless, and then fall back to a run when the sum said
-            -- the walk would not fit. The approach length is what flexes now;
-            -- her gait never does.
-            TaskGoStraightToCoord(girl, mx, my, mz, WALK_RATE, walkMs, 0.0, 0.0)
-
-            -- Hold until she is there or her share of the window is spent.
-            local arriveBy = GetGameTimer() + walkMs
-            while heldEntity(girl) and GetGameTimer() < arriveBy do
-                if stale() then return end
-                if #(GetEntityCoords(girl) - vec3(mx, my, mz)) < ARRIVE_RADIUS then
-                    arrived = true
-                    break
-                end
-                Citizen.Wait(100)
-            end
-        end
-        if stale() or not heldEntity(girl) then return end
-
-        -- On the mark and facing back down the grid: she came from up the road,
-        -- so her heading is the start heading reversed. Snapped rather than
-        -- eased — an off-mark flag girl is more obviously wrong than a
-        -- teleported one, and the walk has already sold the arrival.
-        ClearPedTasks(girl)
-        -- With offset: see keepAboveGround. NoOffset buried her to the waist,
-        -- and only collision shoving her back out ever hid it.
-        SetEntityCoords(girl, mx, my, mz, false, false, false, false)
-        SetEntityHeading(girl, ((data.heading or 0.0) + 180.0) % 360.0)
-        -- Now that her mark IS her assigned area, pin her to it.
-        SetPedConfigFlag(girl, 17, true)
-        if not arrived and walkMs > 800 then
-            print("^3[spz-races] Flag girl did not reach her mark in time — snapped to it.^7")
-        end
-
-        -- Enter the clip so the DROP lands on GO.
-        --
-        -- Guarded by a token so a race cancelled between here and the lights
-        -- does not animate a ped that has already been cleaned up — or, worse,
-        -- the next race's.
-        local token = {}
-        flagTimer = token
-
-        local clipLen = GetAnimDuration(ANIM_DICT, ANIM_CLIP)
-        if not clipLen or clipLen <= 0 then clipLen = ANIM_FALLBACK end
-
-        local dropAt = tonumber(Config and Config.FlagAnimDropTime)
-        if dropAt then
-            -- Enter `lead` before the drop, so the wind-up is visible and the
-            -- drop itself coincides with the lights.
-            --
-            -- A drop nearer the start of the clip than the lead cannot have the
-            -- full wind-up, so the lead is shortened to whatever run-up exists
-            -- rather than clamping the phase to 0 — clamping kept the entry
-            -- time and lost the difference, firing the drop early.
-            local leadMs = math.min(FLAG_LEAD_MS, math.floor(dropAt * 1000))
-            local phase  = (dropAt - leadMs / 1000) / clipLen
-            if phase < 0.0 then phase = 0.0 end
-            if phase > 0.99 then phase = 0.99 end
-
-            local waitMs = goAt - leadMs - GetGameTimer()
-            if waitMs < 0 then waitMs = 0 end
-
-            Citizen.SetTimeout(waitMs, function()
-                if flagTimer ~= token or not heldEntity(girl) then return end
-                if HasAnimDictLoaded(ANIM_DICT) then
-                    TaskPlayAnim(girl, ANIM_DICT, ANIM_CLIP, 8.0, -8.0, -1, 0, phase, false, false, false)
-                end
-            end)
-        else
-            -- Drop point unknown: perform the clip from the top for the whole
-            -- run-up. Not synchronised to the lights, but a flag girl going
-            -- through her routine beats one standing to attention.
-            if HasAnimDictLoaded(ANIM_DICT) then
-                TaskPlayAnim(girl, ANIM_DICT, ANIM_CLIP, 8.0, -8.0, -1, 0, 0.0, false, false, false)
-            end
-        end
+        -- Idle on the mark until GO. The clip is started by the SPZ:go handler
+        -- below, so there is nothing scheduled from here that a cancelled race
+        -- would have to chase down.
     end)
 end)
 
--- GO. The swing is already running and lands about now.
+-- GO. The countdown has ended; the flag swing is scheduled off this moment.
 --
 -- Cars have passed through her since she spawned, so the field launching is
--- already a non-event. What is left is to nail her down for the few seconds
--- before she is removed, which also retires the ground check.
+-- already a non-event. What is left is to nail her down, start the clip, and
+-- take her away once it has been seen.
 RegisterNetEvent("SPZ:go", function()
     if not heldEntity(girl) then return end
 
@@ -385,23 +325,43 @@ RegisterNetEvent("SPZ:go", function()
     -- so losing the ground under her costs nothing.
     SetEntityCollision(girl, false, false)
 
-    Citizen.SetTimeout(5000, cleanup)
+    local delay = tonumber(Config and Config.FlagAnimAfterGoMs) or FLAG_AFTER_GO_MS
+    if delay < 0 then delay = 0 end
+
+    -- Token, so a race cancelled between here and the swing does not animate a
+    -- ped that has already been cleaned up — or, worse, the next race's.
+    local token = {}
+    flagTimer = token
+
+    Citizen.SetTimeout(delay, function()
+        if flagTimer ~= token or not heldEntity(girl) then return end
+        if HasAnimDictLoaded(ANIM_DICT) then
+            TaskPlayAnim(girl, ANIM_DICT, ANIM_CLIP, 8.0, -8.0, -1, 0, 0.0, false, false, false)
+        end
+    end)
+
+    -- Removed after the clip has had time to be seen, not after a fixed five
+    -- seconds from GO — which, with a delay in front of it, could have deleted
+    -- her before the animation started at all.
+    Citizen.SetTimeout(delay + LINGER_MS, cleanup)
 end)
 
--- ── Finding the drop frame ───────────────────────────────────────────────────
+-- ── Previewing the clip ──────────────────────────────────────────────────────
 -- /flagdrop [seconds]
 --
--- Spawns her in front of you and plays the clip from `seconds` in, printing the
--- phase it maps to. Scrub until you see the arms come down, then put that time
--- in Config.FlagAnimDropTime and the swing lands on the lights.
+-- Spawns her in front of you and plays the clip from `seconds` in, so the
+-- performance can be watched without starting a race.
 --
--- With no argument it plays from the top and prints the clip's real length, so
--- the 72.6s figure can be confirmed against whatever the game actually loads.
+-- With no argument it plays from the top — which is exactly what a race does —
+-- and prints the clip's real length, so the 72.6s figure can be confirmed
+-- against whatever the game actually loads.
 RegisterCommand("flagdrop", function(_, args)
     local at = tonumber(args[1])
 
     Citizen.CreateThread(function()
-        if not loadAssets() then
+        local spec = nextPed()
+
+        if not loadAssets(spec.model) then
             print("^1[spz-races] Flag girl assets failed to load.^7")
             return
         end
@@ -412,9 +372,11 @@ RegisterCommand("flagdrop", function(_, args)
         local fwd = GetEntityForwardVector(ped)
         local pos = GetEntityCoords(ped) + (fwd * 3.0)
 
-        girl = CreatePed(4, PED_MODEL, pos.x, pos.y, pos.z, 0.0, false, false)
-        SetModelAsNoLongerNeeded(PED_MODEL)
+        girl = CreatePed(4, spec.model, pos.x, pos.y, pos.z, 0.0, false, false)
+        SetModelAsNoLongerNeeded(spec.model)
         if not heldEntity(girl) then girl = nil return end
+
+        dress(girl, spec)
 
         SetEntityInvincible(girl, true)
         SetBlockingOfNonTemporaryEvents(girl, true)
@@ -433,7 +395,7 @@ RegisterCommand("flagdrop", function(_, args)
 
         print(("^2[spz-races] %s/%s — length %.2fs, playing from %.2fs (phase %.4f).^7")
             :format(ANIM_DICT, ANIM_CLIP, len, phase * len, phase))
-        print("^2[spz-races] Note the time the arms drop, then set Config.FlagAnimDropTime to it.^7")
+        print("^2[spz-races] Config.FlagAnimAfterGoMs sets how long after GO this starts.^7")
     end)
 end, false)
 

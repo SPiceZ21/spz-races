@@ -266,22 +266,20 @@ Config.SplitPointGap        = 7.0
 
 -- ── Flag girl ──────────────────────────────────────────────────────────────
 -- The ped who starts the race from the lane the split grid opens up
--- (client/gridgirl.lua). She walks out during staging and drops the field away
--- on GO.
+-- (client/gridgirl.lua). She is placed on her mark for staging and performs the
+-- flag routine once the countdown ends.
 --
--- `random@street_race / grid_girl_race_start` is 72.6 seconds and 1480 frames:
--- a full performance, with the actual drop somewhere inside it rather than at
--- the end. To land that drop on the lights the client has to enter the clip
--- part way through, which means knowing WHERE the drop is — and that cannot be
--- read off the animation file, only watched.
+-- How long AFTER the countdown finishes her animation starts, in milliseconds.
 --
--- Set this to the time in seconds at which her arms come down. Run /flagdrop
--- <seconds> in game to scrub the clip until you see it; the command prints the
--- phase for each offset.
+-- This replaced an attempt to align a frame inside the clip with the lights.
+-- `random@street_race / grid_girl_race_start` is a 72 second performance with
+-- the swing somewhere inside it, and that offset cannot be read from script —
+-- it had to be found by hand and re-found whenever the clip loaded differently.
+-- A single delay measured from GO can be set by watching it once.
 --
--- Left nil she performs the clip from the top through the whole run-up, which
--- looks right but is not synchronised to the countdown.
-Config.FlagAnimDropTime     = nil
+-- 0 starts her the instant the lights go out. Use /flagdrop to watch the clip
+-- without starting a race.
+Config.FlagAnimAfterGoMs    = 2000
 
 Config.PointSpawnRadius     = 0.0     -- 0 = one point · >0 = ring of that radius
 Config.PointSpawnMaxRadius  = 12.0    -- metres; past this the ring is wider than

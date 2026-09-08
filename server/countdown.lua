@@ -152,6 +152,22 @@ local function _runThreeTwoOne()
     end
 end
 
+
+-- Flag girl selection, shared across the lobby. See the call site below.
+local FLAG_GIRL_COUNT = 6      -- #PED_MODELS in client/gridgirl.lua
+local flagGirlBag = {}
+
+local function nextFlagGirl()
+    if #flagGirlBag == 0 then
+        for i = 1, FLAG_GIRL_COUNT do flagGirlBag[i] = i end
+        for i = #flagGirlBag, 2, -1 do
+            local j = math.random(i)
+            flagGirlBag[i], flagGirlBag[j] = flagGirlBag[j], flagGirlBag[i]
+        end
+    end
+    return table.remove(flagGirlBag)
+end
+
 function StartCountdownSequence()
     if RaceSession.state ~= SPZ.RaceState.COUNTDOWN then return end
 
@@ -178,6 +194,16 @@ function StartCountdownSequence()
     -- two config values and the whole sequence re-times itself.
     local goInMs = ((Config.StagingTimeSeconds or 9) + (Config.CountdownSeconds or 5)) * 1000
 
+    -- Which flag girl, decided ONCE and sent to everybody. She is a local ped
+    -- created separately on every client, so left to choose for themselves two
+    -- drivers in the same race would be waved off by two different women.
+    --
+    -- Drawn from a shuffled bag rather than at random, so all six appear before
+    -- any of them repeats. The count is the length of PED_MODELS in
+    -- client/gridgirl.lua — the client wraps whatever arrives, so the two going
+    -- out of step costs variety, never a missing ped.
+    local flagGirl = nextFlagGirl()
+
     for source, data in pairs(RaceSession.players) do
         TriggerClientEvent("SPZ:gridFormed", source, {
             coords    = startCoords,
@@ -186,6 +212,7 @@ function StartCountdownSequence()
             staging   = Config.StagingTimeSeconds or 9,
             countdown = Config.CountdownSeconds or 5,
             gridPos   = data.gridIndex or 0,
+            flagGirl  = flagGirl,
         })
     end
 
