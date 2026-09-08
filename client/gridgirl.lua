@@ -123,57 +123,70 @@ local function groundZ(x, y, z)
     return ok and gz or z
 end
 
--- ── Ghosting ────────────────────────────────────────────────────────────────
+-- ── Passing through the field ────────────────────────────────────────────────
 --
--- She has no collision at all, from the moment she spawns: she passes through
--- walls, through players and through their cars, and none of them can touch
--- her. Collision used to come off only at GO, which left the whole walk-in and
--- the entire countdown with a solid ped standing in the lane the field is about
--- to launch down — a bollard, in the one place nobody can afford one.
+-- She must not be a bollard: she stands in the lane a split grid opens up, and
+-- sixteen cars launch through it. But she also has to WALK, and walking is what
+-- makes this awkward — a ped with no collision at all has nothing holding it
+-- up, and driving its height by hand every frame is what made her jitter and
+-- sink.
 --
--- Taking it away costs the one thing it was also doing: holding her up. So the
--- surface is driven directly instead, by `keepOnGround` below.
-local function ghost(ped)
-    SetEntityCollision(ped, false, false)
-    -- Redundant while collision is off, and kept anyway: it is the guarantee
-    -- that survives if anything later re-enables collision on her.
-    SetEntityNoCollisionEntity(ped, PlayerPedId(), true)
+-- So world collision stays ON — the road carries her, exactly as the engine
+-- intends — and collision is switched off pair by pair against the only things
+-- that can actually hit her: player peds and the cars they are in.
+--
+-- SetEntityNoCollisionEntity's third argument is thisFrameOnly, NOT "disable".
+-- Passing `true` (as this used to) buys a single frame and then lapses, which
+-- is why she was still solid. It is `false` here, and refreshed on a timer
+-- because the pairs go stale: players stream in, and a driver who changes car
+-- is a new entity that has never been paired with her.
+local PAIR_REFRESH_MS = 500
+
+local function passThroughField(ped)
+    for _, pid in ipairs(GetActivePlayers()) do
+        local other = GetPlayerPed(pid)
+        if other ~= 0 and DoesEntityExist(other) then
+            SetEntityNoCollisionEntity(ped, other, false)
+
+            local veh = GetVehiclePedIsIn(other, false)
+            if veh ~= 0 and DoesEntityExist(veh) then
+                SetEntityNoCollisionEntity(ped, veh, false)
+            end
+        end
+    end
 end
 
--- How far off the surface she has to be before her height is rewritten. Under
--- this she is left alone, so a walk cycle's own bob is not fought frame by
--- frame and the position is not rewritten on frames that do not need it.
-local GROUND_TOL = 0.08
-
--- Probe height above her. Has to clear the tallest step she can walk over
--- without reaching up through a bridge deck she is walking under.
-local GROUND_PROBE_UP = 1.5
-
--- Rides her Z onto the ground for as long as she is ours and unpinned.
+-- ── Not ending up under the road ─────────────────────────────────────────────
 --
--- Covers both ways a collisionless ped goes wrong: sinking through the map, and
--- holding a level line across a road that is cambered or climbing. When the
--- probe finds no surface at all — she is inside geometry, or under it — the
--- last height that DID answer is used, which is what stops a bad probe turning
--- into a ped falling forever.
-local function keepOnGround(myGen, isPinned)
+-- A safety net, not a driver. The engine keeps her on the surface; this only
+-- catches the case where she has ended up genuinely below it — spawned into a
+-- gap in the streamed world, or pushed under by something.
+--
+-- It runs at a lazy tick and does nothing at all unless she is a clear half
+-- metre under, because a correction every frame is a correction fighting the
+-- walk cycle, which is what the jitter was.
+local UNDER_GROUND_TOL = 0.5
+local GROUND_CHECK_MS  = 250
+
+local function keepAboveGround(myGen, isPinned)
     Citizen.CreateThread(function()
-        local lastGoodZ = nil
-
         while generation == myGen and heldEntity(girl) and not isPinned() do
-            local p = GetEntityCoords(girl)
-            local ok, gz = GetGroundZFor_3dCoord(p.x, p.y, p.z + GROUND_PROBE_UP, false)
+            passThroughField(girl)
 
-            if ok then
-                lastGoodZ = gz
-                if math.abs(p.z - gz) > GROUND_TOL then
-                    SetEntityCoordsNoOffset(girl, p.x, p.y, gz, false, false, false)
-                end
-            elseif lastGoodZ and p.z < lastGoodZ - 1.0 then
-                SetEntityCoordsNoOffset(girl, p.x, p.y, lastGoodZ, false, false, false)
+            local p = GetEntityCoords(girl)
+            -- Probe from well above her so the trace starts in open air even
+            -- when she is already partly buried.
+            local ok, gz = GetGroundZFor_3dCoord(p.x, p.y, p.z + 3.0, false)
+
+            if ok and p.z < gz - UNDER_GROUND_TOL then
+                -- SetEntityCoords, NOT SetEntityCoordsNoOffset: the "no offset"
+                -- variant puts the ped's ORIGIN on the given Z, and a ped's
+                -- origin is around its waist — which is precisely how she ended
+                -- up buried to the middle. This one lands her feet on it.
+                SetEntityCoords(girl, p.x, p.y, gz, false, false, false, false)
             end
 
-            Citizen.Wait(0)
+            Citizen.Wait(GROUND_CHECK_MS)
         end
     end)
 end
@@ -252,9 +265,9 @@ RegisterNetEvent("SPZ:gridFormed", function(data)
         SetPedCanBeTargetted(girl, false)
         SetPedConfigFlag(girl, 128, true)   -- ignores combat / danger reactions
 
-        -- No collision from here on, with the ground driven under her instead.
-        ghost(girl)
-        keepOnGround(myGen, function() return pinned end)
+        -- Cars and players pass through her; the road still holds her up.
+        passThroughField(girl)
+        keepAboveGround(myGen, function() return pinned end)
 
         -- NOT config flag 17 ("never leaves its assigned area") — not here.
         -- Her assigned area is where she spawned, at the SIDE of the road, so
@@ -302,7 +315,9 @@ RegisterNetEvent("SPZ:gridFormed", function(data)
         -- eased — an off-mark flag girl is more obviously wrong than a
         -- teleported one, and the walk has already sold the arrival.
         ClearPedTasks(girl)
-        SetEntityCoordsNoOffset(girl, mx, my, mz, false, false, false)
+        -- With offset: see keepAboveGround. NoOffset buried her to the waist,
+        -- and only collision shoving her back out ever hid it.
+        SetEntityCoords(girl, mx, my, mz, false, false, false, false)
         SetEntityHeading(girl, ((data.heading or 0.0) + 180.0) % 360.0)
         -- Now that her mark IS her assigned area, pin her to it.
         SetPedConfigFlag(girl, 17, true)
@@ -357,16 +372,18 @@ end)
 
 -- GO. The swing is already running and lands about now.
 --
--- She has been collisionless since she spawned, so the field launching through
--- her is already a non-event. What is left to do is nail her down: frozen on
--- her mark for the few seconds before she is removed, which also retires the
--- ground keeper — a frozen ped cannot drift off the surface, and rewriting her
--- coordinate under a playing animation for no reason is worse than not.
+-- Cars have passed through her since she spawned, so the field launching is
+-- already a non-event. What is left is to nail her down for the few seconds
+-- before she is removed, which also retires the ground check.
 RegisterNetEvent("SPZ:go", function()
     if not heldEntity(girl) then return end
 
     pinned = true
     FreezeEntityPosition(girl, true)
+    -- Frozen first, THEN collision off. In that order there is nothing left to
+    -- fall: her position is nailed for the few seconds before she is removed,
+    -- so losing the ground under her costs nothing.
+    SetEntityCollision(girl, false, false)
 
     Citizen.SetTimeout(5000, cleanup)
 end)
@@ -403,10 +420,10 @@ RegisterCommand("flagdrop", function(_, args)
         SetBlockingOfNonTemporaryEvents(girl, true)
         SetEntityHeading(girl, (GetEntityHeading(ped) + 180.0) % 360.0)
 
-        -- Same ghosting as the real thing, so what is being scrubbed here
-        -- behaves like what turns up on the grid.
-        ghost(girl)
-        keepOnGround(generation, function() return false end)
+        -- Same pass-through as the real thing, so what is being scrubbed
+        -- here behaves like what turns up on the grid.
+        passThroughField(girl)
+        keepAboveGround(generation, function() return false end)
 
         local len = GetAnimDuration(ANIM_DICT, ANIM_CLIP)
         if not len or len <= 0 then len = ANIM_FALLBACK end

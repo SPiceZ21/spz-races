@@ -466,12 +466,50 @@ Config.CopChase = {
   --              alone. pitEvery is the MINIMUM gap between attempts.
   --   roadblock  seconds between roadblocks; 0 = never. Two cruisers parked
   --              across the road ahead, called out before you reach them.
+  --   heli       a police maverick overhead, holding station on you. It never
+  --              blocks or rams; what it does is make hiding pointless, which
+  --              is exactly its job in the base game.
   Levels = {
-    [1] = { tail = 1, flank = 0, intercept = 0, pit = false, pitEvery = 0,    roadblock = 0,  speed = 38.0 },
-    [2] = { tail = 2, flank = 0, intercept = 0, pit = false, pitEvery = 0,    roadblock = 0,  speed = 42.0 },
-    [3] = { tail = 2, flank = 1, intercept = 0, pit = true,  pitEvery = 11.0, roadblock = 0,  speed = 46.0 },
-    [4] = { tail = 2, flank = 2, intercept = 1, pit = true,  pitEvery = 8.0,  roadblock = 55, speed = 50.0 },
-    [5] = { tail = 3, flank = 2, intercept = 1, pit = true,  pitEvery = 5.0,  roadblock = 35, speed = 56.0 },
+    [1] = { tail = 1, flank = 0, intercept = 0, heli = 0, pit = false, pitEvery = 0,    roadblock = 0,  speed = 38.0 },
+    [2] = { tail = 2, flank = 0, intercept = 0, heli = 0, pit = false, pitEvery = 0,    roadblock = 0,  speed = 42.0 },
+    [3] = { tail = 2, flank = 1, intercept = 0, heli = 1, pit = true,  pitEvery = 11.0, roadblock = 0,  speed = 46.0 },
+    [4] = { tail = 2, flank = 2, intercept = 1, heli = 1, pit = true,  pitEvery = 8.0,  roadblock = 55, speed = 50.0 },
+    [5] = { tail = 3, flank = 2, intercept = 1, heli = 1, pit = true,  pitEvery = 5.0,  roadblock = 35, speed = 56.0 },
+  },
+
+  -- ── How the police themselves behave ─────────────────────────────────────
+  --
+  -- true  — the GAME'S police AI. The peds are real cops: armed, in the COP
+  --         relationship group, flagged with SetPedAsCop, and driven by a real
+  --         wanted level. They react to what happens around them, they get out
+  --         and engage when you stop or bail, and they shoot. This is base-game
+  --         behaviour, with the pack script only deciding WHERE units appear.
+  --
+  -- false — the scripted-only pack: weapons stripped, combat unreachable, every
+  --         non-temporary event blocked so nothing can pull them out of the
+  --         driving task. The car is the only pressure they ever apply.
+  --
+  -- Vanilla DISPATCH stays off either way (spz-core kills all 15 services), so
+  -- the wanted level never summons anything — it is what makes the police AI
+  -- treat the racer as a suspect, nothing more. Every unit on the road is still
+  -- one this file asked for.
+  VanillaBehaviour = true,
+  Accuracy         = 25,     -- vanilla mode: ped accuracy, 0-100. Cops are not snipers.
+  Armour           = 100,
+
+  -- ── Air support ──────────────────────────────────────────────────────────
+  -- Fielded from the star level that asks for one (see `heli` above). It holds
+  -- station overhead with its searchlight on you, and it is the reason ducking
+  -- into a side street stops working.
+  Heli = {
+    Enabled     = true,
+    Model       = "polmav",
+    PedModel    = "s_m_y_cop_01",
+    Height      = 45.0,    -- metres it tries to hold above you
+    Behind      = 45.0,    -- metres back it arrives from
+    Speed       = 65.0,    -- m/s chase speed
+    Searchlight = true,    -- the light itself
+    Blip        = true,
   },
 
   Models     = { "police", "police2", "police3" },  -- cruisers (randomised)
@@ -508,6 +546,35 @@ Config.CopChase = {
   -- arriving, a PIT going in, a block going up. Off = silent pursuit.
   Chatter = true,
 
+  -- ── Dispatch radio (the SOUND of the callouts) ───────────────────────────
+  -- Independent of `Chatter` above, which is only the on-screen text: a server
+  -- can run a silent HUD and still want the radio, or the reverse.
+  Radio = {
+    Enabled = true,
+
+    -- The CB key-up click. Always available, and on its own it is most of what
+    -- makes a callout sound like it came over a radio.
+    Squelch = true,
+
+    -- Real police-scanner lines, played at random. These are GAME AUDIO names,
+    -- not an API: an unrecognised one plays nothing at all and reports no error,
+    -- which is exactly why they are data here rather than baked into the client.
+    -- Trim or extend the list freely; empty or nil means squelch only.
+    Reports = {
+      "CRIME_SUSPECT_IN_VEHICLE",
+      "CRIME_RECKLESS_DRIVING",
+      "CRIME_SPEEDING_VEHICLE",
+      "CRIME_TERRORIST_ACTIVITY",
+    },
+
+    -- Scanner lines run for several seconds. Two at once is noise, not chatter.
+    ReportGapMs = 9000,
+
+    -- Background radio while a pursuit runs, so the gaps between events are not
+    -- silent. 0 disables it and leaves the radio to callouts only.
+    AmbientEverySec = 20,
+  },
+
   -- ── Losing them ──────────────────────────────────────────────────────────
   -- No unit within EscapeDist for EscapeSeconds and the heat dumps: stars fall
   -- away, the pack despawns, the race carries on.
@@ -521,5 +588,8 @@ Config.CopChase = {
   -- turned off back in — vanilla units, police reports, dispatch reacting to a
   -- level it is not allowed to serve. Turn it on only if another resource of
   -- yours reads GetPlayerWantedLevel and has to see the race heat.
-  UseNativeWanted = false,
+  -- The game's police AI keys off the wanted level: without one, a cop ped has
+  -- no suspect and simply drives. On with VanillaBehaviour, and harmless either
+  -- way because dispatch is disabled — it summons nothing.
+  UseNativeWanted = true,
 }

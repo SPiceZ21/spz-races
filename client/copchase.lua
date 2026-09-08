@@ -37,10 +37,23 @@
 -- your rear quarter, and you have to be slow enough that the hit spins you
 -- rather than launching you. The timer is only a floor on how often.
 --
--- THEY DO NOT SHOOT. Not "usually" — there is no weapon on the ped and no path
--- to combat: weapons stripped, drivebys off, and every non-temporary event
--- blocked so nothing can pull them out of the driving task. The only pressure
--- they apply is the car.
+-- HOW THEY BEHAVE ONCE THEY ARE THERE
+--
+-- By default (Config.CopChase.VanillaBehaviour) the peds are REAL cops as far as
+-- the game is concerned — SetPedAsCop, the COP relationship group, a real wanted
+-- level — so the base game's own police AI does the pursuing: how they read the
+-- road, how they commit to a corner, how they follow you through a mistake.
+--
+-- THEY STILL DO NOT SHOOT. Not "usually": there is no weapon on the ped, no
+-- driveby, and BF_CanLeaveVehicle is off, so there is no path from a pursuit to
+-- a firefight. The base game supplies the driving brain; the car remains the
+-- only pressure they ever apply.
+--
+-- Vanilla DISPATCH is off too (spz-core kills all 15 services), so the wanted
+-- level summons nothing — every car on the road is one this file asked for.
+--
+-- Set VanillaBehaviour false for the fully scripted pack, which additionally
+-- blocks non-temporary events so nothing can pull a unit out of its drive task.
 --
 -- Whether any of this runs at all is voted on with the traffic ballot
 -- (server/poll.lua) and published as GlobalState.raceCopChase.
@@ -76,6 +89,7 @@ local lastChatter = 0
 local flankSide   = 1              -- alternates so flankers do not stack on one side
 local escapeFor   = 0.0            -- seconds with nobody in range
 local hitCooldown = 0              -- ms timer so one crash is not counted twice
+local lastWantedSig = ""           -- last payload pushed to the raceUI star row
 
 local function cfg(key, fallback)
     local v = CC[key]
@@ -91,11 +105,66 @@ end
 
 --- Short radio callouts. Throttled hard: the pack does something interesting
 --- every few seconds and a line for each would be a wall of notifications.
+-- ── Dispatch radio ───────────────────────────────────────────────────────────
+--
+-- The audio half of a callout. Two independent pieces, because they fail
+-- differently:
+--
+--   squelch  the CB radio key-up/key-down click. A frontend sound, always
+--            available, and on its own it is most of what sells "that came over
+--            a radio" rather than out of thin air.
+--
+--   report   real police-scanner lines via PlayPoliceReport. The valid names
+--            are a game-audio list, not an API, so they live in config as data
+--            rather than baked in here — an unknown name is silently nothing,
+--            which is exactly why it must be editable without touching code.
+--
+-- spz-core calls CancelCurrentPoliceReport every frame while cops are disabled,
+-- which would cut a report off the moment it started. LocalPlayer.state.copHeat
+-- is the flag that tells it to leave the scanner alone while a pursuit is live.
+local function radioCfg(key, fallback)
+    local r = CC.Radio or {}
+    if r[key] == nil then return fallback end
+    return r[key]
+end
+
+local lastReport = 0
+
+local function radioReport()
+    local list = radioCfg("Reports", nil)
+    if type(list) ~= "table" or #list == 0 then return end
+
+    local now = GetGameTimer()
+    -- Scanner lines are long. Overlapping two is noise, not chatter.
+    if (now - lastReport) < (radioCfg("ReportGapMs", 9000)) then return end
+    lastReport = now
+
+    PlayPoliceReport(list[math.random(#list)], 0.0)
+end
+
+local function radioSquelch()
+    if radioCfg("Squelch", true) == false then return end
+    PlaySoundFrontend(-1, "Start_Squelch", "CB_RADIO_SFX", true)
+end
+
+--- Sound for a callout, independent of whether the text is shown: a server can
+--- run a silent HUD and still want the radio, or the reverse.
+local function radioCall()
+    if radioCfg("Enabled", true) == false then return end
+    radioSquelch()
+    radioReport()
+end
+
 local function chatter(msg, kind)
-    if cfg("Chatter", true) == false then return end
     local now = GetGameTimer()
     if now - lastChatter < 3500 then return end
     lastChatter = now
+
+    -- Radio first, and independent of the text: a server running a silent HUD
+    -- still wants the callout to be audible.
+    radioCall()
+
+    if cfg("Chatter", true) == false then return end
     lib.notify({ title = "POLICE", description = msg, type = kind or "error", duration = 3000 })
 end
 
@@ -356,6 +425,35 @@ local function makeDriver(ped)
     SetPedSteersAroundVehicles(ped, true)
 end
 
+local function vanillaCop(ped)
+    -- Real police, as far as the game is concerned. SetPedAsCop plus the COP
+    -- relationship group is what makes the base-game AI treat the wanted player
+    -- as a suspect rather than as traffic — without both, an armed ped in a
+    -- police uniform still just drives.
+    SetPedAsCop(ped, true)
+    SetPedRelationshipGroupHash(ped, GetHashKey("COP"))
+
+    -- The police BRAIN, without the gun. Every route from a pursuit to a
+    -- firefight is cut here, and cut at the source rather than by hoping the AI
+    -- never takes it:
+    RemoveAllPedWeapons(ped, true)
+    SetPedCanSwitchWeapon(ped, false)
+    SetPedDropsWeaponsWhenDead(ped, false)
+    SetPedCombatAttributes(ped, 2, false)    -- no drivebys
+    SetPedCombatAttributes(ped, 3, false)    -- BF_CanLeaveVehicle: they stay in the car
+    SetPedCombatAttributes(ped, 5, false)    -- never "always fight"
+    SetPedCombatAttributes(ped, 46, false)
+    SetPedFleeAttributes(ped, 0, false)
+
+    -- Armour anyway: a unit that dies to a shunt leaves a corpse in a cruiser
+    -- in the middle of the race, which is worse than one that shrugs it off.
+    SetPedArmour(ped, cfg("Armour", 100))
+
+    SetPedKeepTask(ped, true)
+    SetPedCanBeDraggedOut(ped, false)
+    SetPedCanBeTargettedByPlayer(ped, PlayerId(), false)
+end
+
 local function disarm(ped)
     RemoveAllPedWeapons(ped, true)
     SetPedCanSwitchWeapon(ped, false)
@@ -412,7 +510,7 @@ local function makeUnit(coords, heading, role)
     end
     SetPedIntoVehicle(ped, veh, -1)
     SetEntityAsMissionEntity(ped, true, true)
-    disarm(ped)
+    if cfg("VanillaBehaviour", true) then vanillaCop(ped) else disarm(ped) end
     makeDriver(ped)
 
     SetModelAsNoLongerNeeded(vehHash)
@@ -425,6 +523,144 @@ local function makeUnit(coords, heading, role)
     SetBlipAsShortRange(blip, true)
 
     return { veh = veh, ped = ped, blip = blip, role = role, pitUntil = 0, born = GetGameTimer() }
+end
+
+-- ── Air support ──────────────────────────────────────────────────────────────
+--
+-- One maverick, holding station over the racer with its searchlight on them.
+--
+-- TaskHeliChase is the base game's own air-pursuit task — the same one the
+-- police chopper flies in single player — so the flying is not scripted here
+-- either: it is given the target and an offset to hold, and left to it.
+--
+-- It never rams, never blocks and never PITs. Its whole job is that ducking
+-- into a side street stops working, which is what it does in the base game.
+
+local function heliCfg(key, fallback)
+    local h = CC.Heli or {}
+    if h[key] == nil then return fallback end
+    return h[key]
+end
+
+--- A point in the air, `behind` metres back down the racer's heading and
+--- `height` metres up. No node snapping — it is a helicopter.
+local function airPointBehind(racerVeh)
+    local pos = GetEntityCoords(racerVeh)
+    local h   = math.rad(GetEntityHeading(racerVeh))
+    local d   = heliCfg("Behind", 45.0)
+    return vec3(pos.x + math.sin(h) * d,
+                pos.y - math.cos(h) * d,
+                pos.z + heliCfg("Height", 45.0))
+end
+
+local function taskHeli(u)
+    if not DoesEntityExist(u.ped) then return end
+    ClearPedTasks(u.ped)
+    -- Offsets are relative to the target: straight overhead, at height.
+    TaskHeliChase(u.ped, PlayerPedId(), 0.0, 0.0, heliCfg("Height", 45.0))
+    u.taskedAt = GetGameTimer()
+end
+
+local function spawnHeli(racerVeh)
+    if heliCfg("Enabled", true) == false then return false end
+
+    local vehHash = loadModel(heliCfg("Model", "polmav"))
+    local pedHash = loadModel(heliCfg("PedModel", "s_m_y_cop_01"))
+    if not vehHash or not pedHash then return false end
+
+    local at      = airPointBehind(racerVeh)
+    local heading = GetEntityHeading(racerVeh)
+
+    local veh = CreateVehicle(vehHash, at.x, at.y, at.z, heading, false, false)
+    if not DoesEntityExist(veh) then return false end
+    SetEntityAsMissionEntity(veh, true, true)
+    SetVehicleEngineOn(veh, true, true, false)
+    -- Spawned already flying: without this it drops while the rotor spools up,
+    -- which from the ground reads as a helicopter falling out of the sky.
+    SetHeliBladesFullSpeed(veh)
+    SetVehicleTyresCanBurst(veh, false)
+    SetVehicleStrong(veh, true)
+    if cfg("Sirens", true) then SetVehicleSiren(veh, true) end
+
+    local ped = CreatePed(26, pedHash, at.x, at.y, at.z, heading, false, false)
+    if not DoesEntityExist(ped) then
+        DeleteEntity(veh)
+        return false
+    end
+    SetPedIntoVehicle(ped, veh, -1)
+    SetEntityAsMissionEntity(ped, true, true)
+    if cfg("VanillaBehaviour", true) then vanillaCop(ped) else disarm(ped) end
+    SetPedCanBeDraggedOut(ped, false)
+
+    if heliCfg("Searchlight", true) then
+        SetVehicleSearchlight(veh, true, false)
+    end
+
+    SetModelAsNoLongerNeeded(vehHash)
+    SetModelAsNoLongerNeeded(pedHash)
+
+    local blip
+    if heliCfg("Blip", true) then
+        blip = AddBlipForEntity(veh)
+        SetBlipSprite(blip, 43)          -- helicopter
+        SetBlipColour(blip, 38)
+        SetBlipScale(blip, 0.8)
+        SetBlipAsShortRange(blip, false) -- it is meant to be seen coming
+    end
+
+    local u = { veh = veh, ped = ped, blip = blip, role = "heli",
+                pitUntil = 0, born = GetGameTimer() }
+    units[#units + 1] = u
+    taskHeli(u)
+    lastSpawn = GetGameTimer()
+
+    chatter("Air unit is up — they have eyes on you", "error")
+    return true
+end
+
+--- Put a strayed chopper back over the racer. No off-screen condition and no
+--- node lookup: there is nothing to snap to at altitude, and a helicopter
+--- crossing the sky to rejoin is a thing you see in the base game anyway.
+local function recoverHeli(u, racerVeh)
+    if not DoesEntityExist(u.veh) then return false end
+    local at = airPointBehind(racerVeh)
+    SetEntityCoords(u.veh, at.x, at.y, at.z, false, false, false, false)
+    SetEntityHeading(u.veh, GetEntityHeading(racerVeh))
+    SetHeliBladesFullSpeed(u.veh)
+    if GetPedInVehicleSeat(u.veh, -1) ~= u.ped then
+        TaskWarpPedIntoVehicle(u.ped, u.veh, -1)
+    end
+    taskHeli(u)
+    return true
+end
+
+-- Everything the chopper needs per tick. Deliberately NOT tickUnit: upside
+-- down, stuck-on-a-kerb and put-it-back-on-the-road are all meaningless in the
+-- air, and SetVehicleOnGroundProperly on a flying helicopter is a crash.
+local HELI_RETASK_MS = 8000
+
+local function tickHeli(u, racerVeh, now)
+    if not DoesEntityExist(u.veh) or not DoesEntityExist(u.ped) then return false end
+    if IsEntityDead(u.ped) or not IsVehicleDriveable(u.veh, false) then return false end
+
+    if GetPedInVehicleSeat(u.veh, -1) ~= u.ped then
+        TaskWarpPedIntoVehicle(u.ped, u.veh, -1)
+        taskHeli(u)
+        return true
+    end
+
+    -- The chase task ends quietly like any other. Re-issuing it on a slow timer
+    -- is cheaper than polling task status and costs nothing when it is already
+    -- running.
+    if (now - (u.taskedAt or 0)) > HELI_RETASK_MS then
+        taskHeli(u)
+    end
+
+    if heliCfg("Searchlight", true) then
+        SetVehicleSearchlight(u.veh, true, false)
+    end
+
+    return true
 end
 
 local function spawnPursuit(racerVeh, role, speed)
@@ -555,10 +791,18 @@ local function starsFor(h)
     return n
 end
 
+--- Distance to the nearest GROUND unit.
+---
+--- The chopper is deliberately excluded. It holds station directly overhead, so
+--- it would sit permanently inside the escape radius and no pursuit above two
+--- stars could ever be shaken off — the heat would never decay and the race
+--- would run under a siren to the flag. Losing the police is decided by the
+--- cars, exactly as it was before there was air support; the chopper leaves
+--- with the rest of the pack when the heat does.
 local function nearestUnitDist(pos)
     local best = math.huge
     for _, u in ipairs(units) do
-        if DoesEntityExist(u.veh) then
+        if u.role ~= "heli" and DoesEntityExist(u.veh) then
             local d = #(GetEntityCoords(u.veh) - pos)
             if d < best then best = d end
         end
@@ -646,6 +890,15 @@ local function stopChase(reason)
     if not active and #units == 0 and not block and heat == 0 then return end
     active, heat, stars, escapeFor = false, 0.0, 0, 0.0
     clearPack()
+    -- Hands the scanner back to spz-core, which resumes cancelling reports.
+    LocalPlayer.state:set("copHeat", false, false)
+
+    -- Clear the star row now rather than up to a tick later: the pursuit ending
+    -- is the moment the driver is looking for confirmation of.
+    lastWantedSig = ""
+    if GetResourceState("spz-raceUI") == "started" then
+        exports["spz-raceUI"]:UpdateWanted({ stars = 0 })
+    end
     if cfg("UseNativeWanted", false) then
         SetPlayerWantedLevel(PlayerId(), 0, false)
         SetPlayerWantedLevelNow(PlayerId(), false)
@@ -667,6 +920,8 @@ local function maintainPack(racerVeh, spec, speed)
         spawnPursuit(racerVeh, "flank", speed)
     elseif countRole("intercept") < (spec.intercept or 0) then
         spawnPursuit(racerVeh, "intercept", speed)
+    elseif countRole("heli") < (spec.heli or 0) then
+        spawnHeli(racerVeh)
     end
 end
 
@@ -678,7 +933,8 @@ end
 --- quarter, which reads as the script breaking; the one three streets back
 --- disappearing is something nobody ever sees.
 local function trimPack(spec, pos)
-    local want = { tail = spec.tail or 0, flank = spec.flank or 0, intercept = spec.intercept or 0 }
+    local want = { tail = spec.tail or 0, flank = spec.flank or 0,
+                   intercept = spec.intercept or 0, heli = spec.heli or 0 }
 
     local order = {}
     for i = 1, #units do order[i] = i end
@@ -745,10 +1001,20 @@ CreateThread(function()
             end
             stars = newStars
 
+            -- While this is set, spz-core leaves the police scanner alone so a
+            -- report can actually finish playing.
+            local heatOn = stars > 0 and radioCfg("Enabled", true) ~= false
+            if heatOn ~= LocalPlayer.state.copHeat then
+                LocalPlayer.state:set("copHeat", heatOn, false)
+            end
+
             if cfg("UseNativeWanted", false) then
                 SetPlayerWantedLevel(PlayerId(), stars, false)
                 SetPlayerWantedLevelNow(PlayerId(), false)
-                SetPoliceIgnorePlayer(PlayerId(), true)   -- our units only; vanilla stays out
+                -- Ignoring the player is what the scripted-only pack wanted: no
+                -- vanilla reaction at all. The game's police AI needs the exact
+                -- opposite — a suspect it is allowed to notice.
+                SetPoliceIgnorePlayer(PlayerId(), not cfg("VanillaBehaviour", true))
             end
 
             if stars == 0 then
@@ -771,7 +1037,14 @@ CreateThread(function()
                     or IsEntityDead(u.ped) or not IsVehicleDriveable(u.veh, false)
 
                 local dead = broken
-                if not broken then
+                if not broken and u.role == "heli" then
+                    -- Its own path entirely: air recovery, air tick.
+                    if #(GetEntityCoords(u.veh) - pos) > cfg("DespawnDist", 340.0) then
+                        dead = not recoverHeli(u, veh)
+                    else
+                        dead = not tickHeli(u, veh, now)
+                    end
+                elseif not broken then
                     if #(GetEntityCoords(u.veh) - pos) > cfg("DespawnDist", 340.0) then
                         -- Adrift, but not beaten. Most cars out at the despawn
                         -- radius are stuck on a kerb two corners back, so they
@@ -792,6 +1065,17 @@ CreateThread(function()
                     u.role = "tail"
                     applyRole(u, speed)
                 end
+            end
+
+            -- Background radio while the pursuit runs, so it is not silent
+            -- between events. Separate cadence from the callouts, and it goes
+            -- through the same overlap guard so the two cannot talk over
+            -- each other.
+            local ambientSec = radioCfg("AmbientEverySec", 0)
+            if ambientSec and ambientSec > 0
+            and (now - lastChatter) > (ambientSec * 1000) then
+                lastChatter = now
+                radioCall()
             end
 
             trimPack(spec, pos)
@@ -848,31 +1132,41 @@ CreateThread(function()
     end
 end)
 
--- ── HUD ──────────────────────────────────────────────────────────────────────
--- spz-core hides HUD components 1-22 every frame, wanted stars included, so the
--- readout is drawn here rather than by unhiding the vanilla one.
+-- ── HUD ─────────────────────────────────────────────────────────────────
+-- The star readout is spz-raceUI's, not a DrawText from here. spz-core hides HUD
+-- components 1-22 every frame, the vanilla stars among them, so something has to
+-- draw them — and a five-star row belongs with every other race readout rather
+-- than as the one piece of text this file paints on the screen itself.
+--
+-- Pushed on CHANGE, not per frame. The payload is three numbers and the element
+-- redraws itself, so sending every frame would be a per-frame NUI message for a
+-- row that changes a handful of times in a whole race.
+
+local function pushWanted()
+    if GetResourceState("spz-raceUI") ~= "started" then return end
+
+    local show = active and stars > 0 and cfg("Hud", true) ~= false
+
+    local left = 0
+    if show and escapeFor > 0 then
+        left = math.max(0, math.ceil(cfg("EscapeSeconds", 12) - escapeFor))
+    end
+
+    local sig = ("%s|%d|%d"):format(tostring(show), show and stars or 0, left)
+    if sig == lastWantedSig then return end
+    lastWantedSig = sig
+
+    exports["spz-raceUI"]:UpdateWanted({
+        stars  = show and stars or 0,
+        max    = cfg("MaxStars", 5),
+        escape = left > 0 and left or nil,
+    })
+end
 
 CreateThread(function()
     while true do
-        if active and stars > 0 and cfg("Hud", true) ~= false then
-            local label = ("WANTED  %s"):format(string.rep("*", stars))
-            if escapeFor > 0 then
-                local left = math.ceil(cfg("EscapeSeconds", 12) - escapeFor)
-                if left > 0 then label = label .. ("   LOSING THEM  %ds"):format(left) end
-            end
-
-            SetTextFont(4)
-            SetTextScale(0.0, 0.42)
-            SetTextCentre(true)
-            SetTextColour(255, 90, 90, 230)
-            SetTextOutline()
-            BeginTextCommandDisplayText("STRING")
-            AddTextComponentSubstringPlayerName(label)
-            EndTextCommandDisplayText(0.5, 0.055)
-            Wait(0)
-        else
-            Wait(400)
-        end
+        Wait(250)
+        pushWanted()
     end
 end)
 
