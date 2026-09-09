@@ -269,17 +269,14 @@ Config.SplitPointGap        = 7.0
 -- (client/gridgirl.lua). She is placed on her mark for staging and performs the
 -- flag routine once the countdown ends.
 --
--- How long AFTER the countdown finishes her animation starts, in milliseconds.
+-- Her animation is played so that it ENDS on GO: she performs through staging
+-- and the countdown, and the clip runs out as the lights do. The client enters
+-- the clip part way through — at whatever phase leaves exactly the remaining
+-- window to run — so nothing here needs to know where the swing is inside it.
 --
--- This replaced an attempt to align a frame inside the clip with the lights.
--- `random@street_race / grid_girl_race_start` is a 72 second performance with
--- the swing somewhere inside it, and that offset cannot be read from script —
--- it had to be found by hand and re-found whenever the clip loaded differently.
--- A single delay measured from GO can be set by watching it once.
---
--- 0 starts her the instant the lights go out. Use /flagdrop to watch the clip
--- without starting a race.
-Config.FlagAnimAfterGoMs    = 2000
+-- This is how many milliseconds BEFORE GO the clip should finish. 0 lands it on
+-- the lights exactly; raise it if she should be done a beat early.
+Config.FlagAnimEndOffsetMs  = 0
 
 Config.PointSpawnRadius     = 0.0     -- 0 = one point · >0 = ring of that radius
 Config.PointSpawnMaxRadius  = 12.0    -- metres; past this the ring is wider than

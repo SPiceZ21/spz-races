@@ -1170,6 +1170,44 @@ CreateThread(function()
     end
 end)
 
+-- ── Seeing the star row without a pursuit ────────────────────────────────────
+-- /wantedtest [stars] [escapeSeconds]
+--
+-- Pushes a level straight at the HUD. The real readout only appears when cop
+-- chase was voted in AND heat has been earned AND the race is LIVE, which is
+-- three conditions deep before anything is on screen — far too much to have to
+-- arrange every time the element itself needs looking at.
+--
+-- It writes nothing and starts nothing: the next real tick of pushWanted
+-- overwrites whatever this put there, so it cannot leave the HUD lying.
+--
+--   /wantedtest        3 stars
+--   /wantedtest 5      5 stars
+--   /wantedtest 5 8    5 stars, "LOSING THEM 8s"
+--   /wantedtest 0      clear it
+RegisterCommand("wantedtest", function(_, args)
+    if GetResourceState("spz-raceUI") ~= "started" then
+        print("^1[spz-races] spz-raceUI is not started.^7")
+        return
+    end
+
+    local n = tonumber(args[1]) or 3
+    local esc = tonumber(args[2])
+
+    exports["spz-raceUI"]:UpdateWanted({
+        stars  = n,
+        max    = cfg("MaxStars", 5),
+        escape = esc and esc > 0 and esc or nil,
+    })
+
+    -- The signature cache would suppress the next real push if it happened to
+    -- match what was just faked.
+    lastWantedSig = ""
+
+    print(("^2[spz-races] wanted test: %d star%s%s^7"):format(
+        n, n == 1 and "" or "s", esc and (", losing them " .. esc .. "s") or ""))
+end, false)
+
 -- ── Teardown ─────────────────────────────────────────────────────────────────
 
 RegisterNetEvent("SPZ:tpToSafeZone", function() stopChase(nil) end)

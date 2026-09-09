@@ -99,19 +99,24 @@ local MARK_AHEAD = 6.0
 -- `grid_girl_race_start` is a 72-second performance — idling, playing to the
 -- grid, and somewhere inside it the actual swing — not a three second drop.
 --
--- It is started at a FIXED OFFSET FROM GO, and nothing tries to align a frame
--- inside the clip with the lights any more. That alignment needed the drop's
--- timestamp inside the animation, which cannot be read from script, so it lived
--- in config as a number somebody had to find by hand with /flagdrop — and when
--- it was wrong, or simply unset, the swing landed a minute late or ran from the
--- top while the grid was still forming.
+-- It is played so that it ENDS on GO: she performs through the countdown and
+-- the clip runs out as the lights do.
 --
--- One offset, measured from the moment the countdown ends, is a thing that can
--- be set by watching it once.
-local FLAG_AFTER_GO_MS = 2000   -- Config.FlagAnimAfterGoMs overrides this
+-- The clip is far longer than any start sequence, so it cannot be played from
+-- the top — it is entered at whatever phase leaves exactly the remaining window
+-- to run. With a 9s stage and a 5s count that is the last ~14 seconds of the
+-- performance, which is the part that builds to the finish.
+--
+-- Note what this does NOT need: the timestamp of the swing inside the clip.
+-- Aligning that with the lights was the old approach, it could not be read from
+-- script, and it lived in config as a number somebody had to find by hand — so
+-- when it was wrong, or unset, the drop landed a minute late or the whole clip
+-- ran from the top while the grid was still forming. The END of a clip is a
+-- thing the game can tell us.
+local FLAG_END_OFFSET_MS = 0    -- Config.FlagAnimEndOffsetMs: ms BEFORE GO to finish
 
--- How long she stays after the animation starts, so the clip is actually seen
--- before she is removed.
+-- How long she stays on her mark after GO, so she is not deleted out from under
+-- the field as it launches past her.
 local LINGER_MS = 5000
 
 local ANIM_FALLBACK = 72.6      -- clip length, if GetAnimDuration is unavailable
@@ -250,6 +255,10 @@ RegisterNetEvent("SPZ:gridFormed", function(data)
 
     local mark = c + (forward * MARK_AHEAD)
 
+    -- When the lights go out, as a local timestamp. Everything below is timed
+    -- backwards off this one number.
+    local goAt = GetGameTimer() + (tonumber(data.goInMs) or 14000)
+
     Citizen.CreateThread(function()
         local function stale() return generation ~= myGen end
 
@@ -304,17 +313,38 @@ RegisterNetEvent("SPZ:gridFormed", function(data)
         passThroughField(girl)
         keepAboveGround(myGen, function() return pinned end)
 
-        -- Idle on the mark until GO. The clip is started by the SPZ:go handler
-        -- below, so there is nothing scheduled from here that a cancelled race
-        -- would have to chase down.
+        -- ── Start the clip so it ENDS on GO ─────────────────────────────
+        --
+        -- The window is re-read here rather than at the top of the handler:
+        -- streaming the model and waiting for collision has already eaten into
+        -- it, and entering at a phase computed before that wait would overrun
+        -- the lights by however long the load took.
+        if not HasAnimDictLoaded(ANIM_DICT) then return end
+
+        local clipLen = GetAnimDuration(ANIM_DICT, ANIM_CLIP)
+        if not clipLen or clipLen <= 0 then clipLen = ANIM_FALLBACK end
+
+        local endLead = tonumber(Config and Config.FlagAnimEndOffsetMs) or FLAG_END_OFFSET_MS
+        local windowMs = (goAt - endLead) - GetGameTimer()
+        local windowSec = windowMs / 1000
+
+        -- Enter at the phase that leaves exactly `window` of clip to run. A
+        -- window longer than the clip simply plays it whole from the top.
+        local phase = (clipLen - windowSec) / clipLen
+        if phase < 0.0 then phase = 0.0 end
+        if phase > 0.99 then phase = 0.99 end
+
+        -- Flag 0, duration -1: play once from `phase` to the end and hold the
+        -- last frame. No loop — a loop would restart her mid-launch.
+        TaskPlayAnim(girl, ANIM_DICT, ANIM_CLIP, 8.0, -8.0, -1, 0, phase, false, false, false)
     end)
 end)
 
--- GO. The countdown has ended; the flag swing is scheduled off this moment.
+-- GO. The clip has just run out — she is on the last frame of it.
 --
--- Cars have passed through her since she spawned, so the field launching is
--- already a non-event. What is left is to nail her down, start the clip, and
--- take her away once it has been seen.
+-- Nothing is started here any more. The animation was entered during staging at
+-- a phase chosen so it finishes on this exact moment, so all that is left is to
+-- nail her down and take her away once the field is past.
 RegisterNetEvent("SPZ:go", function()
     if not heldEntity(girl) then return end
 
@@ -325,25 +355,7 @@ RegisterNetEvent("SPZ:go", function()
     -- so losing the ground under her costs nothing.
     SetEntityCollision(girl, false, false)
 
-    local delay = tonumber(Config and Config.FlagAnimAfterGoMs) or FLAG_AFTER_GO_MS
-    if delay < 0 then delay = 0 end
-
-    -- Token, so a race cancelled between here and the swing does not animate a
-    -- ped that has already been cleaned up — or, worse, the next race's.
-    local token = {}
-    flagTimer = token
-
-    Citizen.SetTimeout(delay, function()
-        if flagTimer ~= token or not heldEntity(girl) then return end
-        if HasAnimDictLoaded(ANIM_DICT) then
-            TaskPlayAnim(girl, ANIM_DICT, ANIM_CLIP, 8.0, -8.0, -1, 0, 0.0, false, false, false)
-        end
-    end)
-
-    -- Removed after the clip has had time to be seen, not after a fixed five
-    -- seconds from GO — which, with a delay in front of it, could have deleted
-    -- her before the animation started at all.
-    Citizen.SetTimeout(delay + LINGER_MS, cleanup)
+    Citizen.SetTimeout(LINGER_MS, cleanup)
 end)
 
 -- ── Previewing the clip ──────────────────────────────────────────────────────
@@ -395,7 +407,7 @@ RegisterCommand("flagdrop", function(_, args)
 
         print(("^2[spz-races] %s/%s — length %.2fs, playing from %.2fs (phase %.4f).^7")
             :format(ANIM_DICT, ANIM_CLIP, len, phase * len, phase))
-        print("^2[spz-races] Config.FlagAnimAfterGoMs sets how long after GO this starts.^7")
+        print("^2[spz-races] In a race this is entered part way through, so it ENDS on GO.^7")
     end)
 end, false)
 
