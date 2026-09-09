@@ -150,8 +150,13 @@ Citizen.CreateThread(function()
                     merged[#merged + 1] = {
                         source = src, name = pData.name,
                         crew_tag = pData.crew_tag,
-                        nation = st and st['spz:nation'] or nil,
-                        raceNumber = st and st['spz:raceNumber'] or nil,
+                        -- TWO writers, two spellings: spz-nametag sets
+                        -- 'spz:nation'/'spz:raceNumber', spz-identity sets
+                        -- 'nation'/'raceNumber'. Reading only the first pair
+                        -- meant the tower showed a flag only when nametag had
+                        -- run AND the profile was loaded when it did.
+                        nation     = st and (st['spz:nation'] or st['nation']) or nil,
+                        raceNumber = st and (st['spz:raceNumber'] or st['raceNumber']) or nil,
                         lap = pData.current_lap, cp = pData.current_cp,
                         finished = pData.finished, ft = pData.finish_time or 0,
                         lct = pData.last_cp_time or 0,

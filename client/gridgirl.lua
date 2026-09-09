@@ -353,9 +353,46 @@ RegisterNetEvent("SPZ:gridFormed", function(data)
         if phase < 0.0 then phase = 0.0 end
         if phase > 0.99 then phase = 0.99 end
 
-        -- Flag 0, duration -1: play once from `phase` to the end and hold the
-        -- last frame. No loop — a loop would restart her mid-launch.
-        TaskPlayAnim(girl, ANIM_DICT, ANIM_CLIP, 8.0, -8.0, -1, 0, phase, false, false, false)
+        -- The dict is re-requested here. It was loaded during staging and
+        -- nothing pins it: streaming is free to evict an anim dict nobody is
+        -- playing, and this thread has been asleep for most of a minute.
+        RequestAnimDict(ANIM_DICT)
+        local dictBy = GetGameTimer() + 1000
+        while not HasAnimDictLoaded(ANIM_DICT) and GetGameTimer() < dictBy do
+            Citizen.Wait(0)
+        end
+        if stale() or not heldEntity(girl) then return end
+        if not HasAnimDictLoaded(ANIM_DICT) then
+            print("^3[spz-races] Flag girl anim dict gone at GO — skipping the routine.^7")
+            return
+        end
+
+        -- Whatever ambient task the ped picked up has to go first. A ped created
+        -- with CreatePed is handed one, and TaskPlayAnim landing on top of it is
+        -- how you get a flag girl who wanders off mid-performance.
+        ClearPedTasks(girl)
+
+        -- Flag 2 = HOLD LAST FRAME, and it is the fix for "she walks at the
+        -- end". The clip is timed to finish exactly on GO; with flag 0 the ped
+        -- is handed straight back to normal AI on that frame and starts walking
+        -- in front of the field. Holding the last frame leaves her posed until
+        -- cleanup takes her.
+        TaskPlayAnim(girl, ANIM_DICT, ANIM_CLIP, 8.0, -8.0, -1, 2, phase, false, false, false)
+
+        -- A task issued in the same frame as ClearPedTasks is occasionally
+        -- dropped. Checking costs one Wait and turns a silent no-show into a
+        -- second attempt.
+        Citizen.Wait(150)
+        if stale() or not heldEntity(girl) then return end
+
+        if not IsEntityPlayingAnim(girl, ANIM_DICT, ANIM_CLIP, 3) then
+            ClearPedTasks(girl)
+            TaskPlayAnim(girl, ANIM_DICT, ANIM_CLIP, 8.0, -8.0, -1, 2, phase, false, false, false)
+            print("^3[spz-races] Flag girl anim did not take — retried.^7")
+        end
+
+        print(("^2[spz-races] Flag girl: clip %.1fs, entering at phase %.3f, %.1fs to GO.^7")
+            :format(clipLen, phase, windowSec))
     end)
 end)
 
