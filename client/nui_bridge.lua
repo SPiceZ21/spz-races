@@ -180,9 +180,28 @@ Citizen.CreateThread(function()
         and GetResourceState("spz-raceUI") == "started" then
             local cp = exports["spz-races"]:GetCurrentCP()
             if cp then
-                local pos  = GetEntityCoords(PlayerPedId())
-                local dx   = pos.x - cp.coords.x
-                local dy   = pos.y - cp.coords.y
+                local pos = GetEntityCoords(PlayerPedId())
+
+                -- Anchor on the MIDDLE of the gate, not on cp.coords.
+                --
+                -- A gate is two posts, and a track's checkpoint carries them as
+                -- cp.left and cp.right. cp.coords is supposed to be the centre
+                -- and on plenty of tracks it is not — it sits on one post — so
+                -- the pill hung over the right-hand gate instead of over the
+                -- gap the car actually drives through. The midpoint of the two
+                -- posts is the gap, by definition.
+                --
+                -- Older tracks carry no left/right, and those fall back to
+                -- cp.coords exactly as before.
+                local ax, ay, az = cp.coords.x, cp.coords.y, cp.coords.z
+                if cp.left and cp.right then
+                    ax = (cp.left.x + cp.right.x) * 0.5
+                    ay = (cp.left.y + cp.right.y) * 0.5
+                    az = (cp.left.z + cp.right.z) * 0.5
+                end
+
+                local dx   = pos.x - ax
+                local dy   = pos.y - ay
                 local dist = math.floor(math.sqrt(dx*dx + dy*dy))
 
                 local payload = { dist = dist }
@@ -191,8 +210,7 @@ Citizen.CreateThread(function()
                     -- Anchored to the CHECKPOINT, slightly above the ground
                     -- point, with a stem drawn down to it: it answers "where is
                     -- the gate", including when it is behind geometry.
-                    local pOn, px, py = World3dToScreen2d(
-                        cp.coords.x, cp.coords.y, cp.coords.z + 1.0)
+                    local pOn, px, py = World3dToScreen2d(ax, ay, az + 1.0)
 
                     payload.pill = {
                         onScreen = pOn and true or false,
