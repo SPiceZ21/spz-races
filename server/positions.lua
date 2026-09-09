@@ -77,12 +77,25 @@ end
 -- case the old "+2 CP" / "+1 L" text existed to paper over. A lapped car reads
 -- as the real time it is down, and the "1 L" fact is kept as a suffix because
 -- being lapped is information a time alone does not convey.
+--- @return string text   what to show when there is no measured number
+--- @return number|nil ms   the measured gap, when there IS one
+--- @return number|nil laps whole laps down, when lapped
+---
+--- The NUMBER is the point of the second return. The tower used to be handed
+--- only a formatted string, so every update was a new opaque label and the
+--- readout could do nothing but replace one with the next — which is what made
+--- it snap once a second. Given the number it can move between values instead.
+---
+--- ms is deliberately nil rather than 0 for the unmeasured cases below. Zero is
+--- a real gap and would animate the display down to "+0.00" as though the car
+--- had caught the leader.
 local function _mergedGap(leader, e)
-    if not leader then return "" end
-    if e == leader then return "LEADER" end
+    if not leader then return "", nil, nil end
+    if e == leader then return "LEADER", nil, nil end
 
     if e.finished and leader.finished then
-        return _fmtGap((e.ft or 0) - (leader.ft or 0))
+        local ms = (e.ft or 0) - (leader.ft or 0)
+        return _fmtGap(ms), ms, nil
     end
 
     local lapDiff = (leader.lap or 1) - (e.lap or 1)
@@ -92,21 +105,25 @@ local function _mergedGap(leader, e)
     local his  = leader.elapsedAt and leader.elapsedAt(e.idx)
 
     if mine and his then
-        local gap = _fmtGap(mine - his)
-        return lapDiff > 0 and (gap .. " " .. lapDiff .. "L") or gap
+        local ms  = mine - his
+        local gap = _fmtGap(ms)
+        if lapDiff > 0 then
+            return gap .. " " .. lapDiff .. "L", ms, lapDiff
+        end
+        return gap, ms, nil
     end
 
     -- No banked crossing for one of them yet (first gate of the race, or a
     -- racer restored mid-race with no history). Fall back to the old text
     -- rather than printing a time that is not measured.
-    if lapDiff > 0 then return ("+%d L"):format(lapDiff) end
+    if lapDiff > 0 then return ("+%d L"):format(lapDiff), nil, lapDiff end
     local cpDiff = (leader.cp or 1) - (e.cp or 1)
-    if cpDiff > 0 then return ("+%d CP"):format(cpDiff) end
+    if cpDiff > 0 then return ("+%d CP"):format(cpDiff), nil, nil end
     if leader.lct and e.lct then
         local d = e.lct - leader.lct
-        if d > 0 then return _fmtGap(d) end
+        if d > 0 then return _fmtGap(d), d, nil end
     end
-    return "+0.00"
+    return "+0.00", nil, nil
 end
 
 -- 13.2 Periodic Broadcast
@@ -161,6 +178,16 @@ Citizen.CreateThread(function()
             local leader = merged[1]
             local payload = {}
             for i, e in ipairs(merged) do
+                -- Text AND number for both references. The text is what to draw
+                -- when there is nothing measured yet; the number is what lets
+                -- the tower animate between updates instead of snapping.
+                local gapText, gapMs, gapLaps = _mergedGap(leader, e)
+
+                local intText, intMs = "LEADER", nil
+                if i > 1 then
+                    intText, intMs = _mergedGap(merged[i - 1], e)
+                end
+
                 payload[i] = {
                     source     = e.source,
                     name       = e.name,
@@ -171,12 +198,15 @@ Citizen.CreateThread(function()
                     lap        = e.lap,
                     finished   = e.finished,
                     dc         = e.dc or false,
-                    gap        = _mergedGap(leader, e),
+                    gap        = gapText,
+                    gapMs      = gapMs,
+                    gapLaps    = gapLaps,
                     -- Gap to the car directly ahead. Same measurement, different
                     -- reference — a tower usually wants both: `gap` says where
                     -- you are in the race, `interval` says whether you are
                     -- catching the car you can actually see.
-                    interval   = (i > 1) and _mergedGap(merged[i - 1], e) or "LEADER",
+                    interval   = intText,
+                    intervalMs = intMs,
                 }
             end
 

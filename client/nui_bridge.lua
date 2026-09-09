@@ -222,6 +222,10 @@ end)
 local clientBestLap = nil
 
 RegisterNetEvent("SPZ:spawnCheckpoints", function(checkpoints, currentIdx)
+    -- New race, new numbering. Belt and braces alongside the backwards-jump
+    -- rule above.
+    _lastPosVersion = 0
+
     if GetResourceState("spz-raceUI") ~= "started" then return end
     clientBestLap = LocalPlayer.state.personalBest or 0
     exports["spz-raceUI"]:UpdateRaceOverlay({
@@ -296,13 +300,22 @@ end)
 local _lastPosBroadcast = 0
 local _lastPosVersion   = 0
 
+-- Versions guard against out-of-order packets. The old rule rejected anything
+-- not strictly greater than the last seen, which is correct for a counter that
+-- only ever climbs — and the server's counter does NOT: it is a plain local
+-- that restarts at 1 whenever spz-races is restarted or the script reloaded.
+--
+-- A client that had reached version 340 then discarded every packet the server
+-- sent for the rest of the session, and the tower simply froze with no error
+-- anywhere. Going BACKWARDS is the signature of a restart, not of a stale
+-- packet, so it resyncs instead.
 RegisterNetEvent("SPZ:positionUpdate", function(payload, version)
-    if version and version == 0 then
-        _lastPosVersion = 0
-    elseif version and version <= _lastPosVersion then
-        return
+    if version == nil then
+        _lastPosVersion = _lastPosVersion + 1
+    elseif version == _lastPosVersion then
+        return                      -- exact duplicate
     else
-        _lastPosVersion = version or (_lastPosVersion + 1)
+        _lastPosVersion = version   -- higher, or lower after a server restart
     end
 
     if GetResourceState("spz-raceUI") ~= "started" then return end

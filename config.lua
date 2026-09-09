@@ -278,6 +278,11 @@ Config.SplitPointGap        = 7.0
 -- the lights exactly; raise it if she should be done a beat early.
 Config.FlagAnimEndOffsetMs  = 0
 
+-- ...and how long before the 3-2-1 STARTS she begins performing. Staging runs
+-- for nine seconds before the count and she does not need to fill all of it —
+-- one second of lead-in has her already moving when the first digit lands.
+Config.FlagAnimLeadMs       = 1000
+
 Config.PointSpawnRadius     = 0.0     -- 0 = one point · >0 = ring of that radius
 Config.PointSpawnMaxRadius  = 12.0    -- metres; past this the ring is wider than
                                       -- the road, so it falls back to a grid and

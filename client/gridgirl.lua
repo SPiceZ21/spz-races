@@ -115,6 +115,14 @@ local MARK_AHEAD = 6.0
 -- thing the game can tell us.
 local FLAG_END_OFFSET_MS = 0    -- Config.FlagAnimEndOffsetMs: ms BEFORE GO to finish
 
+-- ...and when it STARTS: this many milliseconds before the 3-2-1 begins.
+--
+-- Staging runs for nine seconds before the count, and she does not need to be
+-- performing for all of it — the routine wants to arrive with the numbers, not
+-- run underneath the whole grid forming. One second of lead-in is enough to be
+-- already moving when the first digit lands.
+local FLAG_LEAD_MS = 1000       -- Config.FlagAnimLeadMs
+
 -- How long she stays on her mark after GO, so she is not deleted out from under
 -- the field as it launches past her.
 local LINGER_MS = 5000
@@ -313,23 +321,34 @@ RegisterNetEvent("SPZ:gridFormed", function(data)
         passThroughField(girl)
         keepAboveGround(myGen, function() return pinned end)
 
-        -- ── Start the clip so it ENDS on GO ─────────────────────────────
+        -- ── The performance: starts before the count, ends on GO ────────
         --
-        -- The window is re-read here rather than at the top of the handler:
-        -- streaming the model and waiting for collision has already eaten into
-        -- it, and entering at a phase computed before that wait would overrun
-        -- the lights by however long the load took.
+        -- She idles on her mark through staging, starts the clip a beat before
+        -- the 3-2-1 begins, and the clip runs out as the lights do.
         if not HasAnimDictLoaded(ANIM_DICT) then return end
+
+        local countdownMs = (tonumber(data.countdown) or 5) * 1000
+        local leadMs      = tonumber(Config and Config.FlagAnimLeadMs) or FLAG_LEAD_MS
+        local startAt     = goAt - countdownMs - leadMs
+
+        local waitMs = startAt - GetGameTimer()
+        if waitMs > 0 then Citizen.Wait(waitMs) end
+        if stale() or not heldEntity(girl) then return end
 
         local clipLen = GetAnimDuration(ANIM_DICT, ANIM_CLIP)
         if not clipLen or clipLen <= 0 then clipLen = ANIM_FALLBACK end
 
-        local endLead = tonumber(Config and Config.FlagAnimEndOffsetMs) or FLAG_END_OFFSET_MS
-        local windowMs = (goAt - endLead) - GetGameTimer()
-        local windowSec = windowMs / 1000
+        -- The window is measured HERE, on the frame the clip actually starts,
+        -- not when it was scheduled. Streaming the model, waiting for collision
+        -- and the idle above have all eaten real time, and a phase computed
+        -- before any of that would overrun the lights by however long it took.
+        local endLead   = tonumber(Config and Config.FlagAnimEndOffsetMs) or FLAG_END_OFFSET_MS
+        local windowSec = ((goAt - endLead) - GetGameTimer()) / 1000
+        if windowSec < 0.1 then windowSec = 0.1 end
 
-        -- Enter at the phase that leaves exactly `window` of clip to run. A
-        -- window longer than the clip simply plays it whole from the top.
+        -- Enter at the phase that leaves exactly `window` of clip to run, so the
+        -- END of the performance lands on GO. A window longer than the clip
+        -- simply plays it whole from the top.
         local phase = (clipLen - windowSec) / clipLen
         if phase < 0.0 then phase = 0.0 end
         if phase > 0.99 then phase = 0.99 end
