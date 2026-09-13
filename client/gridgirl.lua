@@ -99,35 +99,88 @@ local MARK_AHEAD = 6.0
 -- `grid_girl_race_start` is a 72-second performance — idling, playing to the
 -- grid, and somewhere inside it the actual swing — not a three second drop.
 --
--- It is played so that it ENDS on GO: she performs through the countdown and
--- the clip runs out as the lights do.
+-- It is played so that the ROUTINE ends on GO. The clip's own end is not that
+-- point: its final seconds are her walking off the road, so the routine's end
+-- is found by sampling the clip's root motion (walkOffPhase, below). She is
+-- paused on that frame and held there while the field launches.
 --
 -- The clip is far longer than any start sequence, so it cannot be played from
 -- the top — it is entered at whatever phase leaves exactly the remaining window
--- to run. With a 9s stage and a 5s count that is the last ~14 seconds of the
--- performance, which is the part that builds to the finish.
+-- before the walk-off. That is the part that builds to the start.
 --
--- Note what this does NOT need: the timestamp of the swing inside the clip.
--- Aligning that with the lights was the old approach, it could not be read from
--- script, and it lived in config as a number somebody had to find by hand — so
--- when it was wrong, or unset, the drop landed a minute late or the whole clip
--- ran from the top while the grid was still forming. The END of a clip is a
--- thing the game can tell us.
+-- Note what this does NOT need: a hand-measured timestamp inside the clip.
+-- Both the clip length and the walk-off are read from the game.
 local FLAG_END_OFFSET_MS = 0    -- Config.FlagAnimEndOffsetMs: ms BEFORE GO to finish
 
--- ...and when it STARTS: this many milliseconds before the 3-2-1 begins.
---
--- Staging runs for nine seconds before the count, and she does not need to be
--- performing for all of it — the routine wants to arrive with the numbers, not
--- run underneath the whole grid forming. One second of lead-in is enough to be
--- already moving when the first digit lands.
-local FLAG_LEAD_MS = 1000       -- Config.FlagAnimLeadMs
+-- ...and when it STARTS: this many milliseconds before the 3-2-1 begins. A lead
+-- as long as staging has her performing from the moment the grid forms.
+local FLAG_LEAD_MS = 9000       -- Config.FlagAnimLeadMs
 
 -- How long she stays on her mark after GO, so she is not deleted out from under
 -- the field as it launches past her.
 local LINGER_MS = 5000
 
 local ANIM_FALLBACK = 72.6      -- clip length, if GetAnimDuration is unavailable
+
+-- ── Where the performance ends ───────────────────────────────────────────────
+--
+-- The clip does not end on the flag drop: its last few seconds are her walking
+-- off the road. Timing the clip's END to GO therefore showed only that walk —
+-- no routine, just a girl strolling away as the lights went out.
+--
+-- So the performance is timed to end where the walk-off BEGINS, and that point
+-- is found from the clip itself rather than a hand-measured number: the root
+-- motion is sampled across the clip, and the walk-off is the final continuous
+-- stretch in which she is travelling. Everything before it is the routine.
+local SAMPLE_STEP_S  = 0.25   -- seconds between root-motion samples
+local WALK_SPEED_MPS = 0.4    -- faster than this counts as walking
+local STILL_SAMPLES  = 3      -- this many slow samples in a row ends the walk
+
+local walkOffCache = {}       -- [clipLen] = phase, computed once per clip
+
+--- Phase (0..1) at which she starts walking off, or 1.0 if the clip ends still.
+local function walkOffPhase(clipLen)
+    if walkOffCache[clipLen] then return walkOffCache[clipLen] end
+
+    local steps = math.floor(clipLen / SAMPLE_STEP_S)
+    if steps < 2 then return 1.0 end
+
+    local pos = {}
+    for i = 0, steps do
+        local p = GetAnimInitialOffsetPosition(ANIM_DICT, ANIM_CLIP,
+            0.0, 0.0, 0.0, 0.0, 0.0, 0.0, i / steps, 2)
+        pos[i] = p
+    end
+
+    local stepSec = clipLen / steps
+    local function speedAt(i)
+        local a, b = pos[i - 1], pos[i]
+        return math.sqrt((b.x - a.x) ^ 2 + (b.y - a.y) ^ 2) / stepSec
+    end
+
+    -- A clip that finishes standing has no walk-off to avoid.
+    if speedAt(steps) < WALK_SPEED_MPS then
+        walkOffCache[clipLen] = 1.0
+        return 1.0
+    end
+
+    -- Walk back from the end through the moving stretch. It ends at the first
+    -- run of STILL_SAMPLES slow samples, so a footfall that briefly slows the
+    -- root does not cut it short.
+    local start, still = steps, 0
+    for i = steps, 1, -1 do
+        if speedAt(i) >= WALK_SPEED_MPS then
+            start, still = i - 1, 0
+        else
+            still = still + 1
+            if still >= STILL_SAMPLES then break end
+        end
+    end
+
+    local phase = start / steps
+    walkOffCache[clipLen] = phase
+    return phase
+end
 
 local girl = nil
 local flagTimer = nil          -- token for the pending swing, so a restart cancels it
@@ -145,6 +198,17 @@ local pinned = false
 local generation = 0
 
 local function heldEntity(e) return e and e ~= 0 and DoesEntityExist(e) end
+
+-- Stop her on the current frame of the routine and nail her to the mark. Called
+-- when the clip reaches the walk-off, and again at GO in case that timer has not
+-- fired yet. Pausing the clip (rather than letting it run) is what keeps her
+-- from walking; freezing alone would leave the walk cycle playing in place.
+local function holdPose()
+    if not heldEntity(girl) or pinned then return end
+    pinned = true
+    SetEntityAnimSpeed(girl, ANIM_DICT, ANIM_CLIP, 0.0)
+    FreezeEntityPosition(girl, true)
+end
 
 local function cleanup()
     -- Invalidate any scheduled swing first: a timer that fires after the ped is
@@ -335,27 +399,11 @@ RegisterNetEvent("SPZ:gridFormed", function(data)
         if waitMs > 0 then Citizen.Wait(waitMs) end
         if stale() or not heldEntity(girl) then return end
 
-        local clipLen = GetAnimDuration(ANIM_DICT, ANIM_CLIP)
-        if not clipLen or clipLen <= 0 then clipLen = ANIM_FALLBACK end
-
-        -- The window is measured HERE, on the frame the clip actually starts,
-        -- not when it was scheduled. Streaming the model, waiting for collision
-        -- and the idle above have all eaten real time, and a phase computed
-        -- before any of that would overrun the lights by however long it took.
-        local endLead   = tonumber(Config and Config.FlagAnimEndOffsetMs) or FLAG_END_OFFSET_MS
-        local windowSec = ((goAt - endLead) - GetGameTimer()) / 1000
-        if windowSec < 0.1 then windowSec = 0.1 end
-
-        -- Enter at the phase that leaves exactly `window` of clip to run, so the
-        -- END of the performance lands on GO. A window longer than the clip
-        -- simply plays it whole from the top.
-        local phase = (clipLen - windowSec) / clipLen
-        if phase < 0.0 then phase = 0.0 end
-        if phase > 0.99 then phase = 0.99 end
-
         -- The dict is re-requested here. It was loaded during staging and
         -- nothing pins it: streaming is free to evict an anim dict nobody is
-        -- playing, and this thread has been asleep for most of a minute.
+        -- playing. It must be back BEFORE the clip is measured below —
+        -- GetAnimDuration on an evicted dict returns 0, which used to drop the
+        -- timing onto the 72.6s fallback for whatever clip was really loaded.
         RequestAnimDict(ANIM_DICT)
         local dictBy = GetGameTimer() + 1000
         while not HasAnimDictLoaded(ANIM_DICT) and GetGameTimer() < dictBy do
@@ -366,6 +414,28 @@ RegisterNetEvent("SPZ:gridFormed", function(data)
             print("^3[spz-races] Flag girl anim dict gone at GO — skipping the routine.^7")
             return
         end
+
+        local clipLen = GetAnimDuration(ANIM_DICT, ANIM_CLIP)
+        if not clipLen or clipLen <= 0 then clipLen = ANIM_FALLBACK end
+
+        -- The routine ends where she starts walking off, not at the end of the
+        -- clip. That is the point that lands on GO.
+        local endPhase = walkOffPhase(clipLen)
+
+        -- The window is measured HERE, on the frame the clip actually starts,
+        -- not when it was scheduled. Streaming the model, waiting for collision
+        -- and the idle above have all eaten real time, and a phase computed
+        -- before any of that would overrun the lights by however long it took.
+        local endLead   = tonumber(Config and Config.FlagAnimEndOffsetMs) or FLAG_END_OFFSET_MS
+        local windowSec = ((goAt - endLead) - GetGameTimer()) / 1000
+        if windowSec < 0.1 then windowSec = 0.1 end
+
+        -- Enter at the phase that leaves exactly `window` of routine to run, so
+        -- the walk-off point lands on GO. A window longer than the routine plays
+        -- it from the top and she holds her final pose until the lights.
+        local phase = endPhase - (windowSec / clipLen)
+        if phase < 0.0 then phase = 0.0 end
+        if phase > endPhase - 0.01 then phase = math.max(0.0, endPhase - 0.01) end
 
         -- Whatever ambient task the ped picked up has to go first. A ped created
         -- with CreatePed is handed one, and TaskPlayAnim landing on top of it is
@@ -391,21 +461,29 @@ RegisterNetEvent("SPZ:gridFormed", function(data)
             print("^3[spz-races] Flag girl anim did not take — retried.^7")
         end
 
-        print(("^2[spz-races] Flag girl: clip %.1fs, entering at phase %.3f, %.1fs to GO.^7")
-            :format(clipLen, phase, windowSec))
+        -- Pause her the moment the clip reaches the walk-off, on her own clock
+        -- rather than waiting for SPZ:go: the server's GO can arrive a few
+        -- hundred ms late, and in that gap she would already be walking.
+        local holdInMs = math.floor((endPhase - phase) * clipLen * 1000) - 150
+        local token = {}
+        flagTimer = token
+        Citizen.SetTimeout(math.max(0, holdInMs), function()
+            if flagTimer ~= token or stale() then return end
+            holdPose()
+        end)
+
+        print(("^2[spz-races] Flag girl: clip %.1fs, walk-off at %.1fs, entering at %.1fs, %.1fs to GO.^7")
+            :format(clipLen, endPhase * clipLen, phase * clipLen, windowSec))
     end)
 end)
 
--- GO. The clip has just run out — she is on the last frame of it.
---
--- Nothing is started here any more. The animation was entered during staging at
--- a phase chosen so it finishes on this exact moment, so all that is left is to
--- nail her down and take her away once the field is past.
+-- GO. The routine has just reached the walk-off, and her own timer has usually
+-- already paused her there. holdPose() covers the case where it has not, then
+-- she is taken away once the field is past.
 RegisterNetEvent("SPZ:go", function()
     if not heldEntity(girl) then return end
 
-    pinned = true
-    FreezeEntityPosition(girl, true)
+    holdPose()
     -- Frozen first, THEN collision off. In that order there is nothing left to
     -- fall: her position is nailed for the few seconds before she is removed,
     -- so losing the ground under her costs nothing.
@@ -458,12 +536,17 @@ RegisterCommand("flagdrop", function(_, args)
         local len = GetAnimDuration(ANIM_DICT, ANIM_CLIP)
         if not len or len <= 0 then len = ANIM_FALLBACK end
 
-        local phase = at and math.max(0.0, math.min(0.99, at / len)) or 0.0
+        local walkAt = walkOffPhase(len) * len
+
+        -- No argument: the last 14 seconds before the walk-off, which is what a
+        -- default 9s stage + 5s count shows in a race.
+        local from  = at or math.max(0.0, walkAt - 14.0)
+        local phase = math.max(0.0, math.min(0.99, from / len))
         TaskPlayAnim(girl, ANIM_DICT, ANIM_CLIP, 8.0, -8.0, -1, 0, phase, false, false, false)
 
-        print(("^2[spz-races] %s/%s — length %.2fs, playing from %.2fs (phase %.4f).^7")
-            :format(ANIM_DICT, ANIM_CLIP, len, phase * len, phase))
-        print("^2[spz-races] In a race this is entered part way through, so it ENDS on GO.^7")
+        print(("^2[spz-races] %s/%s — length %.2fs, walk-off detected at %.2fs, playing from %.2fs.^7")
+            :format(ANIM_DICT, ANIM_CLIP, len, walkAt, phase * len))
+        print("^2[spz-races] In a race she holds her pose at the walk-off, which lands on GO.^7")
     end)
 end, false)
 
