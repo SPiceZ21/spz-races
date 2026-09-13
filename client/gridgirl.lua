@@ -99,10 +99,11 @@ local MARK_AHEAD = 6.0
 -- `grid_girl_race_start` is a 72-second performance — idling, playing to the
 -- grid, and somewhere inside it the actual swing — not a three second drop.
 --
--- It is played so that the ROUTINE ends on GO. The clip's own end is not that
--- point: its final seconds are her walking off the road, so the routine's end
--- is found by sampling the clip's root motion (walkOffPhase, below). She is
--- paused on that frame and held there while the field launches.
+-- It is played so that the FLAG DROP lands on GO. The clip's final seconds are
+-- her walking off the road, and that walk-off is found by sampling the clip's
+-- root motion (walkOffPhase, below). The drop sits a fixed beat before it, set
+-- by Config.FlagAnimEndOffsetMs. After GO the clip simply carries on: she walks
+-- off, and is removed when it runs out.
 --
 -- The clip is far longer than any start sequence, so it cannot be played from
 -- the top — it is entered at whatever phase leaves exactly the remaining window
@@ -110,7 +111,7 @@ local MARK_AHEAD = 6.0
 --
 -- Note what this does NOT need: a hand-measured timestamp inside the clip.
 -- Both the clip length and the walk-off are read from the game.
-local FLAG_END_OFFSET_MS = 0    -- Config.FlagAnimEndOffsetMs: ms BEFORE GO to finish
+local FLAG_END_OFFSET_MS = -3000 -- Config.FlagAnimEndOffsetMs: ms BEFORE GO the walk-off starts
 
 -- ...and when it STARTS: this many milliseconds before the 3-2-1 begins. A lead
 -- as long as staging has her performing from the moment the grid forms.
@@ -185,10 +186,9 @@ end
 local girl = nil
 local flagTimer = nil          -- token for the pending swing, so a restart cancels it
 
--- Set at GO, when she is on her mark and frozen: from that point her height is
--- fixed and the ground keeper has nothing left to do, so it stops rather than
--- rewriting the same coordinate under a playing animation.
-local pinned = false
+-- When her clip runs out (local timestamp), so she is removed after she has
+-- finished walking off rather than mid-stride in front of the field.
+local clipEndsAt = nil
 
 -- Bumped every time a grid forms. The spawn runs on a thread that waits for
 -- assets and collision, so a second SPZ:gridFormed arriving during that wait
@@ -199,22 +199,11 @@ local generation = 0
 
 local function heldEntity(e) return e and e ~= 0 and DoesEntityExist(e) end
 
--- Stop her on the current frame of the routine and nail her to the mark. Called
--- when the clip reaches the walk-off, and again at GO in case that timer has not
--- fired yet. Pausing the clip (rather than letting it run) is what keeps her
--- from walking; freezing alone would leave the walk cycle playing in place.
-local function holdPose()
-    if not heldEntity(girl) or pinned then return end
-    pinned = true
-    SetEntityAnimSpeed(girl, ANIM_DICT, ANIM_CLIP, 0.0)
-    FreezeEntityPosition(girl, true)
-end
-
 local function cleanup()
     -- Invalidate any scheduled swing first: a timer that fires after the ped is
     -- gone is harmless, but one that fires into the NEXT race's ped is not.
-    flagTimer = nil
-    pinned    = false
+    flagTimer  = nil
+    clipEndsAt = nil
     if heldEntity(girl) then
         SetEntityAsMissionEntity(girl, true, true)
         DeleteEntity(girl)
@@ -291,9 +280,11 @@ end
 local UNDER_GROUND_TOL = 0.5
 local GROUND_CHECK_MS  = 250
 
-local function keepAboveGround(myGen, isPinned)
+-- Runs until she is removed, including her walk-off after GO: that is exactly
+-- when the field launches past her, so the collision pairs must stay fresh.
+local function keepAboveGround(myGen)
     Citizen.CreateThread(function()
-        while generation == myGen and heldEntity(girl) and not isPinned() do
+        while generation == myGen and heldEntity(girl) do
             passThroughField(girl)
 
             local p = GetEntityCoords(girl)
@@ -383,7 +374,7 @@ RegisterNetEvent("SPZ:gridFormed", function(data)
 
         -- Cars and players pass through her; the road still holds her up.
         passThroughField(girl)
-        keepAboveGround(myGen, function() return pinned end)
+        keepAboveGround(myGen)
 
         -- ── The performance: starts before the count, ends on GO ────────
         --
@@ -418,8 +409,10 @@ RegisterNetEvent("SPZ:gridFormed", function(data)
         local clipLen = GetAnimDuration(ANIM_DICT, ANIM_CLIP)
         if not clipLen or clipLen <= 0 then clipLen = ANIM_FALLBACK end
 
-        -- The routine ends where she starts walking off, not at the end of the
-        -- clip. That is the point that lands on GO.
+        -- The walk-off is found from the clip; the flag drop sits a fixed beat
+        -- before it. Config.FlagAnimEndOffsetMs is how long before GO the
+        -- walk-off lands, so a NEGATIVE value puts it after GO — and at -3000
+        -- the drop itself lands on the lights.
         local endPhase = walkOffPhase(clipLen)
 
         -- The window is measured HERE, on the frame the clip actually starts,
@@ -430,9 +423,8 @@ RegisterNetEvent("SPZ:gridFormed", function(data)
         local windowSec = ((goAt - endLead) - GetGameTimer()) / 1000
         if windowSec < 0.1 then windowSec = 0.1 end
 
-        -- Enter at the phase that leaves exactly `window` of routine to run, so
-        -- the walk-off point lands on GO. A window longer than the routine plays
-        -- it from the top and she holds her final pose until the lights.
+        -- Enter at the phase that leaves exactly `window` of clip before the
+        -- walk-off, so it lands where the offset says.
         local phase = endPhase - (windowSec / clipLen)
         if phase < 0.0 then phase = 0.0 end
         if phase > endPhase - 0.01 then phase = math.max(0.0, endPhase - 0.01) end
@@ -442,11 +434,10 @@ RegisterNetEvent("SPZ:gridFormed", function(data)
         -- how you get a flag girl who wanders off mid-performance.
         ClearPedTasks(girl)
 
-        -- Flag 2 = HOLD LAST FRAME, and it is the fix for "she walks at the
-        -- end". The clip is timed to finish exactly on GO; with flag 0 the ped
-        -- is handed straight back to normal AI on that frame and starts walking
-        -- in front of the field. Holding the last frame leaves her posed until
-        -- cleanup takes her.
+        -- Flag 2 = HOLD LAST FRAME. The clip plays through her walk-off after
+        -- GO; with flag 0 the ped would be handed back to normal AI when it
+        -- ends and wander. Holding the last frame leaves her standing where the
+        -- walk-off put her until cleanup takes her.
         TaskPlayAnim(girl, ANIM_DICT, ANIM_CLIP, 8.0, -8.0, -1, 2, phase, false, false, false)
 
         -- A task issued in the same frame as ClearPedTasks is occasionally
@@ -461,35 +452,33 @@ RegisterNetEvent("SPZ:gridFormed", function(data)
             print("^3[spz-races] Flag girl anim did not take — retried.^7")
         end
 
-        -- Pause her the moment the clip reaches the walk-off, on her own clock
-        -- rather than waiting for SPZ:go: the server's GO can arrive a few
-        -- hundred ms late, and in that gap she would already be walking.
-        local holdInMs = math.floor((endPhase - phase) * clipLen * 1000) - 150
-        local token = {}
-        flagTimer = token
-        Citizen.SetTimeout(math.max(0, holdInMs), function()
-            if flagTimer ~= token or stale() then return end
-            holdPose()
-        end)
+        -- The clip started 150ms ago (the check above).
+        clipEndsAt = GetGameTimer() - 150 + math.floor((1.0 - phase) * clipLen * 1000)
 
         print(("^2[spz-races] Flag girl: clip %.1fs, walk-off at %.1fs, entering at %.1fs, %.1fs to GO.^7")
             :format(clipLen, endPhase * clipLen, phase * clipLen, windowSec))
     end)
 end)
 
--- GO. The routine has just reached the walk-off, and her own timer has usually
--- already paused her there. holdPose() covers the case where it has not, then
--- she is taken away once the field is past.
+-- GO. The flag has just dropped and the clip carries on into her walk-off. She
+-- is neither frozen nor stripped of collision: the road has to keep holding her
+-- up while she walks, and the field already passes through her (the pairs are
+-- kept fresh by keepAboveGround). She is removed once the clip has run out.
+local MAX_AFTER_GO_MS = 15000
+
 RegisterNetEvent("SPZ:go", function()
     if not heldEntity(girl) then return end
 
-    holdPose()
-    -- Frozen first, THEN collision off. In that order there is nothing left to
-    -- fall: her position is nailed for the few seconds before she is removed,
-    -- so losing the ground under her costs nothing.
-    SetEntityCollision(girl, false, false)
-
-    Citizen.SetTimeout(LINGER_MS, cleanup)
+    local waitMs = LINGER_MS
+    if clipEndsAt then
+        waitMs = math.max(LINGER_MS, clipEndsAt - GetGameTimer() + 500)
+    end
+    -- Waited long enough now that a new grid could have formed meanwhile; only
+    -- remove the girl this GO belonged to.
+    local myGen = generation
+    Citizen.SetTimeout(math.min(waitMs, MAX_AFTER_GO_MS), function()
+        if generation == myGen then cleanup() end
+    end)
 end)
 
 -- ── Previewing the clip ──────────────────────────────────────────────────────
@@ -531,7 +520,7 @@ RegisterCommand("flagdrop", function(_, args)
         -- Same pass-through as the real thing, so what is being scrubbed
         -- here behaves like what turns up on the grid.
         passThroughField(girl)
-        keepAboveGround(generation, function() return false end)
+        keepAboveGround(generation)
 
         local len = GetAnimDuration(ANIM_DICT, ANIM_CLIP)
         if not len or len <= 0 then len = ANIM_FALLBACK end
@@ -546,7 +535,7 @@ RegisterCommand("flagdrop", function(_, args)
 
         print(("^2[spz-races] %s/%s — length %.2fs, walk-off detected at %.2fs, playing from %.2fs.^7")
             :format(ANIM_DICT, ANIM_CLIP, len, walkAt, phase * len))
-        print("^2[spz-races] In a race she holds her pose at the walk-off, which lands on GO.^7")
+        print("^2[spz-races] In a race the flag drop (Config.FlagAnimEndOffsetMs before the walk-off) lands on GO.^7")
     end)
 end, false)
 

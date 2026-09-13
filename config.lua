@@ -269,19 +269,20 @@ Config.SplitPointGap        = 7.0
 -- (client/gridgirl.lua). She is placed on her mark for staging and performs the
 -- flag routine once the countdown ends.
 --
--- Her routine is played so that it ENDS on GO. The clip itself ends with her
--- walking off the road, so the client finds where that walk-off starts (from
--- the clip's root motion), times the routine to reach it on GO, and holds her
--- pose there. Nothing here needs to know where the swing is inside the clip.
+-- Her clip ends with her walking off the road. The client finds where that
+-- walk-off starts (from the clip's root motion) and times the clip against it;
+-- after GO she drops the flag and walks off, then is removed.
 --
--- This is how many milliseconds BEFORE GO the routine should finish. 0 lands it
--- on the lights exactly; raise it if she should be done a beat early.
-Config.FlagAnimEndOffsetMs  = 0
+-- This is how many milliseconds BEFORE GO the walk-off starts. The flag drop
+-- sits about 3 seconds before the walk-off, so -3000 (walk-off 3s AFTER GO)
+-- lands the drop on the lights. Move it toward 0 if the drop is late, further
+-- negative if it is early.
+Config.FlagAnimEndOffsetMs  = -3000
 
 -- ...and how long before the 3-2-1 STARTS she begins performing. Matching
 -- Config.StagingTimeSeconds (in ms) has her performing from the moment the grid
 -- forms, which is the whole time the start camera is on her.
-Config.FlagAnimLeadMs       = 9000
+Config.FlagAnimLeadMs       = 5000
 
 Config.PointSpawnRadius     = 0.0     -- 0 = one point · >0 = ring of that radius
 Config.PointSpawnMaxRadius  = 12.0    -- metres; past this the ring is wider than

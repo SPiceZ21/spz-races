@@ -307,7 +307,11 @@ local function _finishRewind()
     -- the snapshot is a frame or two stale.
     if _lastApplied and _lastApplied.cp then
         local nowCp = _currentCpIndex()
-        if nowCp and _lastApplied.cp < nowCp then
+        -- A target of CP 1 with a later snapshot means the car is closing a
+        -- circuit lap (heading for the line) and landed before the last
+        -- checkpoint. The server validates it either way.
+        local earlier = nowCp and (_lastApplied.cp < nowCp or (nowCp == 1 and _lastApplied.cp > 1))
+        if earlier then
             TriggerServerEvent("SPZ:rewindCheckpoint", _lastApplied.cp)
         end
     end

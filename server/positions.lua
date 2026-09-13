@@ -16,6 +16,17 @@ local function GetDistToNextCP(source, pData)
     return #(playerPos - cpPos)
 end
 
+-- Checkpoint progress for ordering. A racer closing a circuit lap is targeting
+-- CP 1 (the line) but has crossed every checkpoint of the lap, so they rank as
+-- past the last one rather than at the start of it.
+function EffectiveCP(pData)
+    if pData.lapClosing then
+        local cps = RaceSession.track and RaceSession.track.checkpoints
+        return (cps and #cps or 0) + 1
+    end
+    return pData.current_cp
+end
+
 function CalculatePositions()
     local ranked = {}
 
@@ -25,7 +36,7 @@ function CalculatePositions()
                 source    = source,
                 finished  = pData.finished,
                 lap       = pData.current_lap,
-                cp        = pData.current_cp,
+                cp        = EffectiveCP(pData),
                 finish_time = pData.finish_time or 0,
                 -- Distance to next checkpoint (tiebreak)
                 dist      = GetDistToNextCP(source, pData),
@@ -157,7 +168,7 @@ Citizen.CreateThread(function()
                         -- run AND the profile was loaded when it did.
                         nation     = st and (st['spz:nation'] or st['nation']) or nil,
                         raceNumber = st and (st['spz:raceNumber'] or st['raceNumber']) or nil,
-                        lap = pData.current_lap, cp = pData.current_cp,
+                        lap = pData.current_lap, cp = EffectiveCP(pData),
                         finished = pData.finished, ft = pData.finish_time or 0,
                         lct = pData.last_cp_time or 0,
                         -- Held slot: dropped mid-race, inside the reconnect

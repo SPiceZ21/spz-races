@@ -53,9 +53,13 @@ local function LastCrossedCoords(pData)
     if not cps then return nil end
 
     local idx = (pData.current_cp or 1) - 1
-    if idx < 1 then
-        -- Lap boundary (next expected is CP1): they crossed the final CP.
-        -- Fresh race start edge case (lap 1, nothing crossed): CP1 itself.
+    if pData.lapClosing then
+        -- Heading for the line to close a circuit lap: the last thing they
+        -- crossed was the final checkpoint.
+        idx = #cps
+    elseif idx < 1 then
+        -- Target is the line with the lap already counted (a rewind back
+        -- across it): the final checkpoint. Fresh race start: CP1 itself.
         idx = (pData.current_lap or 1) > 1 and #cps or 1
     end
 

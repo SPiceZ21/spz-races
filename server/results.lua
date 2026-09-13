@@ -48,7 +48,7 @@ function ProcessRaceResults()
                 name        = pData.name,
                 dnf_reason  = pData.dnf_reason or "timeout",
                 -- Progress fraction (0–1) for adaptive SR penalty in spz-progression
-                progress    = math.min(1.0, (pData.current_cp or 1) / totalCPs),
+                progress    = math.min(1.0, (EffectiveCP(pData) or 1) / totalCPs),
             })
         end
     end

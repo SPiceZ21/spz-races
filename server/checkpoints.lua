@@ -109,71 +109,79 @@ local function HandleFinish(source, pData)
     CheckAllFinished()
 end
 
--- ── 12.2 Checkpoint advance handler ────────────────────────────────────────
+-- ── 12.2 Lap boundary (circuits) ────────────────────────────────────────────
+--
+-- On a circuit the lap closes on the START/FINISH LINE, which is physically
+-- checkpoints[1] — exactly as a real circuit and as time trial times it. It
+-- used to close on the LAST checkpoint instead, so every lap time, sector 3,
+-- the fastest lap and the stored raceline all stopped one corner short of the
+-- line, and the race finish needed a separate extra crossing on top.
+--
+-- So a circuit lap runs 2, 3, ... n, then the line. After the last checkpoint
+-- the racer is "closing the lap" (pData.lapClosing): their target is CP 1, and
+-- crossing it banks the lap and doubles as CP 1 of the next one.
+--
+-- The very first crossing of CP 1, just after GO, is the standing start leaving
+-- the grid — lap 1 is already being timed from GO, so it closes nothing.
+local function CompleteCircuitLap(source, pData, now)
+    local track        = RaceSession.track
+    local lapStartTime = pData.lap_start_time or RaceSession.startTime
+    local lapTime      = now - lapStartTime
+    local lapRewound   = (pData.rewind_credit_lap or 0) > 0
+
+    pData.current_lap       = pData.current_lap + 1
+    pData.lap_start_time    = now
+    pData.rewind_credit_lap = 0   -- per-lap credit budget resets with the lap
+    TriggerClientEvent("SPZ:rewindCredit", source, 0,
+        (Config.Rewind or {}).maxCreditPerLapMs or 15000)
+    StartSectorClock(pData, now)
+
+    table.insert(pData.lap_times, lapTime)
+    if not pData.best_lap or lapTime < pData.best_lap then
+        pData.best_lap = lapTime
+    end
+
+    -- Session fastest lap, across the whole field. A rewound lap is excluded
+    -- for the same reason the raceline capture excludes it — part of that time
+    -- was refunded.
+    if not lapRewound and (not RaceSession.fastestLap or lapTime < RaceSession.fastestLap) then
+        RaceSession.fastestLap   = lapTime
+        RaceSession.fastestLapBy = pData.name
+
+        for target in pairs(RaceSession.players) do
+            TriggerClientEvent("SPZ:fastestLap", target, {
+                name   = pData.name,
+                ms     = lapTime,
+                source = source,
+            })
+        end
+    end
+
+    print(string.format("[Race] %s lap %d done in %d ms", pData.name, pData.current_lap - 1, lapTime))
+    TriggerClientEvent("SPZ:lapComplete", source, pData.current_lap - 1, lapTime)
+
+    -- spz-raceline stores the driven line iff this lap beats the player's
+    -- stored best for the track (server-measured time). A rewound lap is
+    -- excluded: those lines become the time-trial ghost and duel targets, so a
+    -- line whose time was partly refunded would seed an unbeatable ghost.
+    if not lapRewound and GetResourceState("spz-raceline") == "started" then
+        TriggerEvent("spz-raceline:lapCompleted", source, track.name, lapTime)
+    end
+end
+
+-- ── 12.3 Checkpoint advance handler ────────────────────────────────────────
 local function HandleCheckpointAdvance(source, pData)
     local track    = RaceSession.track
     local totalCPs = #track.checkpoints
 
     if pData.current_cp > totalCPs then
         if track.type == "circuit" then
-            -- Lap completed
-            local now          = GetGameTimer()
-            local lapStartTime = pData.lap_start_time or RaceSession.startTime
-            local lapTime      = now - lapStartTime
-            local lapRewound   = (pData.rewind_credit_lap or 0) > 0
-
-            pData.current_cp      = 1
-            pData.current_lap     = pData.current_lap + 1
-            pData.lap_start_time  = now
-            pData.rewind_credit_lap = 0   -- per-lap credit budget resets with the lap
-            TriggerClientEvent("SPZ:rewindCredit", source, 0,
-                (Config.Rewind or {}).maxCreditPerLapMs or 15000)
-            StartSectorClock(pData, now)
-
-            table.insert(pData.lap_times, lapTime)
-            if not pData.best_lap or lapTime < pData.best_lap then
-                pData.best_lap = lapTime
-            end
-
-            -- Session fastest lap, across the whole field. Nothing tracked this
-            -- before, so the quickest lap of a race was a number nobody was
-            -- ever told: it existed in each driver's own overlay as "PB" and
-            -- nowhere else. A rewound lap is excluded for the same reason the
-            -- raceline capture excludes it — part of that time was refunded.
-            if not lapRewound and (not RaceSession.fastestLap or lapTime < RaceSession.fastestLap) then
-                RaceSession.fastestLap   = lapTime
-                RaceSession.fastestLapBy = pData.name
-
-                for target in pairs(RaceSession.players) do
-                    TriggerClientEvent("SPZ:fastestLap", target, {
-                        name   = pData.name,
-                        ms     = lapTime,
-                        source = source,
-                    })
-                end
-            end
-
-            print(string.format("[Race] %s lap %d done in %d ms", pData.name, pData.current_lap - 1, lapTime))
-            TriggerClientEvent("SPZ:lapComplete", source, pData.current_lap - 1, lapTime)
-
-            -- spz-raceline stores the driven line iff this lap beats the
-            -- player's stored best for the track (server-measured time). A
-            -- rewound lap is excluded: those lines become the time-trial ghost and
-            -- duel targets, so a line whose time was partly refunded would seed
-            -- an unbeatable ghost.
-            if not lapRewound and GetResourceState("spz-raceline") == "started" then
-                TriggerEvent("spz-raceline:lapCompleted", source, track.name, lapTime)
-            end
-
-            if pData.current_lap > track.laps then
-                -- All laps done — wait for the start/finish cross
-                pData.awaitingFinish = true
-                TriggerClientEvent("SPZ:nextCheckpoint", source, 1)
-            else
-                TriggerClientEvent("SPZ:nextCheckpoint", source, pData.current_cp)
-            end
+            -- Past the last checkpoint: the lap is not done until the line.
+            pData.current_cp = 1
+            pData.lapClosing = true
+            TriggerClientEvent("SPZ:nextCheckpoint", source, 1)
         else
-            -- Sprint: reaching end of CPs = instant finish
+            -- Sprint: the last checkpoint IS the finish line.
             HandleFinish(source, pData)
         end
     else
@@ -181,6 +189,17 @@ local function HandleCheckpointAdvance(source, pData)
     end
 
     if UpdateAllPositions then UpdateAllPositions() end
+end
+
+--- Sector gate for a checkpoint crossing. Sprints use the physical index.
+--- Circuits count from the line, the same way time trial does: CP 2 is gate
+--- 1, ... CP n is gate n-1, and the line closing the lap is gate n — so
+--- sector 3 ends on the line. The start crossing after GO is gate 0 (no
+--- sector).
+local function SectorGate(track, cpIndex, closing)
+    if track.type ~= "circuit" then return cpIndex end
+    if closing then return #track.checkpoints end
+    return cpIndex - 1
 end
 
 -- Proximity check for a claimed crossing. The client decides WHEN it crossed
@@ -256,22 +275,40 @@ RegisterNetEvent("SPZ:checkpointHit", function(cpIndex)
         return
     end
 
-    -- Circuit finish: player cleared all laps and crosses CP1 to stop the clock
-    if pData.awaitingFinish and cpIndex == 1 then
-        HandleFinish(src, pData)
+    -- Record the time this CP was hit (used by the idle-kick watchdog below)
+    local now   = GetGameTimer()
+    local track = RaceSession.track
+    pData.last_cp_time = now
+
+    -- ── Circuit: crossing the line closes the lap ──────────────────────────
+    if pData.lapClosing and cpIndex == 1 then
+        pData.lapClosing = false
+
+        -- Sector 3 closes on the line, and belongs to the lap being closed.
+        RecordSectorHit(src, pData, SectorGate(track, 1, true), now)
+        CompleteCircuitLap(src, pData, now)
+
+        if pData.current_lap > track.laps then
+            -- The progress index for the final line crossing, so the gap tower
+            -- stays in step right up to the flag.
+            RecordCPProgress(pData, 1, now)
+            HandleFinish(src, pData)
+            return
+        end
+
+        -- The line is also CP 1 of the lap that just began.
+        RecordCPProgress(pData, 1, now)
+        pData.current_cp = 2
+        HandleCheckpointAdvance(src, pData)
         return
     end
-
-    -- Record the time this CP was hit (used by the idle-kick watchdog below)
-    local now = GetGameTimer()
-    pData.last_cp_time = now
 
     -- Bank the crossing against a track-wide progress index so live gaps can be
     -- stated in SECONDS instead of "+2 CP". See RecordCPProgress.
     RecordCPProgress(pData, cpIndex, now)
 
     -- Must run before current_cp advances: sectors close on the CP just hit.
-    RecordSectorHit(src, pData, cpIndex, now)
+    RecordSectorHit(src, pData, SectorGate(track, cpIndex, false), now)
 
     pData.current_cp = pData.current_cp + 1
     HandleCheckpointAdvance(src, pData)
@@ -289,17 +326,24 @@ RegisterNetEvent("SPZ:rewindCheckpoint", function(targetCp)
     if pData.finished or pData.dnf             then return end
     if RaceSession.state ~= SPZ.RaceState.LIVE then return end
 
-    targetCp = tonumber(targetCp)
-    if not targetCp or targetCp < 1 or targetCp >= pData.current_cp then return end
+    -- Closing a lap, the target reads CP 1 but every checkpoint of the lap has
+    -- been crossed — so anything up to the last checkpoint is "earlier".
+    local track   = RaceSession.track
+    local numCPs  = (track and track.checkpoints and #track.checkpoints) or 0
+    local reached = pData.lapClosing and (numCPs + 1) or pData.current_cp
 
-    pData.current_cp     = targetCp
-    pData.awaitingFinish = false
+    targetCp = tonumber(targetCp)
+    if not targetCp or targetCp < 1 or targetCp >= reached then return end
+    -- CP 1 is the line; rolling back onto it from the closing stretch would
+    -- read as "about to close the lap" again, which is where they already are.
+    if pData.lapClosing and targetCp == 1 then return end
+
+    pData.current_cp = targetCp
+    pData.lapClosing = false
 
     -- Those gates have to be re-crossed, so their banked crossing times are no
     -- longer true. Drop everything at or beyond the rollback point; re-crossing
     -- rewrites them, and the gap tower reads the racer at their real position.
-    local track  = RaceSession.track
-    local numCPs = (track and track.checkpoints and #track.checkpoints) or 0
     if numCPs > 0 and pData.cp_history then
         local from = ((pData.current_lap or 1) - 1) * numCPs + targetCp
         for idx in pairs(pData.cp_history) do
