@@ -589,6 +589,16 @@ exports("GetCurrentCP", function()
     return CurrentCheckpoints[CurrentCPIndex], CurrentCPIndex
 end)
 
+--- Everything the 3D gate overlay (client/cp_debug.lua) needs, in one call.
+---
+--- Hands back the live table rather than a copy: this is read once per frame by
+--- a draw loop, and deep-copying a sixty-gate track sixty times a second to
+--- protect a dev tool from itself is not a trade worth making. Nothing else
+--- reads it, and the overlay only ever reads.
+exports("GetCheckpointDebug", function()
+    return CurrentCheckpoints, CurrentCPIndex, TrackType, LastCaughtIdx
+end)
+
 
 -- Respawn point for the "back to last checkpoint" key: the coords of the last
 -- checkpoint actually crossed (fallback: the first checkpoint / start), with a

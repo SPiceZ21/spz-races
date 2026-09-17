@@ -158,3 +158,90 @@ function SPZ_GateCross(cp, pos, prev)
     -- proximity test, so no extra distance check is needed here.
     return false, side, (flipped and zOk)
 end
+
+-- ── Probe ────────────────────────────────────────────────────────────────────
+--
+-- Every intermediate SPZ_GateCross works from, handed back instead of consumed:
+-- the plane normal, the signed distance to it, the lateral position along the
+-- gate, and each of the four tests that decide whether a crossing counts.
+--
+-- It lives HERE, beside the constants, and not in the debug overlay that reads
+-- it. A debug view that derives this geometry for itself is correct exactly
+-- until one of the numbers at the top of this file changes, and then it quietly
+-- starts describing a detector that no longer exists — which is worse than
+-- having no debug view at all, because it is believed.
+--
+-- Pure: reads no state, stores none, and is never called by the detector.
+function SPZ_GateProbe(cp, pos)
+    if not cp or not pos then return nil end
+
+    local cx, cy, cz = cp.coords.x, cp.coords.y, cp.coords.z
+    local zOk = math.abs(pos.z - cz) < Z_THRESH
+
+    local out = {
+        zOk       = zOk,
+        dz        = pos.z - cz,
+        -- The thresholds, so the overlay can label what it is drawing without
+        -- keeping its own copy of any of them.
+        zThresh    = Z_THRESH,
+        gateMargin = GATE_MARGIN,
+        onLine     = ON_LINE,
+        hysteresis = HYSTERESIS,
+        trackSpan  = TRACK_SPAN,
+        trackDepth = TRACK_DEPTH,
+    }
+
+    local dx, dy = pos.x - cx, pos.y - cy
+
+    if not (cp.left and cp.right) then
+        out.hasGate = false
+        out.radius  = cp.radius or 5.0
+        out.dist    = math.sqrt(dx * dx + dy * dy)
+        out.inside  = out.dist < out.radius and zOk
+        return out
+    end
+
+    local ax, ay = cp.left.x,  cp.left.y
+    local bx, by = cp.right.x, cp.right.y
+    local gx, gy = bx - ax, by - ay
+    local glen   = math.sqrt(gx * gx + gy * gy)
+
+    if glen < 0.01 then
+        -- Degenerate gate: the detector falls back to radius, so say so rather
+        -- than drawing a gate that is not being used.
+        out.hasGate    = false
+        out.degenerate = true
+        out.radius     = cp.radius or 5.0
+        out.dist       = math.sqrt(dx * dx + dy * dy)
+        out.inside     = out.dist < out.radius and zOk
+        return out
+    end
+
+    local nx, ny = -gy / glen, gx / glen
+    local flipped = false
+    if cp.heading then
+        local rad = math.rad(cp.heading)
+        local hx, hy = -math.sin(rad), math.cos(rad)
+        if (nx * hx + ny * hy) < 0 then
+            nx, ny  = -nx, -ny
+            flipped = true
+        end
+    end
+
+    local d = dx * nx + dy * ny
+    local t = ((pos.x - ax) * gx + (pos.y - ay) * gy) / glen
+
+    out.hasGate    = true
+    out.glen       = glen
+    out.nx, out.ny = nx, ny
+    out.normalFlipped = flipped        -- posts were stored back-to-front
+    out.d          = d
+    out.t          = t
+    out.side       = (d >= 0) and 1 or -1
+    out.withinGate = t >= -GATE_MARGIN and t <= (glen + GATE_MARGIN)
+    out.nearGate   = t >= -(glen * TRACK_SPAN) and t <= (glen * (1.0 + TRACK_SPAN))
+    out.inRegion   = out.nearGate and math.abs(d) < TRACK_DEPTH
+    out.radius     = cp.radius
+
+    return out
+end

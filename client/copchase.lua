@@ -37,6 +37,55 @@
 -- your rear quarter, and you have to be slow enough that the hit spins you
 -- rather than launching you. The timer is only a floor on how often.
 --
+-- ─────────────────────────────────────────────────────────────────────────────
+-- THE THREE THINGS THAT MADE THE OLD PURSUIT READ AS BROKEN
+--
+-- 1. THE WANTED LEVEL TRACKED THE SPEEDOMETER, NOT THE POLICE.
+--
+--    Heat was earned by going fast and lost by everything else, with decay
+--    running unconditionally. So the star row said the opposite of what was
+--    happening: flat out on an empty straight with the pack a street back it
+--    CLIMBED, and a cruiser leaning on the door at 60 km/h through traffic bled
+--    it away. Further away = more wanted. Caught = less wanted.
+--
+--    Now heat has two separate sources and one rule about decay:
+--
+--      OFFENCE heat   speed and wreckage. It STARTS a pursuit, and the speeding
+--                     half of it stops buying stars at SpeedMaxStars.
+--      PURSUIT heat   the pursuit clock. It ESCALATES a pursuit, and it only
+--                     ticks while a unit actually has CONTACT.
+--
+--    and: heat NEVER decays while anything has contact. Not slower — never.
+--    Being caught cannot lower the heat, and running from a pack that has eyes
+--    on you raises it. Both directions now point the right way.
+--
+-- 2. THE PURSUIT COULD EVAPORATE WITH A CRUISER IN THE MIRROR.
+--
+--    Escape was a distance test against the nearest car, and the pack was also
+--    deleted outright the moment heat decayed under one star — which, with
+--    unconditional decay, happened while the police were still on top of you.
+--
+--    Escape is now a CONTACT test. A unit has contact while it is close, or
+--    while it can see you, or while it saw you a moment ago and is still in
+--    range. The chopper has contact on its own sightline, so an air unit
+--    overhead means you have not lost anybody. Contact must be broken, stay
+--    broken through a grace window, and then stay broken for the whole escape
+--    countdown — and regaining it at any point puts the counter back to zero.
+--    Nothing else deletes the pack.
+--
+-- 3. THEY ARRIVED ALREADY BEATEN.
+--
+--    A unit was created STATIONARY on a node a fixed 130 m behind a car doing
+--    250 km/h. It then had to accelerate from nothing while the racer kept
+--    going: the gap grew from the first frame and the pursuit lived two streets
+--    back for the rest of the race.
+--
+--    Units now arrive ALREADY ROLLING at the racer's pace, the spawn gap is
+--    measured in seconds of your speed rather than in metres, the first unit of
+--    a pursuit skips the spawn cooldown entirely, and anything that falls behind
+--    gets a bounded catch-up assist that eases off once it is on you.
+-- ─────────────────────────────────────────────────────────────────────────────
+--
 -- HOW THEY BEHAVE ONCE THEY ARE THERE
 --
 -- By default (Config.CopChase.VanillaBehaviour) the peds are REAL cops as far as
@@ -75,25 +124,63 @@ local PURSUIT_STYLE  = 4 + 8 + 16 + 32 + 512 + 1048576
 
 local STARS_PER_HEAT = 20          -- 20 heat per star, so 100 heat == 5 stars
 local TICK_MS        = 200
-local SPAWN_GAP_MS   = 2200        -- min gap between two units arriving
+
+-- Line-of-sight trace flags. Map and objects block a sightline; VEHICLES do
+-- not, deliberately — a pursuit that loses you because a bus pulled across the
+-- junction is a pursuit that loses you at random.
+local LOS_FLAGS      = 17
+
+-- A unit that saw you this recently is still considered to have you even with
+-- the sightline broken. Without this the pack "loses" you at every blind corner
+-- and the escape countdown starts flashing on a straight piece of road.
+local SIGHT_MEMORY_MS = 4000
+
+-- A surplus unit is not deleted while the racer is looking at it; this is how
+-- long it may stay surplus before it goes anyway.
+local SURPLUS_GRACE_MS = 8000
 
 local active   = false
 local heat     = 0.0
 local stars    = 0
 local units    = {}                -- pursuit cars: { veh, ped, blip, role, ... }
-local block    = nil               -- { cars = {...}, peds = {...}, blips = {...}, at, placedAt }
+local block    = nil               -- { units = {...}, at, placedAt, scored }
 local lastSpawn   = 0
 local lastPit     = 0
 local lastBlock   = 0
 local lastChatter = 0
 local flankSide   = 1              -- alternates so flankers do not stack on one side
-local escapeFor   = 0.0            -- seconds with nobody in range
+local escapeFor   = 0.0            -- seconds the escape countdown has been running
 local hitCooldown = 0              -- ms timer so one crash is not counted twice
 local lastWantedSig = ""           -- last payload pushed to the raceUI star row
+
+-- ── Pursuit state ───────────────────────────────────────────────────────────
+-- CLEAR    nobody is after you. Offence heat bleeds away here.
+-- PURSUIT  you are wanted and the pack is out. Heat is LOCKED: it cannot fall.
+-- EVADING  the pack is out but nothing has contact. The escape clock runs and
+--          heat finally bleeds — this is the only place shaking them pays.
+local phase        = "CLEAR"
+local pursuitSince = 0             -- ms the current pursuit started
+local contactAt    = 0             -- ms anything last had contact
+local contactEver  = false         -- has anything had contact in THIS pursuit
+local pendingHeat  = 0.0           -- one-off bonuses queued for the next heat step
+local starsSince   = 0             -- ms the current star level was reached
+local debugHud     = false
 
 local function cfg(key, fallback)
     local v = CC[key]
     if v == nil then return fallback end
+    return v
+end
+
+local function heliCfg(key, fallback)
+    local h = CC.Heli or {}
+    if h[key] == nil then return fallback end
+    return h[key]
+end
+
+local function clamp(v, lo, hi)
+    if v < lo then return lo end
+    if v > hi then return hi end
     return v
 end
 
@@ -103,8 +190,15 @@ local function levelSpec(n)
         or { tail = 1, flank = 0, intercept = 0, pit = false, pitEvery = 0, roadblock = 0, speed = 40.0 }
 end
 
---- Short radio callouts. Throttled hard: the pack does something interesting
---- every few seconds and a line for each would be a wall of notifications.
+--- The player and the thing a cop should be looking at. While the racer is in a
+--- car, trace to the CAR: tracing to the ped inside it can be blocked by its own
+--- bodywork, which would read as the police losing a driver sitting in plain
+--- sight on an open road.
+local function targetEntity(ped, veh)
+    if veh ~= 0 and DoesEntityExist(veh) then return veh end
+    return ped
+end
+
 -- ── Dispatch radio ───────────────────────────────────────────────────────────
 --
 -- The audio half of a callout. Two independent pieces, because they fail
@@ -226,12 +320,28 @@ end
 
 -- ── Placement ────────────────────────────────────────────────────────────────
 
+--- How far back a unit is put, expressed as SECONDS of the racer's speed rather
+--- than as a fixed number of metres.
+---
+--- A fixed 130 m is two different things: a long way back in an alley at 60
+--- km/h, and less than two seconds at 250 km/h on the freeway. Reading it as a
+--- time gap makes the arrival feel the same at both ends of the speed range, and
+--- it is the first half of why the pack now actually turns up.
+local function spawnBehindDist(ent)
+    local base = cfg("SpawnBehind", 130.0)
+    if ent and ent ~= 0 and DoesEntityExist(ent) then
+        local bySpeed = GetEntitySpeed(ent) * cfg("BehindSec", 2.2)
+        if bySpeed > 0.0 then base = bySpeed end
+    end
+    return clamp(base, cfg("SpawnBehindMin", 75.0), cfg("SpawnBehindMax", 200.0))
+end
+
 --- A road point `dist` metres along the racer's heading (negative = behind).
 --- Snapped to a vehicle node, because a cruiser dropped onto a pavement or a
 --- roof is a comedy unit, not a pursuit unit.
-local function roadPointAlong(veh, dist)
-    local pos = GetEntityCoords(veh)
-    local h   = math.rad(GetEntityHeading(veh))
+local function roadPointAlong(ent, dist)
+    local pos = GetEntityCoords(ent)
+    local h   = math.rad(GetEntityHeading(ent))
     local fx  = -math.sin(h)
     local fy  =  math.cos(h)
     local tx  = pos.x + fx * dist
@@ -244,12 +354,29 @@ local function roadPointAlong(veh, dist)
     return nil
 end
 
+--- The behind-point a chase unit arrives on, pushed further back if the obvious
+--- one would put a police car into view out of thin air. Three attempts, then it
+--- takes the first valid point regardless — a unit that arrives slightly visibly
+--- is better than a pursuit with nothing in it.
+local function behindPoint(ent, base)
+    local firstC, firstH
+    for _, mult in ipairs({ 1.0, 1.3, 1.65 }) do
+        local c, h = roadPointAlong(ent, -(base * mult))
+        if c then
+            if not firstC then firstC, firstH = c, h end
+            if cfg("SpawnOffScreen", true) == false then return c, h end
+            if not IsSphereVisible(c.x, c.y, c.z + 1.0, 3.0) then return c, h end
+        end
+    end
+    return firstC, firstH
+end
+
 --- Where the racer will BE, not where they are: an intercept placed on the
 --- current heading is placed behind a car that is already turning. The velocity
 --- vector is the closest cheap read on where the road is taking them.
-local function projectedPoint(veh, seconds)
-    local pos = GetEntityCoords(veh)
-    local v   = GetEntityVelocity(veh)
+local function projectedPoint(ent, seconds)
+    local pos = GetEntityCoords(ent)
+    local v   = GetEntityVelocity(ent)
     local tx, ty = pos.x + v.x * seconds, pos.y + v.y * seconds
 
     local ok, node, heading = GetClosestVehicleNodeWithHeading(tx, ty, pos.z, 1, 3.0, 0)
@@ -259,17 +386,170 @@ local function projectedPoint(veh, seconds)
     return nil
 end
 
+-- ── Contact ──────────────────────────────────────────────────────────────────
+--
+-- The single question the whole pursuit hangs on: does anybody still have you?
+--
+-- It replaces the old "is the nearest car within 170 m" test, which answered no
+-- for a cruiser three metres behind you round a blind corner and yes for one
+-- that had long since given up on a parallel street. A unit has you when:
+--
+--   * it is inside ContactCloseDist — that close it does not need a sightline;
+--   * OR it is inside ContactDist AND has a clear line to you;
+--   * OR it is inside ContactDist and had a line to you within the last few
+--     seconds. This is the corner case, literally: pursuit units do not forget
+--     a car the instant a building comes between them.
+--
+-- The chopper is included, on its own longer sightline. It used to be excluded
+-- from the escape test entirely, because it holds station overhead and counting
+-- its DISTANCE would have made escape impossible above two stars. Counting its
+-- SIGHT gives it the job it has in the base game: while it can see you, you have
+-- not lost anybody — and a tunnel, an underpass or a car park takes its eyes
+-- away and starts the clock.
+
+local function scanContact(pos, target, now)
+    local nearestGround = math.huge
+    local nearest       = math.huge
+    local contact       = false
+
+    local closeD  = cfg("ContactCloseDist", 45.0)
+    local seeD    = cfg("ContactDist", cfg("EscapeDist", 175.0))
+    local heliD   = heliCfg("SightDist", 280.0)
+    local heliOn  = heliCfg("HoldsContact", true) ~= false
+
+    for _, u in ipairs(units) do
+        if DoesEntityExist(u.veh) then
+            local d = #(GetEntityCoords(u.veh) - pos)
+            u.gap = d
+            if d < nearest then nearest = d end
+
+            local maxSee = (u.role == "heli") and heliD or seeD
+            local sees   = false
+
+            if u.role == "heli" then
+                if heliOn and d <= heliD then
+                    sees = HasEntityClearLosToEntity(u.veh, target, LOS_FLAGS)
+                end
+            else
+                if d < nearestGround then nearestGround = d end
+                if d <= closeD then
+                    sees = true
+                elseif d <= maxSee then
+                    sees = HasEntityClearLosToEntity(u.veh, target, LOS_FLAGS)
+                end
+            end
+
+            if sees then
+                u.lastSeen = now
+                u.seeing   = true
+                contact    = true
+            else
+                u.seeing = false
+                -- Sight memory: still in range and saw you a moment ago.
+                if d <= maxSee and (now - (u.lastSeen or 0)) < SIGHT_MEMORY_MS then
+                    contact = true
+                end
+            end
+        else
+            u.gap, u.seeing = math.huge, false
+        end
+    end
+
+    -- A roadblock is police standing in the road. Driving up to one is not
+    -- getting away from them.
+    if block and block.at and #(block.at - pos) <= seeD then
+        contact = true
+    end
+
+    return contact, nearestGround, nearest
+end
+
 -- ── Tasking ──────────────────────────────────────────────────────────────────
 
---- Cruise target tracks the racer instead of sitting on a fixed number, so a
---- unit neither crawls behind a slow car nor gets left for dead by a fast one.
-local function pursuitSpeed(racerVeh, spec)
-    local mine = GetEntitySpeed(racerVeh) * cfg("SpeedMatch", 1.12)
-    local floor = math.max(cfg("SpeedFloor", 30.0), spec.speed or 40.0)
-    if mine < floor then mine = floor end
+--- 0 at the hold distance, 1 once a unit is CatchUpSpan metres further back than
+--- the assist threshold. Everything about keeping up scales off this one number.
+local function catchUpFrac(gap)
+    local from = cfg("CatchUpFrom", 55.0)
+    if not gap or gap <= from then return 0.0 end
+    local span = cfg("CatchUpSpan", 130.0)
+    if span <= 0 then return 1.0 end
+    return clamp((gap - from) / span, 0.0, 1.0)
+end
+
+--- Cruise target for one unit. Tracks the racer's speed as before, but with two
+--- bands on top of it:
+---
+---   behind   extra speed proportional to how far back it is, so a unit that
+---            lost ground closes it instead of settling into a permanent tow.
+---   holding  inside HoldDist the assist is off entirely and it matches pace.
+---            A pursuit unit that is already on you and still being told to go
+---            16 m/s faster does not apply pressure, it rear-ends you.
+local function pursuitSpeed(ent, spec, gap, holding)
+    local mine = (ent and ent ~= 0 and DoesEntityExist(ent)) and GetEntitySpeed(ent) or 0.0
     local ceil = cfg("SpeedCeiling", 82.0)
-    if mine > ceil then mine = ceil end
-    return mine
+
+    if holding then
+        -- Matching pace, with just enough over to stay attached.
+        return clamp(math.max(mine * 1.02, 8.0), 8.0, ceil)
+    end
+
+    local want  = mine * cfg("SpeedMatch", 1.12)
+    local floor = math.max(cfg("SpeedFloor", 30.0), spec.speed or 40.0)
+    want = want + catchUpFrac(gap) * cfg("CatchUpSpeed", 16.0)
+    if want < floor then want = floor end
+    return clamp(want, 0.0, ceil)
+end
+
+--- The same number, per unit, with the hold band given hysteresis.
+---
+--- Without it a unit oscillating either side of HoldDist flips between "sit on
+--- them" and "close the gap" several times a second, and because a big enough
+--- change of target re-issues the drive task, that is a pursuit car whose brain
+--- is wiped twice a second while it is driving. It goes in at HoldDist and does
+--- not come out again until it is properly adrift.
+local function unitSpeed(u, ent, spec)
+    local gap  = u.gap or math.huge
+    local hold = cfg("HoldDist", 22.0)
+
+    if u.holding then
+        if gap > hold * 1.6 then u.holding = false end
+    elseif gap < hold then
+        u.holding = true
+    end
+
+    return pursuitSpeed(ent, spec, gap, u.holding)
+end
+
+--- Engine output. Fixed per star level, plus the same bounded catch-up term, so
+--- a unit that has been left behind has the power to come back — and loses it
+--- again the moment it is on you.
+---
+--- The two halves are written on different schedules on purpose:
+---
+---   POWER      SetVehicleEnginePowerMultiplier is a plain set, so it can track
+---              the catch-up band. Quantised anyway, because writing a new
+---              multiplier to a car five times a second for a whole race is
+---              pointless work.
+---   TOP SPEED  ModifyVehicleTopSpeed is only headroom — it decides what the
+---              car is ALLOWED to reach, not what it asks for — so it is
+---              written once per star level, with the catch-up allowance
+---              already included. That also keeps it off the per-tick path,
+---              which matters: it is the one native here whose repeat-call
+---              behaviour is not worth betting a pursuit on.
+local function applyPower(u, gap)
+    if not DoesEntityExist(u.veh) then return end
+
+    local base = (CC.PowerBoost or {})[stars] or 0.3
+
+    if u.topAt ~= stars then
+        u.topAt = stars
+        ModifyVehicleTopSpeed(u.veh, 1.0 + base + cfg("CatchUpPower", 0.45))
+    end
+
+    local q = math.floor((base + catchUpFrac(gap) * cfg("CatchUpPower", 0.45)) * 20.0 + 0.5) / 20.0
+    if u.powerAt == q then return end
+    u.powerAt = q
+    SetVehicleEnginePowerMultiplier(u.veh, q * 100.0)
 end
 
 local function applyRole(u, speed)
@@ -338,12 +618,14 @@ end
 
 --- Put a lost unit back in the fight. Behind the racer, on a node, facing the
 --- right way — the same placement a fresh spawn gets, without paying for a new
---- car and a new ped.
-local function recover(u, racerVeh, speed, now)
+--- car and a new ped. It is also handed the racer's pace on arrival, for the
+--- same reason a fresh spawn is: a recovered unit dropped at a standstill is a
+--- unit that needs recovering again in ten seconds.
+local function recover(u, ent, speed, now)
     if (now - (u.recoveredAt or 0)) < RECOVER_GAP then return false end
     if IsEntityOnScreen(u.veh) then return false end   -- never in view
 
-    local coords, heading = roadPointAlong(racerVeh, -cfg("SpawnBehind", 130.0))
+    local coords, heading = behindPoint(ent, spawnBehindDist(ent))
     if not coords then return false end
 
     SetEntityCoords(u.veh, coords.x, coords.y, coords.z, false, false, false, false)
@@ -353,13 +635,18 @@ local function recover(u, racerVeh, speed, now)
     reseat(u)
     applyRole(u, speed)
 
+    if cfg("SpawnAtSpeed", true) then
+        local launch = clamp(GetEntitySpeed(ent), 0.0, cfg("SpeedCeiling", 82.0))
+        if launch > 4.0 then SetVehicleForwardSpeed(u.veh, launch) end
+    end
+
     u.recoveredAt = now
     u.stuckSince  = nil
     return true
 end
 
 --- Returns false if the unit is beyond saving and should be recycled.
-local function tickUnit(u, racerVeh, speed, now)
+local function tickUnit(u, ent, speed, now)
     if not DoesEntityExist(u.veh) or not DoesEntityExist(u.ped) then return false end
     if u.role == "block" then return true end          -- a roadblock is meant to sit still
 
@@ -379,7 +666,7 @@ local function tickUnit(u, racerVeh, speed, now)
 
     -- Flipped. Nothing recovers from this on its own.
     if IsEntityUpsidedown(u.veh) then
-        if not recover(u, racerVeh, speed, now) then return false end
+        if not recover(u, ent, speed, now) then return false end
         return true
     end
 
@@ -392,7 +679,7 @@ local function tickUnit(u, racerVeh, speed, now)
             if (now - (u.retaskedAt or 0)) > 2500 then
                 u.retaskedAt = now
                 applyRole(u, speed)
-            elseif not recover(u, racerVeh, speed, now) then
+            elseif not recover(u, ent, speed, now) then
                 return false          -- wedged, in view, nothing to be done: recycle
             end
         end
@@ -444,6 +731,7 @@ local function vanillaCop(ped)
     SetPedCombatAttributes(ped, 5, false)    -- never "always fight"
     SetPedCombatAttributes(ped, 46, false)
     SetPedFleeAttributes(ped, 0, false)
+    SetPedAccuracy(ped, cfg("Accuracy", 25))
 
     -- Armour anyway: a unit that dies to a shunt leaves a corpse in a cruiser
     -- in the middle of the race, which is worse than one that shrugs it off.
@@ -470,9 +758,13 @@ local function disarm(ped)
     SetPedCanBeTargettedByPlayer(ped, PlayerId(), false)
 end
 
---- One cruiser with a driver in it, placed and made permanent. Returns the unit
---- table, or nil if the models or the ground would not cooperate.
-local function makeUnit(coords, heading, role)
+--- One cruiser with a driver in it, placed and made permanent. `launch` is the
+--- speed it is moving at the instant it exists — see the header: a unit created
+--- at a standstill behind a car at racing pace has already lost the pursuit
+--- before its first frame, and no amount of engine multiplier gets that back.
+--- Returns the unit table, or nil if the models or the ground would not
+--- cooperate.
+local function makeUnit(coords, heading, role, launch)
     local vehHash = loadModel(cruiserModel())
     local pedHash = loadModel(pick(CC.PedModels, "s_m_y_cop_01"))
     if not vehHash or not pedHash then return nil end
@@ -496,11 +788,6 @@ local function makeUnit(coords, heading, role)
         SetSirenWithNoDriver(veh, true)
     end
 
-    -- Enough engine to hold station against a race car. Fixed per star level, so
-    -- a genuinely faster car still pulls away — it just has to be driven.
-    local boost = (CC.PowerBoost or {})[stars] or 0.3
-    SetVehicleEnginePowerMultiplier(veh, boost * 100.0)
-    ModifyVehicleTopSpeed(veh, 1.0 + boost)
     SetVehicleHasBeenOwnedByPlayer(veh, false)
 
     local ped = CreatePed(26, pedHash, coords.x, coords.y, coords.z, heading, false, false)
@@ -513,6 +800,13 @@ local function makeUnit(coords, heading, role)
     if cfg("VanillaBehaviour", true) then vanillaCop(ped) else disarm(ped) end
     makeDriver(ped)
 
+    -- Rolling on arrival. Applied last, after the ped is seated and the engine
+    -- is on, because a forward speed set on an empty car is thrown away the
+    -- moment a driver takes over.
+    if launch and launch > 4.0 and cfg("SpawnAtSpeed", true) then
+        SetVehicleForwardSpeed(veh, clamp(launch, 0.0, cfg("SpeedCeiling", 82.0)))
+    end
+
     SetModelAsNoLongerNeeded(vehHash)
     SetModelAsNoLongerNeeded(pedHash)
 
@@ -522,7 +816,10 @@ local function makeUnit(coords, heading, role)
     SetBlipScale(blip, 0.75)
     SetBlipAsShortRange(blip, true)
 
-    return { veh = veh, ped = ped, blip = blip, role = role, pitUntil = 0, born = GetGameTimer() }
+    local u = { veh = veh, ped = ped, blip = blip, role = role,
+                pitUntil = 0, born = GetGameTimer(), gap = math.huge }
+    applyPower(u, 0.0)
+    return u
 end
 
 -- ── Air support ──────────────────────────────────────────────────────────────
@@ -534,19 +831,15 @@ end
 -- either: it is given the target and an offset to hold, and left to it.
 --
 -- It never rams, never blocks and never PITs. Its whole job is that ducking
--- into a side street stops working, which is what it does in the base game.
-
-local function heliCfg(key, fallback)
-    local h = CC.Heli or {}
-    if h[key] == nil then return fallback end
-    return h[key]
-end
+-- into a side street stops working, which is what it does in the base game —
+-- and, now that its sightline counts as contact, that ducking into a side
+-- street also stops the escape clock from starting.
 
 --- A point in the air, `behind` metres back down the racer's heading and
 --- `height` metres up. No node snapping — it is a helicopter.
-local function airPointBehind(racerVeh)
-    local pos = GetEntityCoords(racerVeh)
-    local h   = math.rad(GetEntityHeading(racerVeh))
+local function airPointBehind(ent)
+    local pos = GetEntityCoords(ent)
+    local h   = math.rad(GetEntityHeading(ent))
     local d   = heliCfg("Behind", 45.0)
     return vec3(pos.x + math.sin(h) * d,
                 pos.y - math.cos(h) * d,
@@ -561,15 +854,15 @@ local function taskHeli(u)
     u.taskedAt = GetGameTimer()
 end
 
-local function spawnHeli(racerVeh)
+local function spawnHeli(ent)
     if heliCfg("Enabled", true) == false then return false end
 
     local vehHash = loadModel(heliCfg("Model", "polmav"))
     local pedHash = loadModel(heliCfg("PedModel", "s_m_y_cop_01"))
     if not vehHash or not pedHash then return false end
 
-    local at      = airPointBehind(racerVeh)
-    local heading = GetEntityHeading(racerVeh)
+    local at      = airPointBehind(ent)
+    local heading = GetEntityHeading(ent)
 
     local veh = CreateVehicle(vehHash, at.x, at.y, at.z, heading, false, false)
     if not DoesEntityExist(veh) then return false end
@@ -609,7 +902,7 @@ local function spawnHeli(racerVeh)
     end
 
     local u = { veh = veh, ped = ped, blip = blip, role = "heli",
-                pitUntil = 0, born = GetGameTimer() }
+                pitUntil = 0, born = GetGameTimer(), gap = math.huge }
     units[#units + 1] = u
     taskHeli(u)
     lastSpawn = GetGameTimer()
@@ -621,11 +914,11 @@ end
 --- Put a strayed chopper back over the racer. No off-screen condition and no
 --- node lookup: there is nothing to snap to at altitude, and a helicopter
 --- crossing the sky to rejoin is a thing you see in the base game anyway.
-local function recoverHeli(u, racerVeh)
+local function recoverHeli(u, ent)
     if not DoesEntityExist(u.veh) then return false end
-    local at = airPointBehind(racerVeh)
+    local at = airPointBehind(ent)
     SetEntityCoords(u.veh, at.x, at.y, at.z, false, false, false, false)
-    SetEntityHeading(u.veh, GetEntityHeading(racerVeh))
+    SetEntityHeading(u.veh, GetEntityHeading(ent))
     SetHeliBladesFullSpeed(u.veh)
     if GetPedInVehicleSeat(u.veh, -1) ~= u.ped then
         TaskWarpPedIntoVehicle(u.ped, u.veh, -1)
@@ -639,7 +932,7 @@ end
 -- air, and SetVehicleOnGroundProperly on a flying helicopter is a crash.
 local HELI_RETASK_MS = 8000
 
-local function tickHeli(u, racerVeh, now)
+local function tickHeli(u, ent, now)
     if not DoesEntityExist(u.veh) or not DoesEntityExist(u.ped) then return false end
     if IsEntityDead(u.ped) or not IsVehicleDriveable(u.veh, false) then return false end
 
@@ -663,22 +956,28 @@ local function tickHeli(u, racerVeh, now)
     return true
 end
 
-local function spawnPursuit(racerVeh, role, speed)
+local function spawnPursuit(ent, role, spec)
     local coords, heading
+    local mySpeed = (ent and ent ~= 0 and DoesEntityExist(ent)) and GetEntitySpeed(ent) or 0.0
 
     if role == "intercept" then
         -- Ahead, facing back down the road at you.
-        coords, heading = projectedPoint(racerVeh, 6.0)
+        coords, heading = projectedPoint(ent, 6.0)
         if not coords then
-            coords, heading = roadPointAlong(racerVeh, cfg("SpawnAhead", 240.0))
+            coords, heading = roadPointAlong(ent, cfg("SpawnAhead", 240.0))
         end
         if heading then heading = (heading + 180.0) % 360.0 end
     else
-        coords, heading = roadPointAlong(racerVeh, -cfg("SpawnBehind", 130.0))
+        coords, heading = behindPoint(ent, spawnBehindDist(ent))
     end
     if not coords then return false end
 
-    local u = makeUnit(coords, heading or 0.0, role)
+    -- An intercept is coming AT you, so it only needs road speed; a chase unit
+    -- is coming after you and needs yours. Both start moving — nothing in this
+    -- pack is ever created at a standstill on an open road again.
+    local launch = (role == "intercept") and math.min(mySpeed * 0.6, 30.0) or mySpeed
+
+    local u = makeUnit(coords, heading or 0.0, role, launch)
     if not u then return false end
 
     if role == "flank" then
@@ -686,8 +985,9 @@ local function spawnPursuit(racerVeh, role, speed)
         flankSide = flankSide == 1 and 2 or 1
     end
 
+    u.gap = #(coords - GetEntityCoords(ent))
     units[#units + 1] = u
-    applyRole(u, speed)
+    applyRole(u, unitSpeed(u, ent, spec))
     lastSpawn = GetGameTimer()
 
     if role == "intercept" then
@@ -704,8 +1004,8 @@ end
 --- at all — a roadblock that drives is just two more chase cars. It is called
 --- out when it goes up, because a block you cannot see coming is a wall, not a
 --- decision.
-local function placeRoadblock(racerVeh)
-    local coords, heading = roadPointAlong(racerVeh, cfg("RoadblockAhead", 320.0))
+local function placeRoadblock(ent)
+    local coords, heading = roadPointAlong(ent, cfg("RoadblockAhead", 320.0))
     if not coords then return false end
 
     local across = (heading + 90.0) % 360.0
@@ -716,7 +1016,7 @@ local function placeRoadblock(racerVeh)
     for i = -1, 1, 2 do
         local cx = coords.x + rx * (2.6 * i)
         local cy = coords.y + ry * (2.6 * i)
-        local u  = makeUnit(vector3(cx, cy, coords.z), across, "block")
+        local u  = makeUnit(vector3(cx, cy, coords.z), across, "block", nil)
         if u then
             -- Handbrake, not frozen. A frozen entity is immovable geometry, and
             -- hitting one at racing speed launches the car rather than stopping
@@ -731,16 +1031,26 @@ local function placeRoadblock(racerVeh)
     end
 
     if #made == 0 then return false end
-    block = { units = made, placedAt = GetGameTimer(), at = coords }
+    block = { units = made, placedAt = GetGameTimer(), at = coords, scored = false }
     lastBlock = GetGameTimer()
     chatter("Roadblock ahead — find another way", "error")
     return true
 end
 
-local function tickRoadblock(pos)
+--- Blocks are torn down once dealt with, and going THROUGH one instead of
+--- around it is an escalation: it is the most obviously deliberate thing a
+--- racer can do to the police short of ramming one.
+local function tickRoadblock(pos, speed)
     if not block then return end
     local age  = GetGameTimer() - block.placedAt
     local dist = #(block.at - pos)
+
+    if not block.scored and dist < 12.0 and speed > 15.0 then
+        block.scored = true
+        pendingHeat = pendingHeat + cfg("HeatPerRoadblockRun", 14)
+        chatter("He is going straight through the block", "error")
+    end
+
     -- Torn down once it has been dealt with (passed, or left far behind) or when
     -- it has stood long enough that the racer clearly went another way.
     if age > (cfg("RoadblockLifeSec", 40) * 1000) or dist > cfg("DespawnDist", 340.0) then
@@ -783,41 +1093,49 @@ end
 
 -- ── Heat ─────────────────────────────────────────────────────────────────────
 
-local function starsFor(h)
-    local max = cfg("MaxStars", 5)
-    local n = math.floor(h / STARS_PER_HEAT)
-    if n > max then n = max end
-    if n < 0 then n = 0 end
+--- Stars from heat, with hysteresis in BOTH directions of the word: a level is
+--- entered the moment the band is crossed, and given up only after falling a
+--- clear margin below it AND holding there.
+---
+--- Without this the level oscillates across a band boundary at a couple of hertz
+--- — and every oscillation spawns or deletes a police car, because the pack
+--- shape is read off the star level. The flicker was visible as cruisers
+--- appearing and vanishing in the mirror for no reason at all.
+local function starsFor(h, current, now)
+    local maxStars = cfg("MaxStars", 5)
+    local n = clamp(math.floor(h / STARS_PER_HEAT), 0, maxStars)
+
+    if n < current then
+        -- Must be a clear margin below the band we are currently in...
+        local floorOfCurrent = current * STARS_PER_HEAT
+        if h > (floorOfCurrent - cfg("StarDropMargin", 6.0)) then
+            return current
+        end
+        -- ...and must have been at this level long enough to have meant it.
+        if (now - starsSince) < (cfg("StarDwellSec", 5.0) * 1000) then
+            return current
+        end
+    end
+
     return n
 end
 
---- Distance to the nearest GROUND unit.
+--- Offence heat: what you did, split into the two halves that escalate
+--- differently.
 ---
---- The chopper is deliberately excluded. It holds station directly overhead, so
---- it would sit permanently inside the escape radius and no pursuit above two
---- stars could ever be shaken off — the heat would never decay and the race
---- would run under a siren to the flag. Losing the police is decided by the
---- cars, exactly as it was before there was air support; the chopper leaves
---- with the rest of the pack when the heat does.
-local function nearestUnitDist(pos)
-    local best = math.huge
-    for _, u in ipairs(units) do
-        if u.role ~= "heli" and DoesEntityExist(u.veh) then
-            local d = #(GetEntityCoords(u.veh) - pos)
-            if d < best then best = d end
-        end
-    end
-    return best
-end
-
---- Heat earned this tick. Speed alone tops out around two stars; the rest is
---- paid for in wreckage, which is what actually reads as "the police want you".
-local function accrueHeat(veh, dt, copClose)
-    local kmh = GetEntitySpeed(veh) * 3.6
-    local gained = 0.0
+--- SPEED is an offence, not a manhunt — it is capped at SpeedMaxStars by the
+--- caller, so a clean fast lap cannot summon a helicopter.
+--- WRECKAGE is uncapped, because ploughing through traffic and peds is exactly
+--- what should take a chase to four and five stars.
+---
+--- Returns two numbers: speed heat this tick, crash heat this tick.
+local function offenceHeat(veh, dt, copClose)
+    local kmh  = GetEntitySpeed(veh) * 3.6
+    local fast = 0.0
+    local hit  = 0.0
 
     if kmh >= cfg("SpeedKmh", 130) then
-        gained = gained + cfg("SpeedHeatPerSec", 3.5) * dt
+        fast = cfg("SpeedHeatPerSec", 3.5) * dt
     end
 
     local now = GetGameTimer()
@@ -826,17 +1144,16 @@ local function accrueHeat(veh, dt, copClose)
         -- police escalate the chase by chasing, so contact is ignored while one
         -- of them is on top of the racer.
         if HasEntityBeenDamagedByAnyPed(veh) then
-            gained = gained + cfg("HeatPerPedHit", 22)
+            hit = cfg("HeatPerPedHit", 22)
             hitCooldown = now + 1200
         elseif HasEntityBeenDamagedByAnyVehicle(veh) and not copClose then
-            gained = gained + cfg("HeatPerVehHit", 9)
+            hit = cfg("HeatPerVehHit", 9)
             hitCooldown = now + 1200
         end
         ClearEntityLastDamageEntity(veh)
     end
 
-    if gained > 0 then return gained end
-    return -(cfg("HeatDecayPerSec", 2.0) * dt)
+    return fast, hit
 end
 
 -- ── PIT selection ────────────────────────────────────────────────────────────
@@ -859,7 +1176,8 @@ local function pitCandidate(racerVeh, pos)
 
     local best, bestScore = nil, -1
     for _, u in ipairs(units) do
-        if u.pitUntil == 0 and u.role ~= "intercept" and DoesEntityExist(u.veh) then
+        if u.pitUntil == 0 and u.role ~= "intercept" and u.role ~= "heli"
+        and DoesEntityExist(u.veh) then
             local cp = GetEntityCoords(u.veh)
             local dx, dy = cp.x - pos.x, cp.y - pos.y
             local d = math.sqrt(dx * dx + dy * dy)
@@ -888,8 +1206,12 @@ end
 
 local function stopChase(reason)
     if not active and #units == 0 and not block and heat == 0 then return end
+
     active, heat, stars, escapeFor = false, 0.0, 0, 0.0
+    phase, pursuitSince, contactAt, contactEver = "CLEAR", 0, 0, false
+    pendingHeat, starsSince = 0.0, 0
     clearPack()
+
     -- Hands the scanner back to spz-core, which resumes cancelling reports.
     LocalPlayer.state:set("copHeat", false, false)
 
@@ -911,38 +1233,63 @@ end
 --- Bring the pack up to the star level's shape. Roles are filled in the order
 --- they matter: something behind you first, then something beside you, then
 --- something in front.
-local function maintainPack(racerVeh, spec, speed)
-    if (GetGameTimer() - lastSpawn) < SPAWN_GAP_MS then return end
+---
+--- The FIRST unit of a pursuit skips the spawn cooldown outright, and while the
+--- pack is under half strength more than one may arrive per tick. A four-star
+--- pursuit used to take the better part of fifteen seconds to actually field
+--- four cars, by which point the racer was a district away and the whole thing
+--- was a formality.
+local function maintainPack(ent, spec, now)
+    local want = (spec.tail or 0) + (spec.flank or 0) + (spec.intercept or 0) + (spec.heli or 0)
+    if want <= 0 then return end
 
-    if countRole("tail") < (spec.tail or 0) then
-        spawnPursuit(racerVeh, "tail", speed)
-    elseif countRole("flank") < (spec.flank or 0) then
-        spawnPursuit(racerVeh, "flank", speed)
-    elseif countRole("intercept") < (spec.intercept or 0) then
-        spawnPursuit(racerVeh, "intercept", speed)
-    elseif countRole("heli") < (spec.heli or 0) then
-        spawnHeli(racerVeh)
+    local have  = #units
+    local first = (have == 0) and cfg("FirstUnitInstant", true) ~= false
+    if not first and (now - lastSpawn) < cfg("SpawnGapMs", 1600) then return end
+
+    -- Two at a time only while the pack is genuinely thin; once it is most of
+    -- the way there the arrivals space out again so units do not appear in pairs
+    -- in the mirror.
+    local budget = 1
+    if have * 2 < want then budget = math.max(1, cfg("SpawnBurst", 2)) end
+
+    for _ = 1, budget do
+        local made
+        if countRole("tail") < (spec.tail or 0) then
+            made = spawnPursuit(ent, "tail", spec)
+        elseif countRole("flank") < (spec.flank or 0) then
+            made = spawnPursuit(ent, "flank", spec)
+        elseif countRole("intercept") < (spec.intercept or 0) then
+            made = spawnPursuit(ent, "intercept", spec)
+        elseif countRole("heli") < (spec.heli or 0) then
+            made = spawnHeli(ent)
+        end
+        if not made then return end
     end
 end
 
 --- Drop units the level no longer calls for, so losing a star visibly thins the
 --- pack rather than only slowing the next spawn.
 ---
---- The FARTHEST surplus unit goes first. Deleting by table order is how a
---- cruiser vanishes out of your mirror while it is leaning on your rear
---- quarter, which reads as the script breaking; the one three streets back
---- disappearing is something nobody ever sees.
-local function trimPack(spec, pos)
+--- Two rules about WHICH one goes, and both exist because of how deleting the
+--- wrong one looks:
+---
+---   * the FARTHEST surplus unit goes first. Deleting by table order is how a
+---     cruiser vanishes out of your mirror while it is leaning on your rear
+---     quarter, which reads as the script breaking.
+---   * a surplus unit that is ON SCREEN is spared and tried again next tick. A
+---     police car cannot be allowed to blink out of existence while it is being
+---     looked at — that was half of "they just disappear". It goes anyway once
+---     it has been surplus for SURPLUS_GRACE_MS, so the pack cannot grow a
+---     permanent tail of units nobody is allowed to delete.
+local function trimPack(spec, now)
     local want = { tail = spec.tail or 0, flank = spec.flank or 0,
                    intercept = spec.intercept or 0, heli = spec.heli or 0 }
 
     local order = {}
     for i = 1, #units do order[i] = i end
     table.sort(order, function(a, b)
-        local ua, ub = units[a], units[b]
-        local da = DoesEntityExist(ua.veh) and #(GetEntityCoords(ua.veh) - pos) or math.huge
-        local db = DoesEntityExist(ub.veh) and #(GetEntityCoords(ub.veh) - pos) or math.huge
-        return da < db
+        return (units[a].gap or math.huge) < (units[b].gap or math.huge)
     end)
 
     -- Nearest first: they claim the slots their role still has, and whatever is
@@ -952,6 +1299,7 @@ local function trimPack(spec, pos)
         local role = units[i].role
         if (want[role] or 0) > 0 then
             want[role] = want[role] - 1
+            units[i].surplusSince = nil
         else
             doomed[i] = true
         end
@@ -959,8 +1307,13 @@ local function trimPack(spec, pos)
 
     for i = #units, 1, -1 do
         if doomed[i] then
-            destroyUnit(units[i])
-            table.remove(units, i)
+            local u = units[i]
+            u.surplusSince = u.surplusSince or now
+            local overdue = (now - u.surplusSince) > SURPLUS_GRACE_MS
+            if overdue or not (DoesEntityExist(u.veh) and IsEntityOnScreen(u.veh)) then
+                destroyUnit(u)
+                table.remove(units, i)
+            end
         end
     end
 end
@@ -977,29 +1330,121 @@ CreateThread(function()
         end
 
         do
-            local ped = PlayerPedId()
-            local veh = GetVehiclePedIsIn(ped, false)
-            if veh == 0 or not DoesEntityExist(veh) then goto continue end
+            local now    = GetGameTimer()
+            local ped    = PlayerPedId()
+            local veh    = GetVehiclePedIsIn(ped, false)
+            local onFoot = (veh == 0) or not DoesEntityExist(veh)
+
+            -- On foot the pursuit CONTINUES. Bailing out used to freeze the
+            -- whole tick, which left the pack holding whatever task it had and
+            -- the escape clock stopped: getting out of the car was a way to put
+            -- the police on pause.
+            local subject = onFoot and ped or veh
+            local pos     = GetEntityCoords(subject)
+            local target  = targetEntity(ped, veh)
 
             active = true
-            local pos      = GetEntityCoords(veh)
-            local nearest  = nearestUnitDist(pos)
-            local copClose = nearest < 15.0
 
-            heat = heat + accrueHeat(veh, dt, copClose)
-            local ceiling = cfg("MaxStars", 5) * STARS_PER_HEAT
-            if heat > ceiling then heat = ceiling end
-            if heat < 0 then heat = 0 end
+            -- ── Who has you ────────────────────────────────────────────────
+            local contact, nearestGround = scanContact(pos, target, now)
+            local copClose = nearestGround < 15.0
 
-            local newStars = starsFor(heat)
-            if newStars > stars then
-                lib.notify({
-                    title = "WANTED",
-                    description = ("%d star%s — police are on you"):format(newStars, newStars == 1 and "" or "s"),
-                    type = "error", duration = 3500,
-                })
+            if contact then
+                contactAt   = now
+                contactEver = true
             end
-            stars = newStars
+            -- Contact is "recent" through the grace window, so a corner or an
+            -- underpass is not an escape.
+            local graceMs      = cfg("ContactGraceSec", 2.5) * 1000
+            local contactRecent = contactEver and (now - contactAt) <= graceMs
+
+            -- ── Heat ───────────────────────────────────────────────────────
+            local speedGain, crashGain = 0.0, 0.0
+            if not onFoot then
+                speedGain, crashGain = offenceHeat(veh, dt, copClose)
+            end
+
+            -- Speeding buys stars only up to its own ceiling; wreckage does not
+            -- have one.
+            local speedCeil = math.min(cfg("SpeedMaxStars", cfg("OffenceMaxStars", 2)),
+                                       cfg("MaxStars", 5)) * STARS_PER_HEAT
+            if speedGain > 0 and heat < speedCeil then
+                heat = math.min(heat + speedGain, speedCeil)
+            end
+            if crashGain > 0 then heat = heat + crashGain end
+
+            -- One-off bonuses: driving through a roadblock, surviving a PIT.
+            if pendingHeat > 0 then
+                heat = heat + pendingHeat
+                pendingHeat = 0.0
+            end
+
+            -- Pursuit escalation, and the decay rule that is the whole point of
+            -- the rework:
+            --
+            --   contact   heat RISES with the pursuit clock and never falls.
+            --   no contact, pack still out   it bleeds at the evade rate.
+            --   nothing after you at all     it bleeds at the idle rate.
+            if contactRecent then
+                if (now - pursuitSince) > (cfg("PursuitGraceSec", 6.0) * 1000) then
+                    heat = heat + cfg("PursuitHeatPerSec", 1.5) * dt
+                end
+            elseif #units > 0 or block then
+                -- Out but not on you. Note the contactEver guard: before the
+                -- FIRST contact of a pursuit nothing bleeds, because the units
+                -- are still closing and have not had their chance yet. Without
+                -- it a pursuit could decay itself out of existence during the
+                -- few seconds it takes the first car to reach the racer.
+                if contactEver then
+                    heat = heat - cfg("EvadeDecayPerSec", 1.2) * dt
+                end
+            elseif speedGain <= 0 and crashGain <= 0 then
+                heat = heat - cfg("IdleDecayPerSec", cfg("HeatDecayPerSec", 2.0)) * dt
+            end
+
+            local ceiling = cfg("MaxStars", 5) * STARS_PER_HEAT
+            heat = clamp(heat, 0.0, ceiling)
+
+            -- While anything has you, you are wanted. Full stop. This is the
+            -- floor that stops the pack being deleted out from under a cruiser
+            -- that is physically touching the car.
+            if contactRecent and heat < STARS_PER_HEAT then heat = STARS_PER_HEAT end
+
+            -- ── Stars ──────────────────────────────────────────────────────
+            local newStars = starsFor(heat, stars, now)
+            if newStars ~= stars then
+                if newStars > stars then
+                    lib.notify({
+                        title = "WANTED",
+                        description = ("%d star%s — police are on you"):format(newStars, newStars == 1 and "" or "s"),
+                        type = "error", duration = 3500,
+                    })
+                end
+                stars      = newStars
+                starsSince = now
+            end
+
+            -- ── Phase ──────────────────────────────────────────────────────
+            if stars > 0 and phase == "CLEAR" then
+                phase        = "PURSUIT"
+                pursuitSince = now
+                escapeFor    = 0.0
+                if not contact then contactAt, contactEver = 0, false end
+            end
+
+            -- EVADING is reachable only AFTER a first contact. A pursuit whose
+            -- units have not reached the racer yet is still a pursuit — putting
+            -- it into EVADING would start the escape countdown on a pack that
+            -- has not had its chance, and call the whole thing off before the
+            -- first cruiser was ever in the mirror.
+            if phase ~= "CLEAR" then
+                if contactRecent or not contactEver then
+                    phase     = "PURSUIT"
+                    escapeFor = 0.0
+                else
+                    phase = "EVADING"
+                end
+            end
 
             -- While this is set, spz-core leaves the police scanner alone so a
             -- report can actually finish playing.
@@ -1017,16 +1462,18 @@ CreateThread(function()
                 SetPoliceIgnorePlayer(PlayerId(), not cfg("VanillaBehaviour", true))
             end
 
-            if stars == 0 then
-                if #units > 0 or block then clearPack() end
-                escapeFor = 0.0
+            -- Nothing wanted, nobody on you: the pursuit is over on the spot.
+            -- Note the contactRecent guard — this is the line that used to delete
+            -- the whole pack while it was still on top of the racer.
+            if stars == 0 and not contactRecent then
+                if #units > 0 or block then stopChase("You lost them") end
+                phase, escapeFor = "CLEAR", 0.0
                 goto continue
             end
 
-            local spec  = levelSpec(stars)
-            local speed = pursuitSpeed(veh, spec)
-            local now   = GetGameTimer()
+            local spec = levelSpec(math.max(stars, 1))
 
+            -- ── Units ──────────────────────────────────────────────────────
             -- Recycle anything that has lost the race, been wrecked, or (for an
             -- intercept) already been driven past — its job is done the moment
             -- it is behind you, and it becomes a tail unit rather than a car
@@ -1036,25 +1483,28 @@ CreateThread(function()
                 local broken = (not DoesEntityExist(u.veh)) or (not DoesEntityExist(u.ped))
                     or IsEntityDead(u.ped) or not IsVehicleDriveable(u.veh, false)
 
-                local dead = broken
+                local speed = unitSpeed(u, subject, spec)
+                local dead  = broken
+
                 if not broken and u.role == "heli" then
                     -- Its own path entirely: air recovery, air tick.
-                    if #(GetEntityCoords(u.veh) - pos) > cfg("DespawnDist", 340.0) then
-                        dead = not recoverHeli(u, veh)
+                    if (u.gap or math.huge) > cfg("DespawnDist", 340.0) then
+                        dead = not recoverHeli(u, subject)
                     else
-                        dead = not tickHeli(u, veh, now)
+                        dead = not tickHeli(u, subject, now)
                     end
                 elseif not broken then
-                    if #(GetEntityCoords(u.veh) - pos) > cfg("DespawnDist", 340.0) then
+                    applyPower(u, u.gap)
+                    if (u.gap or math.huge) > cfg("DespawnDist", 340.0) then
                         -- Adrift, but not beaten. Most cars out at the despawn
                         -- radius are stuck on a kerb two corners back, so they
                         -- get one off-screen pick-up before being retired —
                         -- recovering costs nothing, while replacing costs a
                         -- spawn and puts a fresh car in the mirror out of thin
                         -- air.
-                        dead = not recover(u, veh, speed, now)
+                        dead = not recover(u, subject, speed, now)
                     else
-                        dead = not tickUnit(u, veh, speed, now)
+                        dead = not tickUnit(u, subject, speed, now)
                     end
                 end
 
@@ -1078,36 +1528,57 @@ CreateThread(function()
                 radioCall()
             end
 
-            trimPack(spec, pos)
-            maintainPack(veh, spec, speed)
-            tickRoadblock(pos)
+            trimPack(spec, now)
+            maintainPack(subject, spec, now)
+            tickRoadblock(pos, GetEntitySpeed(subject))
 
-            -- Roles are re-issued when the pace has actually moved: the cruise
-            -- target tracks the racer, and a task set at 40 m/s does not become
-            -- a task at 70 m/s on its own. Re-tasking on a fixed interval
-            -- instead would restart the chase mid-corner every few seconds and
-            -- make them drive worse, not better.
+            -- Re-task when the pace a unit was GIVEN has drifted from the pace it
+            -- now needs. With the catch-up assist that number is per unit, so a
+            -- car that has dropped back gets its new target immediately while
+            -- one sitting on the bumper is left alone. Re-tasking everything on
+            -- a fixed interval instead would restart the chase mid-corner every
+            -- few seconds and make them drive worse, not better.
             for _, u in ipairs(units) do
-                if u.pitUntil ~= 0 then
-                    if now >= u.pitUntil then applyRole(u, speed) end
-                elseif math.abs((u.taskSpeed or 0) - speed) > 6.0 then
-                    applyRole(u, speed)
+                if u.role ~= "heli" and u.role ~= "block" and DoesEntityExist(u.ped) then
+                    local speed = unitSpeed(u, subject, spec)
+                    if u.pitUntil ~= 0 then
+                        if now >= u.pitUntil then
+                            -- They threw one and you are still going. That is an
+                            -- escalation in anyone's book.
+                            if not onFoot and GetEntitySpeed(subject) > 10.0 then
+                                pendingHeat = pendingHeat + cfg("HeatPerPitSurvived", 6)
+                            end
+                            applyRole(u, speed)
+                        end
+                    elseif math.abs((u.taskSpeed or 0) - speed) > 5.0
+                       and (now - (u.speedTaskAt or 0)) > 1500 then
+                        -- A floor on how often a drive task may be restarted for
+                        -- pace alone. Re-issuing it wipes what the driving AI
+                        -- had worked out about the corner it is in, so it is
+                        -- worth doing occasionally and ruinous to do constantly.
+                        u.speedTaskAt = now
+                        applyRole(u, speed)
+                    else
+                        -- Cheap nudge: keeps the cruise target honest between
+                        -- full re-tasks without restarting the drive task.
+                        SetDriveTaskCruiseSpeed(u.ped, speed)
+                    end
                 end
             end
 
             -- PIT: one at a time, on geometry, no more often than the level says.
-            if spec.pit and (spec.pitEvery or 0) > 0
+            if not onFoot and spec.pit and (spec.pitEvery or 0) > 0
             and (now - lastPit) >= (spec.pitEvery * 1000) then
                 local u = pitCandidate(veh, pos)
                 if u then
-                    taskPit(u, veh, speed, cfg("PitDurationMs", 3500))
+                    taskPit(u, veh, unitSpeed(u, subject, spec), cfg("PitDurationMs", 3500))
                     lastPit = now
                     chatter("They are going for a PIT", "error")
                 end
             end
 
             -- Roadblock, only while there is road ahead to block.
-            if (spec.roadblock or 0) > 0 and not block
+            if not onFoot and (spec.roadblock or 0) > 0 and not block
             and (now - lastBlock) >= (spec.roadblock * 1000)
             and GetEntitySpeed(veh) > 15.0 then
                 placeRoadblock(veh)
@@ -1115,16 +1586,25 @@ CreateThread(function()
 
             ghostAgainstOtherPlayers()
 
-            -- Shaking them. Nothing in range for long enough and the whole thing
-            -- is called off — the alternative is a pack that trails a racer for
-            -- the rest of a 3-lap circuit.
-            if nearest > cfg("EscapeDist", 170.0) then
+            -- ── Shaking them ───────────────────────────────────────────────
+            -- The escape clock runs ONLY in EVADING — nothing has you, and the
+            -- grace window has already expired. Regaining contact zeroes it
+            -- above, so a unit reacquiring you at eleven seconds puts you back
+            -- to the start.
+            --
+            -- Before the first contact of a pursuit the clock does not run at
+            -- all: units are still closing and have not had their chance yet.
+            -- The one exception is a pursuit that never finds you — a pack that
+            -- spawns into unreachable geometry would otherwise follow you for
+            -- the rest of the race — so that expires on its own timer.
+            if phase == "EVADING" then
                 escapeFor = escapeFor + dt
-                if escapeFor >= cfg("EscapeSeconds", 12) then
+                if escapeFor >= cfg("EscapeSeconds", 14) then
                     stopChase("You lost them")
                 end
-            else
-                escapeFor = 0.0
+            elseif not contactEver and pursuitSince > 0
+               and (now - pursuitSince) > (cfg("NoContactTimeoutSec", 40) * 1000) then
+                stopChase("They never found you")
             end
         end
 
@@ -1148,8 +1628,8 @@ local function pushWanted()
     local show = active and stars > 0 and cfg("Hud", true) ~= false
 
     local left = 0
-    if show and escapeFor > 0 then
-        left = math.max(0, math.ceil(cfg("EscapeSeconds", 12) - escapeFor))
+    if show and phase == "EVADING" and escapeFor > 0 then
+        left = math.max(0, math.ceil(cfg("EscapeSeconds", 14) - escapeFor))
     end
 
     local sig = ("%s|%d|%d"):format(tostring(show), show and stars or 0, left)
@@ -1208,6 +1688,65 @@ RegisterCommand("wantedtest", function(_, args)
         n, n == 1 and "" or "s", esc and (", losing them " .. esc .. "s") or ""))
 end, false)
 
+-- ── Watching the pursuit think ───────────────────────────────────────────────
+-- /copdebug
+--
+-- Every number the tick above decides on, on screen, live. This exists because
+-- all three of the behaviours that had to be fixed here were invisible from the
+-- driving seat: whether the heat was climbing or bleeding, whether anything
+-- actually had contact, and how far back each unit really was. Tuning any of the
+-- config values by feel alone means guessing at all three.
+--
+-- Draws nothing unless it has been switched on.
+local function dbg(text, line)
+    SetTextFont(4)
+    SetTextScale(0.30, 0.30)
+    SetTextColour(255, 255, 255, 215)
+    SetTextOutline()
+    SetTextEntry("STRING")
+    AddTextComponentString(text)
+    DrawText(0.015, 0.30 + (line * 0.019))
+end
+
+CreateThread(function()
+    while true do
+        if not debugHud then
+            Wait(400)
+        else
+            Wait(0)
+            local line = 0
+            dbg(("~y~COP CHASE~s~  phase ~b~%s~s~  heat ~b~%.1f~s~  stars ~b~%d~s~")
+                :format(phase, heat, stars), line)
+            line = line + 1
+            dbg(("contactEver ~b~%s~s~  since contact ~b~%.1fs~s~  escape ~b~%.1f/%ds~s~")
+                :format(tostring(contactEver),
+                        contactAt > 0 and (GetGameTimer() - contactAt) / 1000 or -1,
+                        escapeFor, cfg("EscapeSeconds", 14)), line)
+            line = line + 1
+            dbg(("units ~b~%d~s~  block ~b~%s~s~")
+                :format(#units, block and "yes" or "no"), line)
+            line = line + 1
+
+            local spec = levelSpec(math.max(stars, 1))
+            local subj = GetVehiclePedIsIn(PlayerPedId(), false)
+            if subj == 0 then subj = PlayerPedId() end
+
+            for i, u in ipairs(units) do
+                dbg(("  %d %-9s gap ~b~%6.1fm~s~ %s cruise ~b~%.0f~s~ pwr ~b~%.2f~s~")
+                    :format(i, u.role, u.gap or -1,
+                            u.seeing and "~g~SEES~s~" or "~r~blind~s~",
+                            pursuitSpeed(subj, spec, u.gap, u.holding), u.powerAt or 0), line)
+                line = line + 1
+            end
+        end
+    end
+end)
+
+RegisterCommand("copdebug", function()
+    debugHud = not debugHud
+    print(("^2[spz-races] cop chase debug %s^7"):format(debugHud and "ON" or "OFF"))
+end, false)
+
 -- ── Teardown ─────────────────────────────────────────────────────────────────
 
 RegisterNetEvent("SPZ:tpToSafeZone", function() stopChase(nil) end)
@@ -1222,3 +1761,4 @@ end)
 
 exports("GetChaseStars", function() return stars end)
 exports("IsCopChaseActive", function() return active and stars > 0 end)
+exports("GetChasePhase", function() return phase end)

@@ -435,19 +435,85 @@ Config.BoardRefresh = 30000    -- ms between record re-fetches
 --
 -- Voted on per race: the traffic ballot carries an on/off switch, majority wins
 -- (`Default` breaks a tie and covers a poll where nobody touched it).
+-- ── Start-line tool (/setstart) ─────────────────────────────────────────────
+-- The in-game surveying tool that sets a track's start line from two points.
+-- See spz-races/server/startline.lua.
+--
+-- OPEN BY DEFAULT. It used to require ACE "spz.dev" or the spz_dev convar, and
+-- that turned out to be a wall rather than a gate: the permission is defined in
+-- spz-txrecipe/server.cfg but never assigned to anybody (the add_principal line
+-- next to it is commented out), and the obvious way to grant it at runtime —
+-- `set spz_dev true` in the console — is refused outright on any server running
+-- FXServer's production console lockdown. So the tool was unusable out of the
+-- box on exactly the servers it was written for.
+--
+-- WHAT OPEN MEANS: any player can permanently move any track's start line, and
+-- the change is written to disk and survives restarts. That is fine on a
+-- private or development server and is not fine on a public one.
+--
+-- To lock it on a public server, set RequireAce = true and grant the ACE in
+-- server.cfg (the tool prints the exact line when it refuses someone):
+--     add_ace identifier.license:<theirs> spz.dev allow
+Config.StartLineTool = {
+  RequireAce = false,   -- true = back to ACE "spz.dev" / spz_dev convar
+}
+
 Config.CopChase = {
   Enabled  = true,     -- false removes the switch from the ballot entirely
   Default  = false,    -- tie / no votes → this
 
   -- ── Heat → stars ─────────────────────────────────────────────────────────
-  -- Heat is 0-100 and maps to 1 star per 20. Speeding alone tops out around
-  -- 2 stars; stars 3+ are earned by wrecking things.
-  SpeedKmh        = 130,   -- above this on a public road, heat climbs
-  SpeedHeatPerSec = 3.5,   -- heat/s while over the limit
-  HeatPerVehHit   = 9,     -- ramming an ambient vehicle
-  HeatPerPedHit   = 22,    -- hitting a ped
-  HeatDecayPerSec = 2.0,   -- heat/s bled off while driving clean
-  MaxStars        = 5,
+  -- Heat is 0-100 and maps to 1 star per 20. It comes from TWO places, and
+  -- keeping those two apart is the whole reason the star row stops behaving
+  -- like a second speedometer:
+  --
+  --   OFFENCE heat   how you are DRIVING — speed on a public road, wrecking
+  --                  traffic, hitting peds. This is what STARTS a pursuit.
+  --
+  --   PURSUIT heat   how long you have been RUNNING once the police are
+  --                  actually on you. This is what ESCALATES one.
+  --
+  -- The old model had only the first, so the level tracked the speedometer:
+  -- flat out on an empty straight with the pack half a mile back climbed to
+  -- five stars, while a cruiser leaning on the door at 60 km/h through traffic
+  -- bled stars off — further away meant MORE wanted, caught meant LESS. Both
+  -- are backwards, and both are fixed by where decay is allowed to happen:
+  --
+  --   * while a unit has CONTACT (see the bottom of this table), heat never
+  --     falls. Not slower — never. The heat cannot be lowered by being caught.
+  --   * once contact is broken it falls at EvadeDecayPerSec, which is the only
+  --     place "shaking them" is allowed to pay.
+  --   * with nobody after you at all it falls at IdleDecayPerSec.
+  SpeedKmh         = 130,   -- above this on a public road, offence heat climbs
+  SpeedHeatPerSec  = 3.5,   -- heat/s while over the limit
+  HeatPerVehHit    = 9,     -- ramming an ambient vehicle
+  HeatPerPedHit    = 22,    -- hitting a ped
+  IdleDecayPerSec  = 2.0,   -- heat/s bled off while driving clean and unchased
+  EvadeDecayPerSec = 1.2,   -- heat/s while the pack is out but has lost you
+  MaxStars         = 5,
+
+  -- Speeding alone is an offence, not a manhunt. The SPEED half of offence heat
+  -- stops buying stars at this level, so three and up have to be EARNED — by
+  -- wrecking things (wreckage is uncapped) or by staying in front of the police
+  -- long enough that they escalate on their own.
+  SpeedMaxStars    = 2,
+
+  -- ── Escalation while they are on you ─────────────────────────────────────
+  -- The pursuit clock, and the only thing that reliably takes a chase from two
+  -- stars to five. It ticks only while a unit actually has contact, so it is
+  -- time spent BEING CHASED — not time spent driving fast.
+  PursuitHeatPerSec   = 1.5,
+  PursuitGraceSec     = 6.0,   -- seconds of pursuit before escalation starts
+  HeatPerRoadblockRun = 14,    -- you went through the block instead of round it
+  HeatPerPitSurvived  = 6,     -- they threw a PIT and you drove out of it
+
+  -- ── Star stickiness ──────────────────────────────────────────────────────
+  -- A level that can be re-crossed by a rounding error flickers between two
+  -- numbers, and a flickering star row spawns and deletes cars underneath you.
+  -- A star has to be given up properly: fall a clear margin below the band AND
+  -- hold there for a moment.
+  StarDropMargin = 6.0,    -- heat below the band floor before the star is lost
+  StarDwellSec   = 5.0,    -- minimum time at a level before it may drop
 
   -- ── Pursuit units ────────────────────────────────────────────────────────
   -- Each star level fields a PACK with roles, not a queue of identical cars
@@ -480,15 +546,15 @@ Config.CopChase = {
 
   -- ── How the police themselves behave ─────────────────────────────────────
   --
-  -- true  — the GAME'S police AI. The peds are real cops: armed, in the COP
-  --         relationship group, flagged with SetPedAsCop, and driven by a real
-  --         wanted level. They react to what happens around them, they get out
-  --         and engage when you stop or bail, and they shoot. This is base-game
-  --         behaviour, with the pack script only deciding WHERE units appear.
+  -- true  — the GAME'S police AI. The peds are real cops: in the COP
+  --         relationship group, flagged with SetPedAsCop and driven by a real
+  --         wanted level, so the base game decides how they read the road and
+  --         how they commit to a corner. They are still stripped of every
+  --         weapon and cannot leave the vehicle — the car is the only pressure.
   --
   -- false — the scripted-only pack: weapons stripped, combat unreachable, every
   --         non-temporary event blocked so nothing can pull them out of the
-  --         driving task. The car is the only pressure they ever apply.
+  --         driving task.
   --
   -- Vanilla DISPATCH stays off either way (spz-core kills all 15 services), so
   -- the wanted level never summons anything — it is what makes the police AI
@@ -511,6 +577,15 @@ Config.CopChase = {
     Speed       = 65.0,    -- m/s chase speed
     Searchlight = true,    -- the light itself
     Blip        = true,
+
+    -- The chopper has EYES, and they now count. It used to be excluded from the
+    -- escape test entirely — it sits overhead, so counting its DISTANCE meant no
+    -- pursuit above two stars could ever be shaken. Counting its LINE OF SIGHT
+    -- instead is both fairer and truer to the base game: while it can see you,
+    -- you have not lost them; a tunnel, an underpass or a multi-storey breaks
+    -- the sightline and the escape clock starts.
+    HoldsContact = true,
+    SightDist    = 280.0,
   },
 
   Models     = { "police", "police2", "police3" },  -- cruisers (randomised)
@@ -518,25 +593,58 @@ Config.CopChase = {
   PedModels  = { "s_m_y_cop_01", "s_m_y_sheriff_01" },
   Sirens     = true,
 
-  SpawnBehind   = 130.0,   -- metres back down the road a tail unit appears
-  SpawnAhead    = 240.0,   -- metres up the road an intercept unit sets up
-  SpawnMinDist  = 60.0,    -- never closer than this to the racer
-  DespawnDist   = 340.0,   -- a unit this far adrift is recycled
-  PitDurationMs = 3500,    -- how long a ram attempt runs before resuming chase
+  -- ── Arriving ─────────────────────────────────────────────────────────────
+  -- The old spawn put a STATIONARY cruiser on a node a fixed 130 m behind a car
+  -- doing 250 km/h. By the time its engine was turning, the racer was another
+  -- 60 m away and the gap only ever grew: the pursuit lived two streets back and
+  -- nothing ever actually arrived.
+  --
+  -- Two changes fix that. The gap is expressed in SECONDS of your speed rather
+  -- than in metres, so it is the same distance behind in a 60 km/h alley as it
+  -- is on the freeway; and the unit arrives ALREADY ROLLING at your pace instead
+  -- of from a standstill.
+  BehindSec      = 2.2,     -- spawn this many seconds of your speed behind
+  SpawnBehindMin = 75.0,    -- ...but never closer than this
+  SpawnBehindMax = 200.0,   -- ...and never further than this
+  SpawnBehind    = 130.0,   -- used when your speed cannot be read (on foot)
+  SpawnAhead     = 240.0,   -- metres up the road an intercept unit sets up
+  SpawnMinDist   = 60.0,    -- never closer than this to the racer
+  SpawnAtSpeed   = true,    -- arrive rolling at your pace, not from a standstill
+  SpawnOffScreen = true,    -- push the point back if it would pop into view
+  DespawnDist    = 340.0,   -- a unit this far adrift is recycled
+  PitDurationMs  = 3500,    -- how long a ram attempt runs before resuming chase
+
+  -- How fast the pack is fielded. The FIRST unit of a pursuit skips the gap
+  -- entirely — the moment you are wanted there is something behind you — and
+  -- while the pack is under half strength two may arrive per tick, so reaching
+  -- four stars does not mean waiting fifteen seconds for four cars.
+  SpawnGapMs       = 1600,
+  FirstUnitInstant = true,
+  SpawnBurst       = 2,
 
   -- ── Keeping up ───────────────────────────────────────────────────────────
-  -- A stock cruiser cannot live with a race-tuned car, and a pursuit you walk
-  -- away from in a straight line is not a pursuit. Engine output is scaled so
-  -- units hold station instead of falling off, and their cruise speed tracks
-  -- YOUR speed rather than sitting at a fixed number.
+  -- A stock cruiser cannot live with a race-tuned car. Engine output is scaled
+  -- per star level so units hold station instead of falling off, and their
+  -- cruise target tracks YOUR speed rather than sitting at a fixed number.
   --
-  -- This is deliberately not a rubber band: the multiplier is fixed per star
-  -- level, so a genuinely faster car still pulls away — it just has to actually
-  -- be driven to do it.
+  -- On top of that there is a CATCH-UP assist, and it is deliberately a rubber
+  -- band — a bounded one. A unit more than CatchUpFrom metres back gets extra
+  -- cruise speed and extra engine, scaling with how far back it is and maxing
+  -- out at CatchUpSpan metres over. Inside HoldDist it eases off completely and
+  -- just sits on you, so the pack pressures rather than permanently rear-ends.
+  --
+  -- The assist is capped and the escape radius is unchanged, so a genuinely
+  -- faster car driven well still breaks contact — it just has to out-DRIVE them
+  -- rather than out-accelerate a cruiser that started from a standstill.
   PowerBoost   = { [1] = 0.15, [2] = 0.25, [3] = 0.40, [4] = 0.60, [5] = 0.85 },
   SpeedMatch   = 1.12,     -- cruise target as a multiple of your current speed
   SpeedFloor   = 30.0,     -- m/s: never crawl, even when you are stopped
   SpeedCeiling = 82.0,     -- m/s: hard cap so a boosted cruiser stays plausible
+  CatchUpFrom  = 55.0,     -- metres back before the assist starts
+  CatchUpSpan  = 130.0,    -- ...and metres over that at which it is maxed
+  CatchUpSpeed = 16.0,     -- m/s added to the cruise target at full stretch
+  CatchUpPower = 0.45,     -- engine multiplier added at full stretch
+  HoldDist     = 22.0,     -- inside this the assist is off entirely
 
   -- ── Roadblocks ───────────────────────────────────────────────────────────
   RoadblockAhead   = 320.0,  -- metres up the road it is set up
@@ -577,20 +685,37 @@ Config.CopChase = {
   },
 
   -- ── Losing them ──────────────────────────────────────────────────────────
-  -- No unit within EscapeDist for EscapeSeconds and the heat dumps: stars fall
-  -- away, the pack despawns, the race carries on.
-  EscapeDist    = 170.0,
-  EscapeSeconds = 12,
+  -- CONTACT is the whole model. A ground unit has contact when it is within
+  -- ContactDist AND has a clear line to you, or when it is inside
+  -- ContactCloseDist at all — a car on your bumper round a blind corner has not
+  -- lost you. The chopper has contact on its own sightline, above.
+  --
+  -- While ANYTHING has contact the heat is locked and the pack stays. Contact
+  -- has to be broken for ContactGraceSec before the escape clock even starts —
+  -- a corner is not an escape — and the clock then has to run EscapeSeconds
+  -- without it being regained. Regaining contact resets the clock to zero.
+  --
+  -- This is what stops a pursuit evaporating with a cruiser still in the mirror.
+  ContactDist      = 175.0,
+  ContactCloseDist = 45.0,
+  ContactGraceSec  = 2.5,
+  EscapeSeconds    = 14,
+
+  -- Before the FIRST contact of a pursuit the escape clock does not run at all:
+  -- units are still closing and have not had their chance yet. This is the
+  -- backstop for the pursuit that never manages one — a pack spawned into
+  -- geometry it cannot drive out of would otherwise follow you, unseen and
+  -- undismissable, for the rest of the race.
+  NoContactTimeoutSec = 40,
+
+  -- Kept for anything still reading the old key; ContactDist is what is used.
+  EscapeDist = 175.0,
 
   Hud = true,    -- draw the star readout (the vanilla one is hidden by spz-core)
 
-  -- Mirror the star count onto the game's own wanted level. OFF by design: the
-  -- stars here are ours, and writing them into the engine invites everything we
-  -- turned off back in — vanilla units, police reports, dispatch reacting to a
-  -- level it is not allowed to serve. Turn it on only if another resource of
-  -- yours reads GetPlayerWantedLevel and has to see the race heat.
-  -- The game's police AI keys off the wanted level: without one, a cop ped has
-  -- no suspect and simply drives. On with VanillaBehaviour, and harmless either
-  -- way because dispatch is disabled — it summons nothing.
+  -- Mirror the star count onto the game's own wanted level. The game's police AI
+  -- keys off the wanted level: without one, a cop ped has no suspect and simply
+  -- drives. On with VanillaBehaviour, and harmless either way because dispatch
+  -- is disabled — it summons nothing.
   UseNativeWanted = true,
 }

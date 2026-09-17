@@ -57,6 +57,11 @@ server_scripts {
   'server/leaderboard/duels.lua',
   'server/leaderboard/callbacks.lua',
   'server/creator.lua',
+  -- After creator.lua, and it matters: start-line overrides are applied to
+  -- SPZ.Tracks from a thread, and custom tracks are ADDED from creator's own
+  -- thread. Threads run in creation order, so listing this first would apply a
+  -- line to a custom track that did not exist yet.
+  'server/startline.lua',
   'server/dev_heading.lua',
 }
 
@@ -66,6 +71,9 @@ client_scripts {
   'client/startcam.lua',
   'client/checkpoints.lua',
   'client/cp_cross.lua',
+  -- After cp_cross.lua: the overlay renders SPZ_GateProbe's output and defines
+  -- none of that geometry itself.
+  'client/cp_debug.lua',
   'client/hit_detector.lua',
   'client/incidents.lua',
   'client/copchase.lua',
@@ -82,6 +90,7 @@ client_scripts {
   'client/creator.lua',
   'client/editor.lua',
   'client/dev_heading.lua',
+  'client/startline.lua',
 }
 
 -- Custom checkpoint / start / finish props.
