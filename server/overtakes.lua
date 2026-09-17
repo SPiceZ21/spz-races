@@ -19,8 +19,13 @@ local LastClip = {}   -- ["A>B"] = gameTimer of last clip
 local function pairKey(a, b) return a .. ">" .. b end
 
 local function racerName(src)
+    -- pData.name is kept correct and self-healing by positions.lua, so it is
+    -- the cheap path; RacerDisplayName covers anyone not in the race table.
+    -- Neither falls back to the FiveM account name before trying the server
+    -- one — these strings go on screen and into Discord.
     local p = RaceSession.players[src]
-    return (p and p.name) or GetPlayerName(src) or ("Racer " .. src)
+    if p and p.name then return p.name end
+    return RacerDisplayName(src)
 end
 
 local function raceWebhook()

@@ -148,11 +148,48 @@ end
 
 exports("ResetToIdle", ResetToIdle)
 
+-- ── Display name ──────────────────────────────────────────────────────────────
+--
+-- ONE resolver, because there were effectively two before and which one you got
+-- was a race.
+--
+-- `GetPlayerName` is the FiveM ACCOUNT name — the name on the Cfx profile, not
+-- the one the player chose here. The server name lives on the spz-identity
+-- profile as `username`, and spz-identity publishes it to the statebag as it
+-- loads. Capturing a name once, at queue time, therefore gave the server name
+-- for anyone whose profile had finished loading and the FiveM name for anyone
+-- whose had not — the same player could appear either way from race to race,
+-- which is exactly what the standings tower was showing.
+--
+-- Order matters here: the STATEBAG first, because it is live and reflects a
+-- rename immediately; the export second, for the window before the bag has
+-- synced; the FiveM name only as a last resort, so a profile that never loads
+-- still shows something a human can read rather than a number.
+function RacerDisplayName(src)
+    if not src or src == 0 then return "Racer" end
+
+    -- Guarded: this runs inside the positions tick, and a source that has just
+    -- dropped must not be able to take the whole standings broadcast down with
+    -- it. A player in the reconnect window is exactly that case.
+    local ok, st = pcall(function() return Player(src).state end)
+    local name = ok and st and st.username
+    if type(name) == "string" and name ~= "" then return name end
+
+    if GetResourceState("spz-identity") == "started" then
+        local ok, prof = pcall(function() return exports["spz-identity"]:GetProfile(src) end)
+        if ok and prof and type(prof.username) == "string" and prof.username ~= "" then
+            return prof.username
+        end
+    end
+
+    return GetPlayerName(src) or ("Racer " .. tostring(src))
+end
+
 -- ── Player race data factory ──────────────────────────────────────────────────
 function CreatePlayerRaceData(src)
     return {
         source          = src,
-        name            = GetPlayerName(src),
+        name            = RacerDisplayName(src),
         identifier      = GetPlayerIdentifierByType(src, 'license'),  -- reconnect matching
         crew_tag        = nil,
         license_tier    = 1,

@@ -152,7 +152,7 @@ function OnDuelLap(src, s, lapTime)
     pcall(function()
         exports["spz-log"]:Log("duel", "Ghost Duel",
             ("%s challenged %s's ghost on %s for %d — %s (%s vs %s)")
-            :format(GetPlayerName(src) or "?", d.oppName, s.track.name, d.stake,
+            :format(RacerDisplayName(src) or "?", d.oppName, s.track.name, d.stake,
                     win and "CHALLENGER WON" or "CHALLENGER LOST", fmt(lapTime), fmt(d.targetMs)),
             win and "success" or "warning")
     end)

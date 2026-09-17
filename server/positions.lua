@@ -158,8 +158,23 @@ Citizen.CreateThread(function()
             for src, pData in pairs(RaceSession.players) do
                 if not pData.dnf then
                     local st = Player(src).state
+
+                    -- Re-resolve and WRITE BACK, rather than trusting the name
+                    -- captured when this player queued.
+                    --
+                    -- The profile can finish loading after the queue closes, so
+                    -- a name taken once at that moment is the FiveM account name
+                    -- for anyone who was still loading. Re-resolving here costs
+                    -- a statebag read on a timer that already reads the same bag
+                    -- two lines down for nation/raceNumber — and writing it back
+                    -- means the correction reaches everything ELSE that reads
+                    -- pData.name (results, DNF notices, overtake callouts)
+                    -- without each of them needing its own lookup.
+                    local display = RacerDisplayName(src)
+                    if display ~= pData.name then pData.name = display end
+
                     merged[#merged + 1] = {
-                        source = src, name = pData.name,
+                        source = src, name = display,
                         crew_tag = pData.crew_tag,
                         -- TWO writers, two spellings: spz-nametag sets
                         -- 'spz:nation'/'spz:raceNumber', spz-identity sets
