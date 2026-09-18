@@ -1,26 +1,38 @@
 -- client/startline.lua
--- Set a track's START LINE from two points on the road.  /setstart
+-- START SPAWN TOOL — place a track's two race-start spawn points by hand.
+-- /setstart
 --
--- Stand at one edge of the start line, press [E]. Stand at the other edge,
--- press [E]. That is the line: the midpoint becomes the track's start point and
--- the perpendicular becomes its heading. Which edge you take first does not
--- matter — the direction is resolved by aiming at the next checkpoint, not by
--- the order the points were captured in.
+-- The race start is split: half the field on one point, half on another. By
+-- default those two points are COMPUTED — start_coords ± Config.SplitPointGap
+-- sideways, facing start_heading — and on tracks where the start point or its
+-- heading is off, both packs land wrong. This lets you stand on each spot,
+-- facing down the track, and capture it. server/world.lua then starts the race
+-- on exactly those two points, each pack facing the way you faced.
 --
--- See server/startline.lua for where it is stored and why it is not written
--- into data/tracks.lua.
+-- Walks every track like /fixheadings (client/dev_heading.lua):
+--   [↑] / [↓]   next / previous track (teleports you to its start)
+--   [E]         capture a spawn point: where you stand AND which way you face
+--               first press = point 1, second = point 2, third starts over
+--   [ENTER]     save both points
+--   [R]         clear captured points
+--   [BACKSPACE] exit
 --
--- Controls
---   [E]          capture a point (first press = A, second = B, third = re-take A)
---   [R]          clear both points and start again
---   [ENTER]      save
---   [BACKSPACE]  exit without saving
+-- Easiest in the car you race: park it on the spot, pointed down the track,
+-- and press [E] — the car's heading is what gets captured.
+--
+-- On screen: grey = the computed points the race uses now (tracks with no
+-- manual points), cyan = points already saved, green = what you are capturing,
+-- faint yellow = gate 1's posts, i.e. the edges of the road at the start.
 
-local active = false
-local track  = nil   -- { id, name, type, start, heading, nextCp, line }
-local A, B   = nil, nil
+local active  = false
+local tracks  = {}
+local idx     = 1
+local A, B    = nil, nil
 
--- ── Helpers ──────────────────────────────────────────────────────────────────
+local REPLY_TIMEOUT_MS = 4000
+local pending = 0
+
+-- ── Helpers ───────────────────────────────────────────────────────────────────
 
 local function ent()
     local ped = PlayerPedId()
@@ -30,10 +42,14 @@ end
 
 local function v3(t) return vector3(t.x, t.y, t.z) end
 
+local function notify(msg, kind)
+    lib.notify({ title = "Start line", description = msg, type = kind or "inform", duration = 3000 })
+end
+
 local function text3d(x, y, z, str, r, g, b)
     local on, sx, sy = World3dToScreen2d(x, y, z)
     if not on then return end
-    SetTextScale(0.0, 0.36)
+    SetTextScale(0.0, 0.4)
     SetTextFont(4)
     SetTextProportional(true)
     SetTextColour(r, g, b, 235)
@@ -45,234 +61,197 @@ local function text3d(x, y, z, str, r, g, b)
     DrawText(sx, sy)
 end
 
-local function post(p, h, r, g, b)
-    DrawLine(p.x, p.y, p.z, p.x, p.y, p.z + h, r, g, b, 230)
+local function arrowFrom(p, h, r, g, b)
+    local rad = math.rad(h)
+    DrawLine(p.x, p.y, p.z + 0.4, p.x - math.sin(rad) * 6.0, p.y + math.cos(rad) * 6.0, p.z + 0.4,
+        r, g, b, 255)
 end
 
---- PREVIEW ONLY. The server recomputes this on save and its answer is the one
---- that gets stored — this exists so the arrow on screen is not lying while you
---- are still deciding where to stand. Same rule, same inputs: perpendicular to
---- the line, flipped to whichever side the next checkpoint is on.
-local function headingFor(a, b)
-    local gx, gy = b.x - a.x, b.y - a.y
-    local glen = math.sqrt(gx * gx + gy * gy)
-    if glen < 0.01 then return track and track.heading or 0.0, false end
+local function post(p, r, g, b)
+    DrawMarker(1, p.x, p.y, p.z - 1.0, 0,0,0, 0,0,0, 0.6, 0.6, 3.5, r, g, b, 170,
+        false, false, 2, false, nil, nil, false)
+end
 
-    local nx, ny = -gy / glen, gx / glen
-    local mx, my = (a.x + b.x) * 0.5, (a.y + b.y) * 0.5
+--- The two points the race uses now for a track with no manual points —
+--- mirrors split mode in shared/race_states.lua: start_coords ± gap/2 along the
+--- right-hand axis of start_heading.
+local function computedPoints(t)
+    local gap = (Config and Config.SplitPointGap) or 7.0
+    local rad = math.rad(t.heading or 0.0)
+    local rx, ry = math.cos(rad), math.sin(rad)
+    local s0 = t.start
+    return {
+        { x = s0.x - rx * gap / 2, y = s0.y - ry * gap / 2, z = s0.z, h = t.heading or 0.0 },
+        { x = s0.x + rx * gap / 2, y = s0.y + ry * gap / 2, z = s0.z, h = t.heading or 0.0 },
+    }
+end
 
-    if track and track.nextCp then
-        if ((track.nextCp.x - mx) * nx + (track.nextCp.y - my) * ny) < 0 then
-            nx, ny = -nx, -ny
-        end
-        return math.deg(math.atan(-nx, ny)) % 360.0, true
+local function goTo(i)
+    local t = tracks[i]
+    if not t then return end
+    idx, A, B = i, nil, nil
+    local e = ent()
+    SetEntityCoords(e, t.start.x, t.start.y, t.start.z + 1.0, false, false, false, true)
+    SetEntityHeading(e, t.heading or 0.0)
+    notify(("[%d/%d] %s (%s)%s"):format(i, #tracks, t.name, t.type, t.points and " — points set" or ""))
+end
+
+local function save(t, a, b)
+    TriggerServerEvent("spz-startline:save", t.id, a, b)
+end
+
+--- Where you are standing and which way you (or your car) face.
+local function capture()
+    local e = ent()
+    local c = GetEntityCoords(e)
+    return { x = c.x, y = c.y, z = c.z, h = GetEntityHeading(e) }
+end
+
+-- ── Command ───────────────────────────────────────────────────────────────────
+
+RegisterCommand("setstart", function()
+    if active then
+        active = false
+        return notify("Start line tool closed.")
     end
-    return math.deg(math.atan(-nx, ny)) % 360.0, false
-end
+    if LocalPlayer.state.inRace then
+        return notify("Not during a race — this tool teleports you.", "error")
+    end
 
-local function close(msg, kind)
-    active, track, A, B = false, nil, nil, nil
-    if msg then lib.notify({ description = msg, type = kind or "inform", duration = 3000 }) end
-end
-
--- ── Command ──────────────────────────────────────────────────────────────────
---
--- Every reply from the server is asynchronous, and every reason it might refuse
--- (not dev-gated, no tracks loaded, unknown track id) happens over there. If
--- none of them reach the player the command is indistinguishable from one that
--- does not exist — which is exactly how this failed the first time it was run.
---
--- So it says what it did, on the client console as well as in a notification:
--- a notification can be missed or suppressed by another resource, F8 cannot.
--- And if nothing answers at all, it says THAT, which is the one message that
--- points at the two causes the tool cannot see for itself — the resource not
--- having been restarted, and the request being dropped before it arrives.
-
-local REPLY_TIMEOUT_MS = 3000
-local pending = 0
-
-RegisterCommand("setstart", function(_, args)
-    if active then return close("Start line tool closed.") end
-
-    local want = args[1]
+    print("^5[spz-races] /setstart -> requesting track list^7")
     pending = GetGameTimer()
-    print(("^5[spz-races] /setstart -> requesting %s^7"):format(want and ("track '" .. want .. "'") or "nearest track"))
-
-    TriggerServerEvent("spz-startline:request", want)
-
-    -- Nothing came back. The server either never received it or refused without
-    -- a word; both look identical from here, so name both.
     local asked = pending
+    TriggerServerEvent("spz-startline:reqList")
+
+    -- If nothing answers, say so and name the causes the client cannot see.
     SetTimeout(REPLY_TIMEOUT_MS, function()
-        if pending ~= asked then return end   -- a reply landed, all good
+        if pending ~= asked then return end
         pending = 0
-        print("^1[spz-races] /setstart: no reply from the server after 3s.^7")
-        print("^3  * has spz-races been restarted since startline.lua was added?  (restart spz-races)^7")
-        print("^3  * are you dev-gated?  needs ACE 'spz.dev' or convar spz_dev true^7")
-        lib.notify({
-            title = "Start line",
-            description = "No reply from the server — see F8.",
-            type = "error", duration = 6000,
-        })
+        print("^1[spz-races] /setstart: no reply from the server.^7")
+        print("^3  * is the updated spz-races (server/startline.lua) on the server, and restarted?^7")
+        print("^3  * check the SERVER console for a '/setstart list requested' line^7")
+        notify("No reply from the server — see F8.", "error")
     end)
 end, false)
 
-RegisterNetEvent("spz-startline:open", function(data)
+RegisterNetEvent("spz-startline:list", function(list, startIdx)
     pending = 0
-    if not data then return end
-    track  = data
-    A, B   = nil, nil
-    active = true
-
-    -- Pre-load whatever is already stored, so re-opening the tool on a track
-    -- that has a line is an EDIT rather than a blank slate. Walking away from a
-    -- perfectly good line because the tool forgot it is how a survey gets done
-    -- twice.
-    if data.line and data.line.left and data.line.right then
-        A, B = v3(data.line.left), v3(data.line.right)
+    if type(list) ~= "table" or #list == 0 then
+        return notify("No tracks returned.", "error")
     end
-
-    lib.notify({
-        title       = "Start line",
-        description = ("%s (%s)%s"):format(data.name, data.type,
-            data.distance and (" · %.0f m away"):format(data.distance) or ""),
-        type = "inform", duration = 4000,
-    })
+    tracks = list
+    active = true
+    print(("^2[spz-races] /setstart -> %d tracks^7"):format(#list))
+    goTo(startIdx or 1)
 end)
 
--- Server refused, with a reason. Clears the pending request so the timeout
--- above does not then claim nothing answered.
 RegisterNetEvent("spz-startline:refused", function(reason)
     pending = 0
     print(("^1[spz-races] /setstart refused: %s^7"):format(tostring(reason)))
-    lib.notify({ title = "Start line", description = reason or "Refused.", type = "error", duration = 5000 })
+    notify(reason or "Refused.", "error")
 end)
 
-RegisterNetEvent("spz-startline:saved", function(_, heading, width)
-    lib.notify({
-        title = "Start line",
-        description = ("Saved · %.1f m wide · %.1f°"):format(width or 0, heading or 0),
-        type = "success", duration = 4000,
-    })
+RegisterNetEvent("spz-startline:saved", function(trackId, gap, points)
+    -- Update the list in place so the HUD shows the stored points immediately.
+    for _, t in ipairs(tracks) do
+        if t.id == trackId then t.points = points end
+    end
+    A, B = nil, nil
+    notify(("Saved · packs %.1f m apart"):format(gap or 0), "success")
 end)
 
--- ── Draw / input loop ────────────────────────────────────────────────────────
+-- ── Main loop ─────────────────────────────────────────────────────────────────
 
 CreateThread(function()
     while true do
-        if not active or not track then
+        if not active then
             Wait(300)
-            goto continue
-        end
+        else
+            local t = tracks[idx]
+            if t then
+                -- Gate 1 posts — the road edges at the start, as a reference.
+                if t.gate1 then
+                    local l, r = v3(t.gate1.left), v3(t.gate1.right)
+                    DrawLine(l.x, l.y, l.z + 0.3, r.x, r.y, r.z + 0.3, 255, 210, 0, 110)
+                end
 
-        do
-            local me  = GetEntityCoords(ent())
-            local old = v3(track.start)
+                -- Next gate (orange), so you know which way "down the track" is.
+                if t.nextCp then
+                    local n = v3(t.nextCp)
+                    DrawMarker(1, n.x, n.y, n.z - 1.0, 0,0,0, 0,0,0,
+                        1.6, 1.6, 3.0, 255, 98, 0, 120, false, false, 2, false, nil, nil, false)
+                    text3d(n.x, n.y, n.z + 1.6, "NEXT GATE", 255, 98, 0)
+                end
 
-            -- The point being replaced, so you can see what you are moving away
-            -- from rather than trusting that the new one is better.
-            DrawMarker(1, old.x, old.y, old.z - 1.0, 0,0,0, 0,0,0,
-                1.6, 1.6, 2.0, 130, 140, 160, 90, false, false, 2, false, nil, nil, false)
-            text3d(old.x, old.y, old.z + 1.3, "current start", 130, 140, 160)
+                -- What the race uses now: saved points (cyan) or computed (grey).
+                local now, cr, cg, cb, tag = t.points, 0, 200, 255, "saved"
+                if not now then now, cr, cg, cb, tag = computedPoints(t), 130, 140, 160, "computed" end
+                for i, p in ipairs(now) do
+                    local pv = v3(p)
+                    post(pv, cr, cg, cb)
+                    arrowFrom(pv, p.h or 0.0, cr, cg, cb)
+                    text3d(pv.x, pv.y, pv.z + 2.2, ("%s %d"):format(tag, i), cr, cg, cb)
+                end
 
-            -- Old heading, faint, for comparison against the new one.
-            local orad = math.rad(track.heading or 0.0)
-            DrawLine(old.x, old.y, old.z + 0.4,
-                     old.x - math.sin(orad) * 6.0, old.y + math.cos(orad) * 6.0, old.z + 0.4,
-                     130, 140, 160, 120)
+                -- What you are capturing (green); point 2 follows you until taken.
+                local live = capture()
+                local c1 = A
+                local c2 = B or (A and live or nil)
+                if c1 then
+                    post(v3(c1), 40, 220, 90); arrowFrom(v3(c1), c1.h, 40, 220, 90)
+                    text3d(c1.x, c1.y, c1.z + 2.6, "POINT 1", 40, 220, 90)
+                end
+                if c2 then
+                    post(v3(c2), 40, 220, 90); arrowFrom(v3(c2), c2.h, 40, 220, 90)
+                    text3d(c2.x, c2.y, c2.z + 2.6, B and "POINT 2" or "POINT 2 (you)", 40, 220, 90)
+                    text3d((c1.x + c2.x) / 2, (c1.y + c2.y) / 2, c1.z + 1.4,
+                        ("%.1f m apart"):format(#(v3(c2) - v3(c1))), 40, 220, 90)
+                end
 
-            if track.nextCp then
-                local n = v3(track.nextCp)
-                DrawMarker(1, n.x, n.y, n.z - 1.0, 0,0,0, 0,0,0,
-                    1.6, 1.6, 3.0, 255, 98, 0, 110, false, false, 2, false, nil, nil, false)
-                text3d(n.x, n.y, n.z + 1.6, "next gate", 255, 98, 0)
-            end
+                -- HUD
+                SetTextFont(4); SetTextScale(0.42, 0.42); SetTextColour(255, 255, 255, 255)
+                SetTextDropShadow(); SetTextEntry("STRING")
+                AddTextComponentString(
+                    ("~y~START SPAWNS~s~  [%d/%d]  ~b~%s~s~ (%s)  %s\n")
+                        :format(idx, #tracks, t.name, t.type,
+                                t.points and "~g~manual points~s~" or "~c~computed points~s~")
+                    .. "~g~[E]~s~ Capture point " .. (A and (B and "(both set)" or "2") or "1")
+                    .. " (position + facing)   ~y~[ENTER]~s~ Save   ~g~[R]~s~ Reset\n"
+                    .. "~g~[↑/↓]~s~ Track   ~r~[BACKSPACE]~s~ Exit")
+                DrawText(0.33, 0.02)
 
-            -- The live end of the line is wherever you are standing until the
-            -- second point is taken, so the width and the heading update as you
-            -- walk rather than only once you commit.
-            local a = A
-            local b = B or (A and me or nil)
+                -- ── Inputs ── (same control ids /fixheadings uses)
+                if IsControlJustPressed(0, 172) then goTo((idx % #tracks) + 1) end               -- ↑
+                if IsControlJustPressed(0, 173) then goTo(idx > 1 and idx - 1 or #tracks) end     -- ↓
 
-            if a then
-                post(a, 3.0, 40, 220, 90)
-                text3d(a.x, a.y, a.z + 3.3, "A", 40, 220, 90)
-            end
-            if a and b then
-                post(b, 3.0, B and 40 or 255, B and 220 or 210, B and 90 or 0)
-                text3d(b.x, b.y, b.z + 3.3, B and "B" or "B (live)", B and 40 or 255, B and 220 or 210, B and 90 or 0)
-                DrawLine(a.x, a.y, a.z + 1.2, b.x, b.y, b.z + 1.2, 40, 220, 90, 240)
+                if IsControlJustPressed(0, 38) then                                              -- E
+                    if not A then A = live
+                    elseif not B then B = live
+                    else A, B = live, nil end
+                end
 
-                local mid = vector3((a.x + b.x) * 0.5, (a.y + b.y) * 0.5, (a.z + b.z) * 0.5)
-                local width = #(b - a)
-                local heading, aimed = headingFor(a, b)
+                if IsControlJustPressed(0, 45) then A, B = nil, nil end                          -- R
 
-                DrawMarker(1, mid.x, mid.y, mid.z - 1.0, 0,0,0, 0,0,0,
-                    1.8, 1.8, 2.2, 40, 220, 90, 120, false, false, 2, false, nil, nil, false)
+                if IsControlJustPressed(0, 18) then                                              -- ENTER
+                    if A and B then save(t, A, B)
+                    else notify("Capture both points with [E] first.", "error") end
+                end
 
-                local hrad = math.rad(heading)
-                DrawLine(mid.x, mid.y, mid.z + 0.7,
-                         mid.x - math.sin(hrad) * 10.0, mid.y + math.cos(hrad) * 10.0, mid.z + 0.7,
-                         0, 170, 255, 255)
-                text3d(mid.x, mid.y, mid.z + 2.2,
-                       ("%.1f m · %.1f°%s"):format(width, heading, aimed and "" or " ~r~(no gate to aim at)~s~"),
-                       0, 170, 255)
-            end
-
-            -- ── Panel ────────────────────────────────────────────────────────
-            SetTextFont(4); SetTextScale(0.42, 0.42); SetTextColour(255, 255, 255, 255)
-            SetTextDropShadow(); SetTextEntry("STRING")
-            AddTextComponentString(
-                ("~y~START LINE~s~  ~b~%s~s~  (%s)\n"):format(track.name, track.id)
-                .. (A and B and "Both points set. " or (A and "Point A set — walk to the other edge. " or "Stand at one edge of the start line. "))
-                .. (track.line and "~o~editing an existing line~s~\n" or "\n")
-                .. "~g~[E]~s~ capture point   ~g~[R]~s~ reset   "
-                .. ((A and B) and "~y~[ENTER]~s~ save   " or "~s~[ENTER] save   ")
-                .. "~r~[BACKSPACE]~s~ exit")
-            DrawText(0.30, 0.02)
-
-            -- ── Input ────────────────────────────────────────────────────────
-            if IsControlJustPressed(0, 38) then          -- [E]
-                if not A then
-                    A = me
-                elseif not B then
-                    B = me
-                else
-                    -- Third press starts over from here rather than doing
-                    -- nothing: by the time both are set, the next press is
-                    -- almost always "that first one was wrong".
-                    A, B = me, nil
+                if IsControlJustPressed(0, 177) then                                             -- BACKSPACE
+                    active = false
+                    notify("Start spawn tool closed.")
                 end
             end
-
-            if IsControlJustPressed(0, 45) then A, B = nil, nil end   -- [R]
-
-            if IsControlJustPressed(0, 18) then                        -- [ENTER]
-                if A and B then
-                    TriggerServerEvent("spz-startline:save", track.id,
-                        { x = A.x, y = A.y, z = A.z },
-                        { x = B.x, y = B.y, z = B.z })
-                    close()
-                else
-                    lib.notify({ description = "Set both points first ([E] at each edge).", type = "error" })
-                end
-            end
-
-            if IsControlJustPressed(0, 177) then close("Start line tool closed — nothing saved.") end
+            Wait(0)
         end
-
-        Wait(0)
-        ::continue::
     end
 end)
 
--- ── Clear ────────────────────────────────────────────────────────────────────
--- Separate command rather than a key in the tool: removing a stored line is not
--- something to be one mis-press away from while surveying one.
+-- /clearstart <trackId> — separate on purpose, so removing a line is never one
+-- mis-press away while surveying.
 RegisterCommand("clearstart", function(_, args)
     if not args[1] then
-        print("^3[spz-races] /clearstart <trackId> — see /startlines on the server console^7")
-        return
+        return print("^3[spz-races] /clearstart <trackId> — /startlines on the server lists them^7")
     end
     TriggerServerEvent("spz-startline:clear", args[1])
 end, false)

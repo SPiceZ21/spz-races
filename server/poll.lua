@@ -120,6 +120,24 @@ local function BuildVehicleOptions()
         availableClasses[i], availableClasses[j] = availableClasses[j], availableClasses[i]
     end
 
+    -- Add-on priority, class level. The poll takes one car per class from the
+    -- front of this list, so classes that contain add-on cars go first (still
+    -- shuffled among themselves), then the rest. Inside a class,
+    -- GetPollPool already fills from add-ons before vanilla. Both halves are
+    -- needed: priority within a class does nothing if the shuffle hands the
+    -- poll two classes the pack has no cars in.
+    local ok, addonClasses = pcall(function()
+        return exports["spz-vehicles"]:GetAddonRaceClasses()
+    end)
+    if ok and type(addonClasses) == "table" and next(addonClasses) then
+        local first, rest = {}, {}
+        for _, c in ipairs(availableClasses) do
+            if addonClasses[c] then first[#first + 1] = c else rest[#rest + 1] = c end
+        end
+        for _, c in ipairs(rest) do first[#first + 1] = c end
+        availableClasses = first
+    end
+
     local TARGET     = Config.PollOptionsPerType or 2
     local vehicles   = {}
     local seenModels = {}

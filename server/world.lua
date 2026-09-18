@@ -73,14 +73,51 @@ function SetupRaceWorld()
         Config.WarmupSpawnMode or "grid"
     )
 
-    local raceGrid = SPZ.Math.GridPositions(
-        RaceSession.track.start_coords,
-        startHeading,
-        #playersInOrder,
-        Config.GridRowSpacing or 8.0,
-        Config.GridColSpacing or 4.5,
-        Config.RaceStartMode or "split"
-    )
+    local raceGrid
+    local manual = RaceSession.track.start_points
+
+    if manual and manual[1] and manual[2] then
+        -- MANUAL two-point start, set in game with /setstart.
+        --
+        -- Same shape as split mode — half the field on each point, each pack
+        -- laid out by point mode so the radius rules still apply — but the two
+        -- origins and headings are the ones someone stood on, instead of being
+        -- computed as start_coords ± SplitPointGap. That computation is what
+        -- lands wrong on tracks whose start point or heading is off; a surveyed
+        -- point cannot be.
+        --
+        -- Packs are interleaved (1st, 3rd, 5th… on point 1; 2nd, 4th… on
+        -- point 2) so the grid order does not put the whole front of the field
+        -- on one side.
+        local packs = { {}, {} }
+        for i = 1, #playersInOrder do
+            local side = (i % 2 == 1) and 1 or 2
+            packs[side][#packs[side] + 1] = i
+        end
+
+        raceGrid = {}
+        for side = 1, 2 do
+            local n = #packs[side]
+            if n > 0 then
+                local slots = SPZ.Math.GridPositions(
+                    manual[side].coords, manual[side].heading, n,
+                    Config.GridRowSpacing or 8.0, Config.GridColSpacing or 4.5, "point")
+                for k, i in ipairs(packs[side]) do
+                    raceGrid[i] = slots[k]
+                end
+            end
+        end
+        print(("[World Setup] Manual two-point start for %s"):format(RaceSession.track.name or "?"))
+    else
+        raceGrid = SPZ.Math.GridPositions(
+            RaceSession.track.start_coords,
+            startHeading,
+            #playersInOrder,
+            Config.GridRowSpacing or 8.0,
+            Config.GridColSpacing or 4.5,
+            Config.RaceStartMode or "split"
+        )
+    end
 
     -- Warmup slots are what the cars are CREATED on, so this is the one the
     -- spawn loop below reads.
