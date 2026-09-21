@@ -12,7 +12,10 @@ Config.MaxPlayersPerRace    = 16      -- hard cap on queue size
 
 -- ── Poll ───────────────────────────────────────────────────────────────────
 Config.PollDuration         = 30      -- seconds the poll stays open
-Config.PollOptionsPerType   = 2       -- track options per poll (always 2)
+-- Cards per ballot phase — tracks, and cars. Three is a choice; two is a
+-- coin toss, which is what made the reroll worth adding in the first place.
+-- It is capped by what exists: a race type with only two tracks offers two.
+Config.PollOptionsPerType   = 3
 
 -- ── Checkpoint blips ───────────────────────────────────────────────────────
 -- How the route reads on the minimap while driving.
@@ -166,6 +169,62 @@ Config.GridTpSettleMs       = 400
 -- (with automatic retries). They're only cut at warmup end.
 Config.FirstReadyGraceMs    = 5000    -- ms after first confirm before advancing
 Config.SpawnRetryIntervalMs = 8000    -- ms between respawn retries during warmup
+
+-- ── Poll reroll ─────────────────────────────────────────────────────────────
+--
+-- Any ballot can ask for the whole SET to be redrawn — different tracks,
+-- different cars — instead of picking the least bad of what came up.
+--
+-- Decided by a strict majority of the players who actually VOTED, and only
+-- once the poll closes. Deliberately not "first click wins": a reroll throws
+-- away votes other people have already cast, and on a busy server an instant
+-- one is a grief button.
+Config.PollReroll = {
+  Enabled    = true,
+
+  -- What counts as "most of them".
+  --
+  -- nil = strict majority: 6 of 10, 4 of 7, 2 of 3. Half is not enough, so a
+  -- 5-5 split never bins the other five players' votes.
+  --
+  -- Set a fraction to lower the bar — 0.4 means 4 of 10 carries it. The
+  -- denominator is players who ACTUALLY VOTED, never the whole session: a
+  -- player who ignores the ballot should not be able to block a reroll by
+  -- doing nothing, which is what counting them would mean.
+  Threshold  = nil,
+
+  -- How many redraws a single poll can spend. Two rerolls of a server with
+  -- three circuits is the same three circuits again, with the grid still
+  -- waiting — raise it only if the track and car lists are deep.
+  MaxPerPoll = 1,
+}
+
+-- ── Race intro (cover → sweep → details card) ───────────────────────────────
+--
+-- The warmup ends with the whole field being teleported back onto the grid,
+-- which is the ugliest moment in a race from the driver's seat: the world jumps
+-- and collision streams back in around them. So a branded cover — the same
+-- screen spz-spawn uses — goes up first, the teleport happens behind it, and
+-- it sweeps away onto the start camera with a card naming the race.
+--
+-- Set Enabled = false and the sequence is exactly what it was before: no
+-- cover, no card, straight from warmup to the grid.
+Config.RaceIntro = {
+  Enabled    = true,
+
+  -- How long the cover is up BEFORE the teleport is sent. It only has to
+  -- outlast one NUI frame; the rest of the cover's life is the teleport and
+  -- settle that follow, which are timed by their own config below.
+  CoverLeadMs = 700,
+
+  -- How long the card stays up once the sweep has opened. Clamped so it always
+  -- ends before the lights: the staging phase is the window it lives in, and
+  -- anything still on screen at T-3 is competing with the countdown.
+  --
+  -- nil = fill the staging phase, less the gap below.
+  CardHoldMs  = nil,
+  CardGapMs   = 1500,   -- clear this long before the 3-2-1 starts
+}
 
 -- ── Mid-race reconnect ──────────────────────────────────────────────────────
 -- A crash/timeout during a LIVE race no longer means instant DNF: the grid

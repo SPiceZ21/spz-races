@@ -1,5 +1,75 @@
 -- server/countdown.lua
 
+-- ── Race intro helpers ───────────────────────────────────────────────────────
+--
+-- The cover/sweep/card sequence that wraps the warmup→grid handover. See
+-- Config.RaceIntro, spz-races/client/nui_bridge.lua and spz-raceUI.
+
+local function introCfg()
+    return (Config and Config.RaceIntro) or {}
+end
+
+local function introEnabled()
+    return introCfg().Enabled ~= false
+end
+
+--- Everything the card names, read from the session the poll decided.
+local function introDetails()
+    local track = RaceSession.track or {}
+    local class = RaceSession.carClass
+
+    -- The car's own label if the poll picked a specific model, otherwise the
+    -- class name. A card that says "Sports" when the field is all in one model
+    -- is worse than no card, and the reverse — naming a model in an open-class
+    -- race — would be a lie.
+    local vehicle
+    if type(class) == "table" then
+        vehicle = class.category or class.name
+    elseif class then
+        vehicle = tostring(class)
+    end
+
+    local out = {
+        track   = track.name,
+        type    = track.type,
+        laps    = track.laps,
+        length  = track.length,
+        vehicle = vehicle,
+        -- The model itself, for two reasons: client/nui_bridge.lua resolves
+        -- the real manufacturer and display name from it, and the briefing
+        -- prints it as the spawn code.
+        model   = type(class) == "table" and class.model or nil,
+        class   = type(class) == "table" and class.name or nil,
+        cops    = RaceSession.copChase and true or false,
+        traffic = RaceSession.trafficLevel or "none",
+    }
+
+    -- Real numbers for the machine slide, from the same registry the poll card
+    -- reads. Left out entirely when the model has not been classified yet
+    -- (a freshly discovered add-on): the slide drops the stat row rather than
+    -- showing the placeholder 180/70/70 every unprobed car carries.
+    local model = type(class) == "table" and class.model or nil
+    if model and GetResourceState("spz-vehicles") == "started" then
+        local ok, data = pcall(function()
+            return exports["spz-vehicles"]:GetVehicleData(model)
+        end)
+        if ok and type(data) == "table" and not data.racePending then
+            out.topSpeed = data.top_speed
+            out.accel    = data.accel
+            out.handling = data.handling
+        end
+    end
+
+    return out
+end
+
+local function sendIntro(payload)
+    if not introEnabled() then return end
+    for src in pairs(RaceSession.players) do
+        TriggerClientEvent("SPZ:raceIntro", src, payload)
+    end
+end
+
 -- ── 9. Warmup Phase ──────────────────────────────────────────────────────────
 --
 -- Entered from WARMUP state.  Players are unfrozen at their grid positions;
@@ -54,6 +124,21 @@ function StartWarmupPhase()
         -- Signal clients warmup is over so HUD can clear the timer
         BroadcastToRacers("SPZ:warmupEnd")
         print("[Warmup] Phase complete — re-staging players on grid")
+
+        -- Cover BEFORE the teleport, not after: the whole point is that nobody
+        -- sees the jump or the collision streaming back in around them. The
+        -- lead is short — one NUI frame is enough for the page to paint — and
+        -- the cover stays up by itself until the grid is formed.
+        if introEnabled() then
+            sendIntro({ phase = "cover" })
+            Citizen.Wait(tonumber(introCfg().CoverLeadMs) or 700)
+            if RaceSession.state ~= SPZ.RaceState.WARMUP then
+                -- Cancelled inside the lead. Take the cover back down here
+                -- rather than leaving it to the client's deadline.
+                sendIntro({ phase = "end" })
+                return
+            end
+        end
 
         -- Freeze FIRST: freezing only after the TP left a ~2s window where
         -- players could drive off the grid before the countdown started.
@@ -214,6 +299,35 @@ function StartCountdownSequence()
             gridPos   = data.gridIndex or 0,
             flagGirl  = flagGirl,
         })
+    end
+
+    -- The grid is formed and the start camera is being built on every client
+    -- from the event above. NOW open the cover: the panels sweep off a frame
+    -- that is already moving, and the card they uncover names the race the
+    -- driver is about to run.
+    --
+    -- Sent after gridFormed on purpose. Reveal first and the sweep opens onto
+    -- a static bumper for a frame before the camera cuts in, which is the one
+    -- thing the cover existed to avoid.
+    if introEnabled() then
+        local staging = (Config.StagingTimeSeconds or 9) * 1000
+        local hold    = tonumber(introCfg().CardHoldMs)
+                     or (staging - (tonumber(introCfg().CardGapMs) or 1500))
+        if hold < 2000 then hold = 2000 end
+        if hold > staging then hold = staging end
+
+        local payload = introDetails()
+        payload.phase  = "reveal"
+        payload.holdMs = hold
+        sendIntro(payload)
+
+        -- Card down before the lights. spz-raceUI also clears it on the first
+        -- countdown tick, so a lost timer cannot leave it over the 3-2-1 —
+        -- this is the one that makes it leave on its own, unhurried.
+        Citizen.SetTimeout(hold, function()
+            if RaceSession.state ~= SPZ.RaceState.COUNTDOWN then return end
+            sendIntro({ phase = "end" })
+        end)
     end
 
     Citizen.CreateThread(function()

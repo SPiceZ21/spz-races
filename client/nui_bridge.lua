@@ -61,6 +61,57 @@ RegisterNetEvent("SPZ:warmupEnd", function()
     exports["spz-raceUI"]:HideWarmup()
 end)
 
+-- ── Race intro (cover → sweep → details card) ─────────────────────────────────
+--
+-- Sent twice by server/countdown.lua: 'cover' just before the field is
+-- teleported back onto the grid, and 'reveal' once the grid is formed and the
+-- start camera is running. The card takes itself down before the 3-2-1; this
+-- only has to relay, and to make sure a race that ends badly does not leave a
+-- cover up (spz-raceUI has its own deadline for the case where even this event
+-- never arrives).
+-- The car's real name is a GXT entry, so only a client can read it. The server
+-- sends the model plus whatever label its registry holds — which for a
+-- discovered add-on is derived from the model name ("gbelegyrh2" ->
+-- "Gbelegyrh2") — and this upgrades it to the manufacturer and display name
+-- the pack actually ships. Same treatment the poll card gets in
+-- spz-poll/client/main.lua; the two name the same car the same way.
+local function gxt(key)
+    if type(key) ~= "string" or key == "" then return nil end
+    local text = GetLabelText(key)
+    if not text or text == "" or text == "NULL" then return nil end
+    return text
+end
+
+local function nameVehicle(data)
+    local model = data.model
+    if type(model) ~= "string" or model == "" then return end
+
+    data.code = model:lower()
+
+    local hash = GetHashKey(model)
+    if not IsModelInCdimage(hash) then return end
+
+    local make = gxt(GetMakeNameFromVehicleModel(hash))
+    local name = gxt(GetDisplayNameFromVehicleModel(hash))
+    if name then
+        data.vehicle = make and (make .. " " .. name) or name
+    elseif make then
+        data.vehicle = make .. " " .. (data.vehicle or model)
+    end
+end
+
+RegisterNetEvent("SPZ:raceIntro", function(data)
+    if GetResourceState("spz-raceUI") ~= "started" then return end
+    data = data or {}
+    if data.phase == "reveal" then nameVehicle(data) end
+    exports["spz-raceUI"]:ShowRaceIntro(data)
+end)
+
+RegisterNetEvent("SPZ:tpToSafeZone", function()
+    if GetResourceState("spz-raceUI") ~= "started" then return end
+    exports["spz-raceUI"]:HideRaceIntro()
+end)
+
 -- ── Countdown / Staging Events ────────────────────────────────────────────────
 -- Staging is a brief silent settle on the grid after the warmup TP-back.
 -- It must NOT render the giant countdown box — doing so showed a 10→1 count

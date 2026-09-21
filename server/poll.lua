@@ -27,12 +27,25 @@ local PollRun = nil
 
 -- ── Option builders ──────────────────────────────────────────────────────────
 
-local function GetWeightedTracks(type, count)
-    local pool = {}
+--- @param avoid table|nil  track names the last ballot already offered
+local function GetWeightedTracks(type, count, avoid)
+    local pool, skipped = {}, {}
     for id, track in pairs(SPZ.Tracks) do
         if track.type == type then
-            table.insert(pool, { id = id, weight = track.poll_weight or 1, track = track })
+            local item = { id = id, weight = track.poll_weight or 1, track = track }
+            if avoid and avoid[track.name] then
+                skipped[#skipped + 1] = item
+            else
+                pool[#pool + 1] = item
+            end
         end
+    end
+
+    -- A reroll should offer something NEW, but not at the cost of offering
+    -- nothing: a server with three circuits cannot fill a fresh ballot twice.
+    -- The previous set comes back only once the rest is exhausted.
+    if #pool < count then
+        for _, item in ipairs(skipped) do pool[#pool + 1] = item end
     end
 
     if #pool == 0 then return {} end
@@ -90,8 +103,8 @@ local function TrackPath(track)
 end
 
 --- @return table|nil raw options, table ui options
-local function BuildTrackOptions()
-    local tracks = GetWeightedTracks(RaceSession.raceType, Config.PollOptionsPerType or 2)
+local function BuildTrackOptions(avoid)
+    local tracks = GetWeightedTracks(RaceSession.raceType, Config.PollOptionsPerType or 2, avoid)
     if #tracks < 1 then return nil end
 
     local ui = {}
@@ -111,7 +124,8 @@ local function BuildTrackOptions()
     return tracks, ui
 end
 
-local function BuildVehicleOptions()
+--- @param avoid table|nil  models the last ballot already offered
+local function BuildVehicleOptions(avoid)
     local availableClasses = exports["spz-vehicles"]:GetRaceClasses()
     if not availableClasses or #availableClasses == 0 then return nil end
 
@@ -144,15 +158,33 @@ local function BuildVehicleOptions()
 
     for _, classId in ipairs(availableClasses) do
         if #vehicles >= TARGET then break end
-        local pool = exports["spz-vehicles"]:GetPollPool(classId, 1)
-        if pool and pool[1] and not seenModels[pool[1].model] then
-            seenModels[pool[1].model] = true
-            table.insert(vehicles, pool[1])
+        -- Ask for a few rather than one, so a car the last ballot already
+        -- offered can be stepped over instead of costing the class its slot.
+        local pool = exports["spz-vehicles"]:GetPollPool(classId, avoid and 4 or 1)
+        for _, veh in ipairs(pool or {}) do
+            if not seenModels[veh.model] and not (avoid and avoid[veh.model]) then
+                seenModels[veh.model] = true
+                table.insert(vehicles, veh)
+                break
+            end
         end
     end
 
     if #vehicles < TARGET then
         local extra = exports["spz-vehicles"]:GetPollPool(availableClasses[1], TARGET + 1)
+        for _, v in ipairs(extra or {}) do
+            if #vehicles >= TARGET then break end
+            if not seenModels[v.model] and not (avoid and avoid[v.model]) then
+                seenModels[v.model] = true
+                table.insert(vehicles, v)
+            end
+        end
+    end
+
+    -- Still short because everything left was on the last ballot? Fill from
+    -- the avoided set rather than hand back a ballot with one card on it.
+    if #vehicles < TARGET and avoid then
+        local extra = exports["spz-vehicles"]:GetPollPool(availableClasses[1], TARGET + 2)
         for _, v in ipairs(extra or {}) do
             if #vehicles >= TARGET then break end
             if not seenModels[v.model] then
@@ -208,6 +240,71 @@ local function ChaseToggle()
     }
 end
 
+-- ── Reroll ───────────────────────────────────────────────────────────────────
+--
+-- A ballot can ask for the whole SET to be redrawn — different tracks, different
+-- cars — rather than picking the least bad of what is on offer.
+--
+-- It is decided by MAJORITY at the close, not by whoever clicks first. A reroll
+-- that fires the moment one player asks for it wipes votes other people have
+-- already cast, and on a busy server it is a grief button. This way nothing is
+-- disturbed mid-vote: everyone finishes their ballot, and if most of them also
+-- ticked reroll, that result is thrown away and the poll runs once more.
+--
+-- Capped by config (default once), because two rerolls of a three-track server
+-- is the same three tracks again and the grid is still waiting.
+
+local function rerollCfg()
+    return (Config and Config.PollReroll) or {}
+end
+
+local function rerollEnabled()
+    return rerollCfg().Enabled ~= false
+end
+
+--- Who asked, and how many it would take.
+--- The denominator is players who ACTUALLY VOTED, not everyone in the session:
+--- counting people who never opened their ballot would mean a reroll needs a
+--- majority of an audience that is not watching.
+local function RerollTally()
+    if not PollRun then return 0, 0, 0 end
+
+    local voters, asked = 0, 0
+    for src in pairs(RaceSession.players) do
+        local b = PollRun.ballots[src]
+        if b and b.phase > 1 then          -- cast at least one vote
+            voters = voters + 1
+            if PollRun.reroll[src] then asked = asked + 1 end
+        end
+    end
+
+    -- Strict majority by default: 1 of 2 is not a mandate to bin everyone
+    -- else's vote. Config.PollReroll.Threshold lowers the bar to a fraction
+    -- of the voters (0.4 = 4 of 10) for servers that would rather reroll
+    -- easily than argue about it.
+    local t = tonumber(rerollCfg().Threshold)
+    local needed
+    if t and t > 0 and t <= 1 then
+        needed = math.max(1, math.ceil(voters * t))
+    else
+        needed = math.floor(voters / 2) + 1
+    end
+
+    return asked, needed, voters
+end
+
+--- What the ballot needs to draw the tick: whether it is still available, and
+--- whether THIS player has it set. Deliberately not the running count — the
+--- ballot already shows a "2 of 3" for the phase dots, and a second fraction
+--- next to it was read as more of the same.
+local function RerollState(src)
+    if not rerollEnabled() then return nil end
+    return {
+        enabled = (PollRun.rerolls or 0) < (tonumber(rerollCfg().MaxPerPoll) or 1),
+        active  = PollRun.reroll[src] == true,
+    }
+end
+
 -- ── Ballot delivery ──────────────────────────────────────────────────────────
 
 local TITLES = {
@@ -234,6 +331,9 @@ local function SendPhase(src, phase)
         step     = phase,
         steps    = #PHASES,
         toggle   = (phase == 3) and ChaseToggle() or nil,
+        -- Offered on every phase, not just one: the moment a player decides
+        -- they do not want any of this is the moment they are looking at it.
+        reroll   = RerollState(src),
     })
 end
 
@@ -279,8 +379,48 @@ local function ChaseWon()
     return t.yes > t.no
 end
 
+--- The set that was just on offer, so the next draw can avoid it.
+local function OfferedSet()
+    local tracks, models = {}, {}
+    for _, t in ipairs(PollRun.options[1] or {}) do
+        if t.name then tracks[t.name] = true end
+    end
+    for _, v in ipairs(PollRun.options[2] or {}) do
+        if v.model then models[v.model] = true end
+    end
+    return tracks, models
+end
+
 function EndRacePoll()
     if not PollRun then return end
+
+    -- Reroll first: if most of the people who voted asked for a different set,
+    -- there is no point deciding a winner out of options they rejected.
+    if rerollEnabled() then
+        local asked, needed, voters = RerollTally()
+        local used = PollRun.rerolls or 0
+        local cap  = tonumber(rerollCfg().MaxPerPoll) or 1
+
+        if voters > 0 and asked >= needed and used < cap then
+            local avoidTracks, avoidModels = OfferedSet()
+
+            print(("[Race Poll] Reroll carried %d/%d — redrawing tracks and cars (%d/%d used).")
+                :format(asked, voters, used + 1, cap))
+
+            for src in pairs(RaceSession.players) do
+                TriggerClientEvent("SPZ:pollClosed", src)
+                SPZ.Notify(src, ("Reroll carried (%d/%d) — new options coming up")
+                    :format(asked, voters), "inform", 4000)
+            end
+
+            PollRun = nil
+            StartRacePoll({
+                rerolls = used + 1,
+                avoid   = { tracks = avoidTracks, models = avoidModels },
+            })
+            return
+        end
+    end
 
     local trackIdx   = WinnerOf(1)
     local vehicleIdx = WinnerOf(2)
@@ -343,18 +483,25 @@ function EndRacePoll()
     SetRaceState(SPZ.RaceState.WAITING)
 end
 
-function StartRacePoll()
+--- @param opts table|nil { rerolls = n, avoid = { tracks = {}, models = {} } }
+---   Passed only when this run IS a reroll: `avoid` keeps the new ballot off
+---   the set that was just rejected, and `rerolls` carries the count so the cap
+---   survives the restart.
+function StartRacePoll(opts)
     if RaceSession.state ~= SPZ.RaceState.IDLE
     and RaceSession.state ~= SPZ.RaceState.POLLING then return end
 
-    local tracksRaw, tracksUi = BuildTrackOptions()
+    opts = opts or {}
+    local avoid = opts.avoid
+
+    local tracksRaw, tracksUi = BuildTrackOptions(avoid and avoid.tracks)
     if not tracksRaw then
         print("[Race Poll] No tracks found for type: " .. tostring(RaceSession.raceType))
         ResetToIdle()
         return
     end
 
-    local vehRaw, vehUi = BuildVehicleOptions()
+    local vehRaw, vehUi = BuildVehicleOptions(avoid and avoid.models)
     if not vehRaw then
         print("[Race Poll] No race-eligible vehicles. Resetting.")
         ResetToIdle()
@@ -380,6 +527,12 @@ function StartRacePoll()
         tally   = { {}, {}, {} },
         chase   = { yes = 0, no = 0 },   -- switch submitted with the traffic vote
         ballots = {},
+
+        -- Who has asked for a different set, and how many redraws this poll has
+        -- already spent. The count rides through the restart (see EndRacePoll)
+        -- so the cap means "per poll", not "per attempt".
+        reroll  = {},
+        rerolls = tonumber(opts.rerolls) or 0,
     }
 
     for i = 1, #PHASES do
@@ -441,6 +594,23 @@ RegisterNetEvent("SPZ:pollVote", function(data, sourceOverride)
         -- Last ballot in? Start the race rather than burning the rest of the window.
         if AllBallotsIn() then EndRacePoll() end
     end
+end)
+
+--- A player ticking (or un-ticking) "different set". Free to change until
+--- their last card is in — it is counted at the close, not when clicked.
+RegisterNetEvent("SPZ:pollReroll", function(on)
+    local src = tonumber(source)
+    if not src or not PollRun or not rerollEnabled() then return end
+    if not RaceSession.players[src] then return end
+
+    -- Cap reached: the button is already disabled client-side, so this is only
+    -- reached by a stale UI or a crafted event.
+    if (PollRun.rerolls or 0) >= (tonumber(rerollCfg().MaxPerPoll) or 1) then return end
+
+    local ballot = PollRun.ballots[src]
+    if not ballot or ballot.phase > #PHASES then return end   -- already finished
+
+    PollRun.reroll[src] = (on == true) or nil
 end)
 
 -- ── Late joiners ─────────────────────────────────────────────────────────────
