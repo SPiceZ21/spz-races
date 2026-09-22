@@ -499,7 +499,9 @@ end)
 RegisterNetEvent("SPZ:tt:NextCp", function(logicalIdx, physIdx)
     TTCpIndex = logicalIdx
 
-    PlaySoundFrontend(-1, "CHECKPOINT_NORMAL", "HUD_MINI_GAME_SOUNDSET", 1)
+    if GetResourceState("spz-raceUI") == "started" then
+        exports["spz-raceUI"]:PlaySound("cppass")
+    end
     if TTTrack then
         _setActiveCp(physIdx or _physIdx(logicalIdx))
     end

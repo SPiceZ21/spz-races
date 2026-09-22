@@ -545,7 +545,11 @@ RegisterNetEvent("SPZ:nextCheckpoint", function(newIndex)
     -- The CP we just crossed was the old target — remember it as the respawn point.
     LastCaughtIdx  = CurrentCPIndex
     CurrentCPIndex = newIndex
-    PlaySoundFrontend(-1, "CHECKPOINT_NORMAL", "HUD_MINI_GAME_SOUNDSET", 1)
+    -- Custom clip, so it goes through spz-raceUI's NUI page (ui/public/aud/)
+    -- rather than PlaySoundFrontend.
+    if GetResourceState("spz-raceUI") == "started" then
+        exports["spz-raceUI"]:PlaySound("cppass")
+    end
     _applyActive(CurrentCPIndex)
 end)
 

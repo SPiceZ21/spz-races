@@ -42,6 +42,10 @@ local function _promptMissedCheckpoint()
             :format(rewindKey, respawnKey)
         or  ("Press %s to teleport to last checkpoint"):format(respawnKey)
 
+    if GetResourceState("spz-raceUI") == "started" then
+        exports["spz-raceUI"]:PlaySound("cpmiss")
+    end
+
     lib.notify({
         title       = "Checkpoint missed",
         description = msg,
