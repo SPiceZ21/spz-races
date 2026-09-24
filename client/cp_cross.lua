@@ -159,6 +159,51 @@ function SPZ_GateCross(cp, pos, prev)
     return false, side, (flipped and zOk)
 end
 
+-- ── Path test ────────────────────────────────────────────────────────────────
+--
+-- Did the straight path from a to b pass THROUGH the gate? Used on the recent
+-- position trail, for the two cases the side-tracking above cannot see:
+--
+--   * the gate armed late — the next gate only arms after the previous hit is
+--     confirmed, and on a close pair the car can already be past its plane by
+--     then. SPZ_GateCross then seeds "past" and never sees a flip, the gate
+--     never scores, every later gate stays dead, and the idle kick DNFs a
+--     driver who is flat out.
+--   * a frame hitch — one sample before the corridor, the next already past it.
+function SPZ_GateSegmentCross(cp, a, b)
+    if not cp or not a or not b then return false end
+    local cz = cp.coords.z
+    if math.min(math.abs(a.z - cz), math.abs(b.z - cz)) >= Z_THRESH then return false end
+
+    -- Radius gates: does the path come within the radius of the centre?
+    if not (cp.left and cp.right) then
+        local r = cp.radius or 5.0
+        local px, py = b.x - a.x, b.y - a.y
+        local len2 = px * px + py * py
+        local u = len2 > 0 and (((cp.coords.x - a.x) * px + (cp.coords.y - a.y) * py) / len2) or 0
+        u = math.max(0, math.min(1, u))
+        local qx, qy = a.x + px * u - cp.coords.x, a.y + py * u - cp.coords.y
+        return (qx * qx + qy * qy) < r * r
+    end
+
+    -- Gate segment, stretched by GATE_MARGIN at both ends (wide cars).
+    local ax, ay, bx, by = cp.left.x, cp.left.y, cp.right.x, cp.right.y
+    local gx, gy = bx - ax, by - ay
+    local glen = math.sqrt(gx * gx + gy * gy)
+    if glen < 0.01 then return false end
+    local ex, ey = gx / glen * GATE_MARGIN, gy / glen * GATE_MARGIN
+    ax, ay, bx, by = ax - ex, ay - ey, bx + ex, by + ey
+
+    local function orient(px, py, qx, qy, rx, ry)
+        return (qx - px) * (ry - py) - (qy - py) * (rx - px)
+    end
+    local d1 = orient(ax, ay, bx, by, a.x, a.y)
+    local d2 = orient(ax, ay, bx, by, b.x, b.y)
+    local d3 = orient(a.x, a.y, b.x, b.y, ax, ay)
+    local d4 = orient(a.x, a.y, b.x, b.y, bx, by)
+    return (d1 > 0) ~= (d2 > 0) and (d3 > 0) ~= (d4 > 0)
+end
+
 -- ── Probe ────────────────────────────────────────────────────────────────────
 --
 -- Every intermediate SPZ_GateCross works from, handed back instead of consumed:

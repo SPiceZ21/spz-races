@@ -23,6 +23,39 @@ end)
 -- to the server's gate — never worse than before.
 local PENDING_MAX_MS = 2500
 
+-- ── Position trail ───────────────────────────────────────────────────────────
+-- The last couple of seconds of positions, so a gate can be scored from the
+-- path actually driven (SPZ_GateSegmentCross) when side-tracking missed it:
+-- armed after the car was already through, or jumped over in a frame hitch.
+-- Segments faster than TRAIL_MAX_MPS are teleports (F4 recover, respawn) and
+-- never count; the trail is dropped while rewinding.
+local TRAIL_MS      = 2000
+local TRAIL_MAX_MPS = 150.0   -- ~540 km/h
+local _trail = {}             -- { x, y, z, t }, oldest first
+
+local function _trailPush(pos, now)
+    local last = _trail[#_trail]
+    if last and now - last.t < 15 then return end
+    _trail[#_trail + 1] = { x = pos.x, y = pos.y, z = pos.z, t = now }
+    while _trail[1] and now - _trail[1].t > TRAIL_MS do table.remove(_trail, 1) end
+end
+
+local function _realSegment(a, b)
+    local dt = (b.t - a.t) / 1000
+    if dt <= 0 then return false end
+    local dx, dy, dz = b.x - a.x, b.y - a.y, b.z - a.z
+    return math.sqrt(dx * dx + dy * dy + dz * dz) / dt <= TRAIL_MAX_MPS
+end
+
+--- Did the path since `sinceIdx` in the trail go through `cp`?
+local function _trailCrossed(cp, sinceIdx)
+    for i = math.max(2, sinceIdx or 2), #_trail do
+        local a, b = _trail[i - 1], _trail[i]
+        if _realSegment(a, b) and SPZ_GateSegmentCross(cp, a, b) then return true end
+    end
+    return false
+end
+
 local _pending   = {}     -- gate indices reported, oldest first, not yet confirmed
 local _pendingAt = 0      -- when the oldest unconfirmed one was sent
 
@@ -110,14 +143,27 @@ Citizen.CreateThread(function()
             local cp = cpIndex and cps[cpIndex] or nil
 
             if cp then
-                -- Reset the crossing state whenever the active CP changes.
+                local pos = GetEntityCoords(PlayerPedId())
+                local now = GetGameTimer()
+                local before = #_trail
+                _trailPush(pos, now)
+
+                local crossed, side, missed
                 if cpIndex ~= _lastIndex then
+                    -- Newly armed gate: did we already drive through it in the
+                    -- last couple of seconds, before it was armed?
                     _lastIndex, _side = cpIndex, nil
+                    crossed = _trailCrossed(cp, 2)
                 end
 
-                local pos = GetEntityCoords(PlayerPedId())
-                local crossed, side, missed = SPZ_GateCross(cp, pos, _side)
-                _side = side
+                if not crossed then
+                    crossed, side, missed = SPZ_GateCross(cp, pos, _side)
+                    _side = side
+                    -- Hitch: the latest step jumped clean through the gate.
+                    if not crossed and #_trail > before and #_trail >= 2 then
+                        crossed = _trailCrossed(cp, #_trail)
+                    end
+                end
 
                 if crossed then
                     TriggerServerEvent("SPZ:checkpointHit", cpIndex)
@@ -146,6 +192,7 @@ Citizen.CreateThread(function()
         else
             _lastIndex, _side = nil, nil
             _pending = {}
+            _trail = {}          -- a rewind scrubs back through gates: never count that
             Citizen.Wait(500)
         end
     end
