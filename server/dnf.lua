@@ -11,6 +11,21 @@ function MarkDNF(source, reason)
     pData.dnf_reason = reason
     pData.finish_time = nil
 
+    -- Tell the player WHY. A DNF with no reason reads as being kicked for
+    -- nothing, which is exactly how the idle-kick bug got reported.
+    local why = ({
+        finish_timeout = "you didn't cross the line before the finish window closed",
+        idle           = "no checkpoint and the car barely moved for 2 minutes",
+        lost           = "no checkpoint for 5 minutes",
+        admin          = "removed by an admin",
+    })[reason]
+    if why and GetPlayerName(source) then
+        TriggerClientEvent("ox_lib:notify", source, {
+            title = "DNF", description = "DNF — " .. why .. ".", type = "error",
+            position = "center-left", duration = 8000,
+        })
+    end
+
     -- 14.2 Despawn Vehicle
     if GetResourceState("spz-vehicles") == "started" then
         exports["spz-vehicles"]:DespawnVehicle(source)
@@ -86,6 +101,14 @@ function StartFinishWindow()
 
     NotifyUnfinished(("Leader finished — cross the line within %d:%02d or DNF")
         :format(math.floor(total / 60), total % 60))
+
+    -- HUD countdown (spz-raceUI). Seconds, not a timestamp: the client clocks
+    -- are not the server's, so each HUD counts down from its own arrival.
+    for src, p in pairs(RaceSession.players) do
+        if not p.finished and not p.dnf then
+            TriggerClientEvent("SPZ:finishWindow", src, total)
+        end
+    end
 
     CreateThread(function()
         local remaining = total

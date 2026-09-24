@@ -278,7 +278,9 @@ RegisterNetEvent("SPZ:checkpointHit", function(cpIndex)
     -- Record the time this CP was hit (used by the idle-kick watchdog below)
     local now   = GetGameTimer()
     local track = RaceSession.track
-    pData.last_cp_time = now
+    pData.last_cp_time   = now
+    pData.moved_since_cp = 0.0     -- idle watchdog: distance is per stall
+    pData.idle_warned    = false
 
     -- ── Circuit: crossing the line closes the lap ──────────────────────────
     if pData.lapClosing and cpIndex == 1 then
@@ -414,24 +416,69 @@ RegisterNetEvent("SPZ:rewindTime", function(ms)
 end)
 
 -- ── Idle-kick watchdog ──────────────────────────────────────────────────────
--- If a racer has not crossed a single checkpoint within Config.IdleKickMs during
--- a live race they are assumed to have given up / gone AFK and are DNF'd.
+-- DNFs a racer who has stopped racing. "No checkpoint in IdleKickMs" alone used
+-- to be the test, and it DNF'd people driving flat out whose next gate had
+-- silently failed to arm: they were racing, just not registering. So the clock
+-- is now paired with how far the car actually moved since its last checkpoint:
+--
+--   stalled + barely moved  -> AFK / stuck: DNF after IdleKickMs, as before.
+--   stalled + still driving -> lost, not idle: warned (with the recovery key)
+--                              at IdleWarnMs, only DNF'd at the much longer
+--                              LostKickMs. The finish window still ends it
+--                              once the leader is home.
+local function notify(src, msg, ntype)
+    TriggerClientEvent("ox_lib:notify", src, {
+        title = "Race", description = msg, type = ntype or "warning",
+        position = "center-left", duration = 8000,
+    })
+end
+
 Citizen.CreateThread(function()
     while true do
-        Citizen.Wait(10000)  -- check every 10 s (low overhead)
+        Citizen.Wait(5000)
 
         if RaceSession and RaceSession.state == SPZ.RaceState.LIVE then
-            local cutoff = GetGameTimer() - (Config.IdleKickMs or 120000)
+            local now      = GetGameTimer()
+            local idleMs   = Config.IdleKickMs or 120000
+            local warnMs   = Config.IdleWarnMs or 45000
+            local lostMs   = Config.LostKickMs or 300000
+            local minMove  = Config.IdleMinMoveM or 150.0
 
             for src, pData in pairs(RaceSession.players) do
                 -- .disconnected racers are managed by the reconnect window,
                 -- not the idle kick (their CP clock is legitimately stalled)
                 if not pData.finished and not pData.dnf and not pData.disconnected then
-                    local lastHit = pData.last_cp_time or RaceSession.startTime or 0
-                    if lastHit < cutoff then
-                        print(string.format("[Idle-Kick] %s (%d) timed out — no CP in %d s",
-                            pData.name, src, (Config.IdleKickMs or 120000) / 1000))
-                        MarkDNF(src, "idle")
+                    -- Distance driven since the last checkpoint (reset on hit).
+                    local ped = GetPlayerPed(src)
+                    if ped and ped ~= 0 then
+                        local pos = GetEntityCoords(ped)
+                        if pData.idle_pos then
+                            pData.moved_since_cp = (pData.moved_since_cp or 0.0) + #(pos - pData.idle_pos)
+                        end
+                        pData.idle_pos = pos
+                    end
+
+                    local lastHit = pData.last_cp_time or RaceSession.startTime or now
+                    local stalled = now - lastHit
+                    local moved   = pData.moved_since_cp or 0.0
+
+                    if stalled >= warnMs and not pData.idle_warned then
+                        pData.idle_warned = true
+                        notify(src, ("No checkpoint for %ds — missed one? Press %s to go back to your last checkpoint.")
+                            :format(math.floor(stalled / 1000), Config.RecoverKey or "F4"))
+                    end
+
+                    local reason
+                    if stalled >= idleMs and moved < minMove then
+                        reason = "idle"
+                    elseif stalled >= lostMs then
+                        reason = "lost"
+                    end
+
+                    if reason then
+                        print(string.format("[Idle-Kick] %s (%d) %s — no CP in %ds, moved %.0fm",
+                            pData.name, src, reason, math.floor(stalled / 1000), moved))
+                        MarkDNF(src, reason)
                     end
                 end
             end

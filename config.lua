@@ -260,7 +260,7 @@ Config.ResultsDisplayTime   = 12000   -- ms stats screen shown before TP back
 -- Armed by the FIRST finisher: everyone still driving gets this long to cross
 -- the line, then they're force-DNF'd and results fire. Stops the podium from
 -- waiting minutes on cruisers (the 120s idle-kick only catches AFK, not slow).
-Config.FinishWindowSeconds  = 180
+Config.FinishWindowSeconds  = 120   -- 2 minutes, counted down on the HUD
 
 -- ── Intermission ───────────────────────────────────────────────────────────
 -- Runs OVERLAPPED with the results screen: the countdown starts the moment
@@ -368,6 +368,12 @@ Config.SafeZoneHeading      = 210.0
 -- How long (ms) a racer can go without hitting any checkpoint before they are
 -- automatically DNF'd for idling / going off-route.
 Config.IdleKickMs           = 120000  -- 2 minutes
+-- Only counts as idle if the car also moved less than this since its last
+-- checkpoint. A racer who is DRIVING but not registering gates (a missed gate)
+-- is lost, not idle: warned at IdleWarnMs, and only DNF'd at LostKickMs.
+Config.IdleMinMoveM         = 150.0
+Config.IdleWarnMs           = 45000   -- 45 s: "missed one? press F4"
+Config.LostKickMs           = 300000  -- 5 minutes
 
 -- Teleport back to the last checkpoint you crossed (client/recover.lua).
 -- Declared here, not inline in the key mapping, because the missed-checkpoint

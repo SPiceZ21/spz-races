@@ -43,6 +43,10 @@ function JoinQueue(src)
         Notify(src, "You are already in a race or queue")
         return false
     end
+    if Player(src).state.inPursuit then
+        Notify(src, "Leave your Hot Pursuit room first")
+        return false
+    end
 
     -- Joinable while the cycle hasn't locked in: IDLE or POLLING.
     -- Anything later (WAITING/WARMUP/COUNTDOWN/LIVE/…) → freeroam now,

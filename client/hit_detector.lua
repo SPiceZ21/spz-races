@@ -9,7 +9,51 @@ AddStateBagChangeHandler("raceState", "global", function(_, _, value)
     if value then _raceState = value end
 end)
 
-local HIT_DEBOUNCE_MS = 500
+-- ── Optimistic gate arming ────────────────────────────────────────────────────
+-- The next gate used to arm only when the server's SPZ:nextCheckpoint came back,
+-- and only after a flat 500 ms debounce on top of the round trip. At racing
+-- speed that is 35+ m of blind driving: on a tight section the next gate was
+-- crossed before it was armed, never registered, every later gate stayed dead,
+-- and two minutes on the idle watchdog DNF'd a racer who was driving flat out.
+--
+-- Now the moment a crossing is reported the NEXT gate is armed locally. Hits are
+-- reliable and ordered, so the server receives n then n+1 and accepts both. The
+-- chain is dropped the moment the server's index disagrees (rejection, rewind,
+-- rollback) or it goes unconfirmed for PENDING_MAX_MS, and tracking falls back
+-- to the server's gate — never worse than before.
+local PENDING_MAX_MS = 2500
+
+local _pending   = {}     -- gate indices reported, oldest first, not yet confirmed
+local _pendingAt = 0      -- when the oldest unconfirmed one was sent
+
+local function _nextIdx(idx, total, trackType)
+    if idx < total then return idx + 1 end
+    if trackType == "circuit" then return 1 end
+    return nil            -- sprint: that was the finish
+end
+
+--- Which gate to watch, given the server's current one and what we've sent.
+local function _trackedIdx(serverIdx, total, trackType)
+    -- Drop every pending hit the server has confirmed (it moved to the gate
+    -- after it). Anything else means the server went somewhere we didn't
+    -- predict: trust it and start over from its gate.
+    while _pending[1] do
+        if serverIdx == _pending[1] then break end                       -- not confirmed yet
+        if serverIdx == _nextIdx(_pending[1], total, trackType) then
+            table.remove(_pending, 1)
+            _pendingAt = GetGameTimer()
+        else
+            _pending = {}
+        end
+    end
+    if _pending[1] and GetGameTimer() - _pendingAt > PENDING_MAX_MS then
+        _pending = {}                                                    -- rejected / lost
+    end
+
+    local last = _pending[#_pending]
+    if last then return _nextIdx(last, total, trackType) end
+    return serverIdx
+end
 
 local _lastIndex = nil    -- which CP we're tracking the crossing side for
 local _side      = nil    -- last side of the gate plane the player was on
@@ -60,7 +104,10 @@ Citizen.CreateThread(function()
         -- Rewinding scrubs the car backward through world space — that is not
         -- a real gate crossing, so hit detection sleeps until it ends.
         if _raceState == "LIVE" and not exports["spz-races"]:IsRewinding() then
-            local cp, cpIndex = exports["spz-races"]:GetCurrentCP()
+            local cps, serverIdx, trackType = exports["spz-races"]:GetCheckpointDebug()
+            local cpIndex = (cps and #cps > 0 and serverIdx)
+                and _trackedIdx(serverIdx, #cps, trackType) or nil
+            local cp = cpIndex and cps[cpIndex] or nil
 
             if cp then
                 -- Reset the crossing state whenever the active CP changes.
@@ -74,7 +121,11 @@ Citizen.CreateThread(function()
 
                 if crossed then
                     TriggerServerEvent("SPZ:checkpointHit", cpIndex)
-                    Citizen.Wait(HIT_DEBOUNCE_MS)
+                    if not _pending[1] then _pendingAt = GetGameTimer() end
+                    _pending[#_pending + 1] = cpIndex
+                    -- No debounce: the watched gate has already moved on, so this
+                    -- crossing can't be reported twice.
+                    Citizen.Wait(0)
                 else
                     if missed then _promptMissedCheckpoint() end
                     -- Poll fast when close so a fast car can't tunnel the plane.
@@ -94,6 +145,7 @@ Citizen.CreateThread(function()
             end
         else
             _lastIndex, _side = nil, nil
+            _pending = {}
             Citizen.Wait(500)
         end
     end

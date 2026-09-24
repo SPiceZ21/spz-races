@@ -106,7 +106,11 @@ exports("ClearRaceState", ClearRaceState)
 -- queued player with inQueue still set — permanently unable to rejoin.
 function ResetToIdle()
     for src, pData in pairs(RaceSession.players) do
-        if GetPlayerName(src) then
+        -- Already released (finished / DNF): they own their freeroam state now,
+        -- including any car they spawned since. Same rule as RunRaceCleanup.
+        if pData and pData.teleportedToSafeZone then
+            if GetPlayerName(src) then Player(src).state:set("dnf", nil, true) end
+        elseif GetPlayerName(src) then
             -- Only players who actually made it into the race world need the
             -- world teardown; a cancelled poll leaves everyone in freeroam.
             if RaceSession.bucketId and RaceSession.bucketId ~= 0 then

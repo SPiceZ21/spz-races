@@ -227,6 +227,8 @@ local function _runThreeTwoOne()
                 track   = RaceSession.track.name,
                 class   = type(RaceSession.carClass) == "table" and RaceSession.carClass.name or tostring(RaceSession.carClass),
                 laps    = RaceSession.track.laps,
+                -- 'circuit' | 'sprint': the HUD only counts laps on a circuit.
+                raceType = RaceSession.track.type or RaceSession.raceType,
                 gridPos = data.gridIndex or 0,
                 total   = totalPlayers,
             })

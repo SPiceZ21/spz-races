@@ -107,8 +107,17 @@ RegisterNetEvent("SPZ:raceIntro", function(data)
     exports["spz-raceUI"]:ShowRaceIntro(data)
 end)
 
+-- Finish window: the leader is home and the rest have N seconds. Counted down
+-- on the HUD; taken down when this player finishes or DNFs (both send them to
+-- the safe zone) or the race ends.
+RegisterNetEvent("SPZ:finishWindow", function(seconds)
+    if GetResourceState("spz-raceUI") ~= "started" then return end
+    exports["spz-raceUI"]:ShowFinishWindow(seconds)
+end)
+
 RegisterNetEvent("SPZ:tpToSafeZone", function()
     if GetResourceState("spz-raceUI") ~= "started" then return end
+    exports["spz-raceUI"]:HideFinishWindow()
     exports["spz-raceUI"]:HideRaceIntro()
 end)
 
@@ -128,6 +137,7 @@ RegisterNetEvent("SPZ:countdown", function(data)
         track   = data.track,
         class   = data.class,
         laps    = data.laps,
+        raceType = data.raceType,
         gridPos = data.gridPos,
         total   = data.total,
     })

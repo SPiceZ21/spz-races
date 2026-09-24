@@ -17,8 +17,19 @@ function RunRaceCleanup(results)
 
     print("[Race Engine] Initiating final sequence cleanup.")
 
-    -- ... (rest of the loop remains same)
     for source, pData in pairs(RaceSession.players) do
+        -- Finishers and DNFs were already released on the spot (vehicle
+        -- despawned, bucket 0, statebags cleared, sent to the safe zone — see
+        -- checkpoints.lua / dnf.lua). By now they may be freeroaming in a car
+        -- they spawned themselves, or queued / in a time trial again. Running
+        -- the teardown on them a second time despawned THAT car and yanked them
+        -- out of whatever they had moved on to. Only the leftover DNF flag is
+        -- theirs to lose here.
+        if pData and pData.teleportedToSafeZone then
+            if GetPlayerName(source) then Player(source).state:set("dnf", nil, true) end
+            goto continue
+        end
+
         -- Clear track entities
         if GetResourceState("spz-vehicles") == "started" then
             exports["spz-vehicles"]:DespawnVehicle(source)
@@ -35,6 +46,8 @@ function RunRaceCleanup(results)
             pData.teleportedToSafeZone = true
             TriggerClientEvent("SPZ:tpToSafeZone", source)
         end
+
+        ::continue::
     end
 
     -- 2. Terminate the isolated environment

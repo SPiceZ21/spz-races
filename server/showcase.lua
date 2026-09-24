@@ -43,15 +43,37 @@ local function spawnShowcase(model)
         -- why the showcase car spawned unlocked and drivable).
         --
         -- The tag below is the whole contract: client/showcase.lua watches for it
-        -- and applies freeze + lock + no-collision on every client that streams
-        -- the car in.
-        if FreezeEntityPosition then FreezeEntityPosition(veh, true) end
-
+        -- and locks the car on every client that streams it in.
+        --
+        -- Not frozen yet: SHOWCASE_COORDS is a ped-height Z, so a car created
+        -- there hangs above the ground, and freezing it here pinned it mid-air.
+        -- The owning client drops it onto the ground first and reports back
+        -- (SPZ:showcaseGrounded below); only then is it frozen for everyone.
         Entity(veh).state:set("spzShowcase", true, true)
 
         print(("[showcase] Parked race car '%s' at the showcase spot."):format(tostring(model)))
     end)
 end
+
+-- The owning client has set the car on the ground properly. Snap the server's
+-- copy to that spot and freeze it there for everyone.
+RegisterNetEvent("SPZ:showcaseGrounded", function(netId, x, y, z)
+    local src = source
+    local veh = currentShowcase
+    if not veh or not DoesEntityExist(veh) then return end
+    if NetworkGetNetworkIdFromEntity(veh) ~= tonumber(netId) then return end
+    if NetworkGetEntityOwner(veh) ~= src then return end
+    if Entity(veh).state.spzShowcaseGrounded then return end
+
+    x, y, z = tonumber(x), tonumber(y), tonumber(z)
+    if not (x and y and z) then return end
+    -- Only a small settle is legitimate; anything further is not a grounding.
+    if #(vector3(x, y, z) - SHOWCASE_COORDS) > 5.0 then return end
+
+    SetEntityCoords(veh, x, y, z, false, false, false, false)
+    if FreezeEntityPosition then FreezeEntityPosition(veh, true) end
+    Entity(veh).state:set("spzShowcaseGrounded", true, true)
+end)
 
 -- SPZ:raceEnd is now fired exactly once, from ProcessRaceResults. The state
 -- guard is kept as a cheap assertion of that contract — per-finisher
