@@ -259,6 +259,12 @@ Citizen.CreateThread(function()
                 TriggerEvent(SPZ.Events.STANDINGS, payload, _posVersion)
             end
 
+            -- Field size, for the cop chase's per-position pack cap. Written only
+            -- on change: a replicated GlobalState write every tick is traffic.
+            if GlobalState.raceRacerCount ~= #merged then
+                GlobalState:set("raceRacerCount", #merged, true)
+            end
+
             -- Statebags for reactive UI: each racer gets their DISPLAY position.
             for i, e in ipairs(merged) do
                 local src   = e.source

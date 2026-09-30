@@ -40,6 +40,7 @@ server_scripts {
   'server/results.lua',
   'server/showcase.lua',
   'server/cleanup.lua',
+  'server/copchase.lua',     -- server-side spawning of the shared NPC cops
   'server/intermission.lua',
   'server/timetrail.lua',
   'server/duel.lua',

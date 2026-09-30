@@ -136,12 +136,28 @@ local COUNTDOWN_VOLUME = 0.7   -- under the GO on purpose: the release should la
 local GO_VOLUME        = 1.0
 
 local function playRaceSound(name, volume)
-    if GetResourceState("spz-raceUI") ~= "started" then return end
-    pcall(function() exports["spz-raceUI"]:PlaySound(name, volume) end)
+    local state = GetResourceState("spz-raceUI")
+    if state ~= "started" then
+        print(("^3[spz-races] sound '%s' skipped: spz-raceUI is %s^7"):format(name, state))
+        return
+    end
+    local ok, err = pcall(function() exports["spz-raceUI"]:PlaySound(name, volume) end)
+    print(("[spz-races] sound '%s' vol %.1f -> %s"):format(name, volume or 1, ok and "sent" or ("FAILED " .. tostring(err))))
 end
+
+-- F8: /racesoundtest -- plays the grid clips through the exact race path.
+RegisterCommand("racesoundtest", function()
+    CreateThread(function()
+        for _ = 1, 3 do playRaceSound("countdown", COUNTDOWN_VOLUME); Wait(1000) end
+        playRaceSound("go", GO_VOLUME)
+    end)
+end, false)
 
 RegisterNetEvent("SPZ:countdown", function(data)
     if GetResourceState("spz-raceUI") ~= "started" then return end
+    -- Left the race (/leaverace = DNF) while a tick was already in flight:
+    -- no countdown, no HUD for a race we're not in.
+    if not LocalPlayer.state.inRace then return end
     playRaceSound("countdown", COUNTDOWN_VOLUME)
     exports["spz-raceUI"]:ShowCountdown({
         number  = data.seconds,
@@ -158,6 +174,7 @@ end)
 
 RegisterNetEvent("SPZ:go", function()
     if GetResourceState("spz-raceUI") ~= "started" then return end
+    if not LocalPlayer.state.inRace then return end
     playRaceSound("go", GO_VOLUME)
     exports["spz-raceUI"]:ShowCountdown({ isGo = true })
     exports["spz-raceUI"]:SetRaceOverlayVisible(true)

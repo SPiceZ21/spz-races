@@ -63,9 +63,31 @@ local function introDetails()
     return out
 end
 
+-- Everyone still ON the grid. A player who /leaverace'd (DNF), finished, or was
+-- already sent back to freeroam stays in RaceSession.players for the results
+-- board -- but must not be sent the warmup / grid / 3-2-1 / GO sequence, or
+-- their client runs the countdown and raises the race HUD with no race.
+local function activeRacers()
+    local nextKey = nil
+    return function()
+        local src, data
+        repeat
+            src, data = next(RaceSession.players, nextKey)
+            nextKey = src
+        until src == nil or not (data and (data.dnf or data.finished or data.teleportedToSafeZone))
+        return src, data
+    end
+end
+
+local function broadcastActive(eventName, ...)
+    for src in activeRacers() do
+        if GetPlayerName(src) then TriggerClientEvent(eventName, src, ...) end
+    end
+end
+
 local function sendIntro(payload)
     if not introEnabled() then return end
-    for src in pairs(RaceSession.players) do
+    for src in activeRacers() do
         TriggerClientEvent("SPZ:raceIntro", src, payload)
     end
 end
@@ -84,7 +106,7 @@ function StartWarmupPhase()
     print(string.format("[Warmup] Free-drive phase started: %d seconds", warmupTotal))
 
     -- Unfreeze — let players drive
-    for src, _ in pairs(RaceSession.players) do
+    for src, _ in activeRacers() do
         TriggerClientEvent("SPZ:freezeRacer", src, false)
     end
 
@@ -95,7 +117,7 @@ function StartWarmupPhase()
             -- Abort early if state changed externally (e.g. not-enough-players cancel)
             if RaceSession.state ~= SPZ.RaceState.WARMUP then return end
 
-            for src, data in pairs(RaceSession.players) do
+            for src, data in activeRacers() do
                 TriggerClientEvent("SPZ:warmupPhase", src, {
                     remaining   = remaining,
                     total       = warmupTotal,
@@ -122,7 +144,7 @@ function StartWarmupPhase()
         -- Late confirmers weren't in the initial ghosting pass
 
         -- Signal clients warmup is over so HUD can clear the timer
-        BroadcastToRacers("SPZ:warmupEnd")
+        broadcastActive("SPZ:warmupEnd")
         print("[Warmup] Phase complete — re-staging players on grid")
 
         -- Cover BEFORE the teleport, not after: the whole point is that nobody
@@ -142,7 +164,7 @@ function StartWarmupPhase()
 
         -- Freeze FIRST: freezing only after the TP left a ~2s window where
         -- players could drive off the grid before the countdown started.
-        for src, _ in pairs(RaceSession.players) do
+        for src, _ in activeRacers() do
             TriggerClientEvent("SPZ:freezeRacer", src, true)
         end
 
@@ -156,7 +178,7 @@ function StartWarmupPhase()
         --
         -- Falls back to the warmup slot for a session staged before this
         -- existed, so an in-flight race can never be left with nowhere to go.
-        for src, data in pairs(RaceSession.players) do
+        for src, data in activeRacers() do
             local coords  = data.raceCoords  or data.gridCoords
             local heading = data.raceHeading or data.gridHeading or 0.0
             if coords then
@@ -170,7 +192,7 @@ function StartWarmupPhase()
         -- Wait for the client-side TP to settle, then re-assert the freeze
         -- (the teleport can knock the vehicle loose on some clients)
         Citizen.Wait(1500)
-        for src, _ in pairs(RaceSession.players) do
+        for src, _ in activeRacers() do
             TriggerClientEvent("SPZ:freezeRacer", src, true)
         end
 
@@ -197,9 +219,9 @@ exports("StartWarmupPhase", StartWarmupPhase)
 
 local function _broadcastStagingTick(remaining, total)
     local totalPlayers = 0
-    for _ in pairs(RaceSession.players) do totalPlayers = totalPlayers + 1 end
+    for _ in activeRacers() do totalPlayers = totalPlayers + 1 end
 
-    for source, data in pairs(RaceSession.players) do
+    for source, data in activeRacers() do
         TriggerClientEvent("SPZ:stagingPhase", source, {
             remaining   = remaining,
             total       = total,
@@ -215,10 +237,10 @@ end
 local function _runThreeTwoOne()
     local remaining = Config.CountdownSeconds or 3
     local totalPlayers = 0
-    for _ in pairs(RaceSession.players) do totalPlayers = totalPlayers + 1 end
+    for _ in activeRacers() do totalPlayers = totalPlayers + 1 end
 
     while remaining > 0 do
-        for source, data in pairs(RaceSession.players) do
+        for source, data in activeRacers() do
             TriggerClientEvent("SPZ:countdown", source, {
                 seconds = remaining,
                 -- Length of the whole count, so the HUD can draw a staging
@@ -261,7 +283,7 @@ function StartCountdownSequence()
     print("[Countdown] Initiating race start sequence.")
 
     -- Freeze all players at their grid positions
-    for source, _ in pairs(RaceSession.players) do
+    for source, _ in activeRacers() do
         TriggerClientEvent("SPZ:freezeRacer", source, true)
     end
 
@@ -291,7 +313,7 @@ function StartCountdownSequence()
     -- out of step costs variety, never a missing ped.
     local flagGirl = nextFlagGirl()
 
-    for source, data in pairs(RaceSession.players) do
+    for source, data in activeRacers() do
         TriggerClientEvent("SPZ:gridFormed", source, {
             coords    = startCoords,
             heading   = startHeading,
@@ -349,7 +371,7 @@ function StartCountdownSequence()
         end
 
         -- Signal clients that staging ended (HUD can clear the staging timer)
-        BroadcastToRacers("SPZ:stagingEnd")
+        broadcastActive("SPZ:stagingEnd")
         print("[Countdown] Staging complete — starting 3-2-1")
 
         -- ── 3-2-1 COUNTDOWN ────────────────────────────────────────────
@@ -360,19 +382,19 @@ function StartCountdownSequence()
 
         -- Sector clocks start with the race clock, not on the first CP hit.
         ResetSessionSectors()
-        for source, pData in pairs(RaceSession.players) do
+        for source, pData in activeRacers() do
             InitPlayerSectors(source, pData, RaceSession.track.name, RaceSession.carClassId)
             StartSectorClock(pData, RaceSession.startTime)
         end
 
-        BroadcastToRacers("SPZ:go")
+        broadcastActive("SPZ:go")
         print("[Countdown] RACE LIVE")
 
         -- Start timeout watchdog
         StartRaceTimeoutWatchdog()
 
         -- Unfreeze and unlock vehicles
-        for source, _ in pairs(RaceSession.players) do
+        for source, _ in activeRacers() do
             TriggerClientEvent("SPZ:freezeRacer", source, false)
             if GetResourceState("spz-vehicles") == "started" then
                 exports["spz-vehicles"]:UnlockRaceVehicle(source)
@@ -397,7 +419,7 @@ function StartRaceTimeoutWatchdog()
 
         if RaceSession.state == SPZ.RaceState.LIVE then
             print("[Race Engine] Race timeout reached — forcing DNF for remaining players.")
-            for source, data in pairs(RaceSession.players) do
+            for source, data in activeRacers() do
                 if not data.finished and not data.dnf then
                     ProcessDNF(source, "timeout")
                 end

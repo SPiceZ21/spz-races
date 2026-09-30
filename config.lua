@@ -525,6 +525,16 @@ Config.StartLineTool = {
 
 Config.CopChase = {
   Enabled  = true,     -- false removes the switch from the ballot entirely
+  -- true: cops are spawned by the SERVER as networked entities, so every racer
+  -- sees and collides with the same cops (server/copchase.lua). The chased
+  -- racer's client still drives them. false: old local-only packs.
+  ServerSide     = true,
+  -- Pack size follows race position: the LEADER gets up to MaxCopsLeader units
+  -- (cars + chopper), LAST place gets none, the field in between is scaled.
+  ScaleByPosition = true,
+  MaxCopsLeader   = 5,
+  RoadblockMinCap = 4,   -- a roadblock (2 extra cars) only with this much cap
+  MaxServerUnits  = 7,   -- per racer hard cap on the server: 5 + a roadblock
   Default  = false,    -- tie / no votes → this
 
   -- ── Heat → stars ─────────────────────────────────────────────────────────

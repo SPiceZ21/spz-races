@@ -1,6 +1,13 @@
 -- client/copchase.lua
 -- Street heat: NPC police that hunt a racer who picks up a wanted level.
 --
+-- SHARED COPS (Config.CopChase.ServerSide, default on): the cars and drivers
+-- are now created by the SERVER (server/copchase.lua) as networked entities in
+-- the race bucket, so every racer sees and collides with the same cops. This
+-- client still drives them -- it owns them, being the racer right beside them --
+-- with all of the AI below unchanged. The notes that follow describe the old
+-- local-only design; set ServerSide = false to go back to it.
+--
 -- WHY THIS IS FULLY SCRIPTED, AND FULLY LOCAL
 --
 -- Vanilla dispatch is off server-wide (spz-core kills random cops, police
@@ -184,10 +191,40 @@ local function clamp(v, lo, hi)
     return v
 end
 
+--- How many units (cars + chopper) THIS racer may have, from their race
+--- position: the leader gets MaxCopsLeader, last place gets none, everyone in
+--- between is scaled linearly. Solo / unknown position = the leader's cap.
+local function positionCap()
+    local maxCops = cfg("MaxCopsLeader", 5)
+    if cfg("ScaleByPosition", true) == false then return maxCops end
+    local pos   = tonumber(LocalPlayer.state.racePosition)
+    local total = tonumber(GlobalState.raceRacerCount)
+    if not pos or not total or total <= 1 then return maxCops end
+    local frac = (total - pos) / (total - 1)          -- 1.0 leader .. 0.0 last
+    return math.max(0, math.min(maxCops, math.floor(frac * maxCops + 0.5)))
+end
+
+--- The level's pack, cut down to the position cap. Roles are dropped in the
+--- order that costs the chase least: intercept, then flank, then chopper; the
+--- TAIL is the last to go, since it is the car that actually follows you.
+--- A roadblock is two more cars, so it is only allowed with room to spare.
+local function capSpec(spec, cap)
+    local s = {}
+    for k, v in pairs(spec) do s[k] = v end
+    local function total() return (s.tail or 0) + (s.flank or 0) + (s.intercept or 0) + (s.heli or 0) end
+    for _, role in ipairs({ "intercept", "flank", "heli", "tail" }) do
+        while total() > cap and (s[role] or 0) > 0 do s[role] = s[role] - 1 end
+    end
+    if cap < cfg("RoadblockMinCap", 4) then s.roadblock = 0 end
+    if cap <= 1 then s.pit = false end
+    return s
+end
+
 local function levelSpec(n)
     local levels = CC.Levels or {}
-    return levels[n] or levels[#levels]
+    local spec = levels[n] or levels[#levels]
         or { tail = 1, flank = 0, intercept = 0, pit = false, pitEvery = 0, roadblock = 0, speed = 40.0 }
+    return capSpec(spec, positionCap())
 end
 
 --- The player and the thing a cop should be looking at. While the racer is in a
@@ -279,6 +316,57 @@ local function pick(list, fallback)
     return list[math.random(1, #list)]
 end
 
+-- ── Entity creation: server-side (shared) or local ──────────────────────────
+
+local SERVER_SIDE = CC.ServerSide ~= false
+
+--- Wait until we can drive a networked entity (we spawned it right beside us,
+--- so ownership comes to us; this just waits for it to land).
+local function takeControl(ent)
+    local dl = GetGameTimer() + 2000
+    while not NetworkHasControlOfEntity(ent) and GetGameTimer() < dl do
+        NetworkRequestControlOfEntity(ent)
+        Wait(0)
+    end
+end
+
+--- One vehicle + driver. Server-side: the server creates both as networked
+--- entities in our race bucket and returns their net ids. Local: as before.
+--- Returns veh, ped (0, 0 on failure).
+local function createCarAndDriver(vehHash, pedHash, coords, heading, heli)
+    if not SERVER_SIDE then
+        local veh = CreateVehicle(vehHash, coords.x, coords.y, coords.z, heading, false, false)
+        if not DoesEntityExist(veh) then return 0, 0 end
+        local ped = CreatePed(26, pedHash, coords.x, coords.y, coords.z, heading, false, false)
+        if not DoesEntityExist(ped) then DeleteEntity(veh); return 0, 0 end
+        SetPedIntoVehicle(ped, veh, -1)
+        return veh, ped
+    end
+
+    local vNet, pNet = lib.callback.await("spz-races:copSpawn", false, {
+        veh = vehHash, ped = pedHash,
+        x = coords.x, y = coords.y, z = coords.z, h = heading, heli = heli == true,
+    })
+    if not vNet or not pNet then return 0, 0 end
+
+    local dl = GetGameTimer() + 3000
+    while (not NetworkDoesEntityExistWithNetworkId(vNet) or not NetworkDoesEntityExistWithNetworkId(pNet))
+          and GetGameTimer() < dl do
+        Wait(0)
+    end
+    if not NetworkDoesEntityExistWithNetworkId(vNet) or not NetworkDoesEntityExistWithNetworkId(pNet) then
+        TriggerServerEvent("spz-races:copDelete", { vNet, pNet })
+        return 0, 0
+    end
+    local veh, ped = NetToVeh(vNet), NetToPed(pNet)
+    takeControl(veh)
+    takeControl(ped)
+    SetEntityCoordsNoOffset(veh, coords.x, coords.y, coords.z, false, false, false)
+    SetEntityHeading(veh, heading)
+    if GetPedInVehicleSeat(veh, -1) ~= ped then SetPedIntoVehicle(ped, veh, -1) end
+    return veh, ped
+end
+
 --- Faster body styles once the pack is serious, so four stars does not look
 --- exactly like one star with more cars in it.
 local function cruiserModel()
@@ -290,6 +378,12 @@ end
 
 local function destroyUnit(u)
     if u.blip and DoesBlipExist(u.blip) then RemoveBlip(u.blip) end
+    if SERVER_SIDE then
+        local ids = {}
+        if u.veh and DoesEntityExist(u.veh) and NetworkGetEntityIsNetworked(u.veh) then ids[#ids + 1] = VehToNet(u.veh) end
+        if u.ped and DoesEntityExist(u.ped) and NetworkGetEntityIsNetworked(u.ped) then ids[#ids + 1] = PedToNet(u.ped) end
+        if #ids > 0 then TriggerServerEvent("spz-races:copDelete", ids) end
+    end
     if u.ped and DoesEntityExist(u.ped) then
         SetEntityAsMissionEntity(u.ped, true, true)
         DeleteEntity(u.ped)
@@ -769,8 +863,8 @@ local function makeUnit(coords, heading, role, launch)
     local pedHash = loadModel(pick(CC.PedModels, "s_m_y_cop_01"))
     if not vehHash or not pedHash then return nil end
 
-    local veh = CreateVehicle(vehHash, coords.x, coords.y, coords.z, heading, false, false)
-    if not DoesEntityExist(veh) then return nil end
+    local veh, ped = createCarAndDriver(vehHash, pedHash, coords, heading, false)
+    if veh == 0 then return nil end
     SetEntityAsMissionEntity(veh, true, true)   -- population culling must not eat a live pursuer
     SetVehicleOnGroundProperly(veh)
     SetVehicleEngineOn(veh, true, true, false)
@@ -790,12 +884,6 @@ local function makeUnit(coords, heading, role, launch)
 
     SetVehicleHasBeenOwnedByPlayer(veh, false)
 
-    local ped = CreatePed(26, pedHash, coords.x, coords.y, coords.z, heading, false, false)
-    if not DoesEntityExist(ped) then
-        DeleteEntity(veh)
-        return nil
-    end
-    SetPedIntoVehicle(ped, veh, -1)
     SetEntityAsMissionEntity(ped, true, true)
     if cfg("VanillaBehaviour", true) then vanillaCop(ped) else disarm(ped) end
     makeDriver(ped)
@@ -864,8 +952,8 @@ local function spawnHeli(ent)
     local at      = airPointBehind(ent)
     local heading = GetEntityHeading(ent)
 
-    local veh = CreateVehicle(vehHash, at.x, at.y, at.z, heading, false, false)
-    if not DoesEntityExist(veh) then return false end
+    local veh, ped = createCarAndDriver(vehHash, pedHash, at, heading, true)
+    if veh == 0 then return false end
     SetEntityAsMissionEntity(veh, true, true)
     SetVehicleEngineOn(veh, true, true, false)
     -- Spawned already flying: without this it drops while the rotor spools up,
@@ -875,12 +963,6 @@ local function spawnHeli(ent)
     SetVehicleStrong(veh, true)
     if cfg("Sirens", true) then SetVehicleSiren(veh, true) end
 
-    local ped = CreatePed(26, pedHash, at.x, at.y, at.z, heading, false, false)
-    if not DoesEntityExist(ped) then
-        DeleteEntity(veh)
-        return false
-    end
-    SetPedIntoVehicle(ped, veh, -1)
     SetEntityAsMissionEntity(ped, true, true)
     if cfg("VanillaBehaviour", true) then vanillaCop(ped) else disarm(ped) end
     SetPedCanBeDraggedOut(ped, false)
@@ -1066,6 +1148,9 @@ end
 --- every player pair for exactly this reason). So the pack is ghosted against
 --- every other player, and can only ever hit ME.
 local function ghostAgainstOtherPlayers()
+    -- Shared cops are real, networked cars: everyone sees them, so everyone
+    -- can hit them. Ghosting only made sense for the old local-only pack.
+    if SERVER_SIDE then return end
     if #units == 0 and not block then return end
     local myId = PlayerId()
 
