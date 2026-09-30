@@ -128,8 +128,21 @@ end)
 -- only SPZ:countdown drives the on-screen 3-2-1-GO.
 RegisterNetEvent("SPZ:stagingPhase", function() end)
 
+-- Grid-start audio. These are custom clips in spz-raceUI/ui/public/aud, played
+-- through the NUI page because PlaySoundFrontend can only reach game audio.
+-- The server ticks SPZ:countdown once a second and fires SPZ:go once, so this
+-- is one beep per number and one release -- no rate limiting needed here.
+local COUNTDOWN_VOLUME = 0.7   -- under the GO on purpose: the release should land hardest
+local GO_VOLUME        = 1.0
+
+local function playRaceSound(name, volume)
+    if GetResourceState("spz-raceUI") ~= "started" then return end
+    pcall(function() exports["spz-raceUI"]:PlaySound(name, volume) end)
+end
+
 RegisterNetEvent("SPZ:countdown", function(data)
     if GetResourceState("spz-raceUI") ~= "started" then return end
+    playRaceSound("countdown", COUNTDOWN_VOLUME)
     exports["spz-raceUI"]:ShowCountdown({
         number  = data.seconds,
         totalSeconds = data.totalSeconds,
@@ -145,6 +158,7 @@ end)
 
 RegisterNetEvent("SPZ:go", function()
     if GetResourceState("spz-raceUI") ~= "started" then return end
+    playRaceSound("go", GO_VOLUME)
     exports["spz-raceUI"]:ShowCountdown({ isGo = true })
     exports["spz-raceUI"]:SetRaceOverlayVisible(true)
     exports["spz-raceUI"]:ResetSectors()
