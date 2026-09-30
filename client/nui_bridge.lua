@@ -529,6 +529,7 @@ end
 
 local function _lobbyMode()
     if LocalPlayer.state.inRace then return { mode = "hidden" } end
+    if LocalPlayer.state.inMinigame then return { mode = "hidden" } end  -- pursuit etc. own E
     if _G.SPZ_InTimeTrial then return { mode = "hidden" } end  -- no join UI in TT
     if _isSpectating() then return { mode = "hidden" } end      -- no join UI while spectating
     if IsNuiFocused() then return { mode = "hidden" } end       -- spawn menu / any focused NUI open
@@ -577,7 +578,7 @@ end)
 -- Disabled once actually racing (inRace) — no bailing mid-grid via E.
 Citizen.CreateThread(function()
     while true do
-        if not LocalPlayer.state.inRace and not _G.SPZ_InTimeTrial
+        if not LocalPlayer.state.inRace and not _G.SPZ_InTimeTrial and not LocalPlayer.state.inMinigame
         and not IsPauseMenuActive() and not IsNuiFocused() and not _isSpectating() then
             if IsControlJustPressed(0, 51) then   -- INPUT_CONTEXT (E)
                 if LocalPlayer.state.inQueue or LocalPlayer.state.pendingRace then
