@@ -21,10 +21,22 @@ RegisterNetEvent("SPZ:reportIncident", function(payload)
 
     -- Sanity-check the reported speed so a modded client can't inflate severity.
     local speed = tonumber(payload and payload.speed) or 0
-    if speed < (cfg.minImpactSpeed or 30) or speed > 600 then return end
+    if speed ~= speed or speed < (cfg.minImpactSpeed or 30) or speed > 600 then return end
+    local drop = tonumber(payload and payload.drop) or 0
+    if drop ~= drop then drop = 0 end
+    drop = math.max(0, math.min(drop, 600))
+
+    local ped = GetPlayerPed(src)
+    if not ped or ped == 0 or not DoesEntityExist(ped) then return end
+    local pos = GetEntityCoords(ped)
+    if not pos or pos.x ~= pos.x or pos.y ~= pos.y or pos.z ~= pos.z then return end
 
     pData.incidents[#pData.incidents + 1] = {
         speed = math.floor(speed),
+        drop  = math.floor(drop),
         at    = GetGameTimer() - (RaceSession.startTime or 0),
+        x     = pos.x,
+        y     = pos.y,
+        z     = pos.z,
     }
 end)

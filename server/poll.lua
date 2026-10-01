@@ -16,6 +16,54 @@
 local PHASES = { 'track', 'vehicle', 'traffic' }
 
 local PollRun = nil
+
+local function newPollId()
+    return ("%d-%d-%06d"):format(os.time(), math.random(100000, 999999), GetGameTimer() % 1000000)
+end
+
+local function SavePollAttempt(rerolled, track, vehicle, traffic, copChase)
+    local run = PollRun
+    if not run then return end
+    local eligible, voters = 0, 0
+    for src in pairs(RaceSession.players) do
+        eligible = eligible + 1
+        local ballot = run.ballots[src]
+        if ballot and ballot.phase > 1 then voters = voters + 1 end
+    end
+    pcall(function()
+        MySQL.insert.await([[INSERT INTO race_poll_runs
+            (poll_id, attempt, race_type, started_at, ended_at, eligible_count, voter_count, rerolled,
+             track_winner, vehicle_winner, traffic_winner, cop_chase, cop_chase_yes, cop_chase_no)
+            VALUES (?, ?, ?, ?, NOW(), ?, ?, ?, ?, ?, ?, ?, ?, ?)]], {
+                run.pollId, run.rerolls or 0, RaceSession.raceType or "unknown",
+                run.startedAt,
+                eligible, voters, rerolled and 1 or 0,
+                track and track.name or nil, vehicle and vehicle.model or nil,
+                traffic and traffic.level or nil,
+                copChase == nil and nil or (copChase and 1 or 0),
+                (run.chase and run.chase.yes) or 0,
+                (run.chase and run.chase.no) or 0,
+            })
+    end)
+    local winners = { track = track and track.name, vehicle = vehicle and vehicle.model,
+        traffic = traffic and traffic.level }
+    for phaseIndex, phase in ipairs(PHASES) do
+        for i, option in ipairs(run.options[phaseIndex] or {}) do
+            local key = phase == "track" and option.name
+                or phase == "vehicle" and option.model
+                or option.level
+            pcall(function()
+                MySQL.insert.await([[INSERT INTO race_poll_options
+                    (poll_id, attempt, phase, option_key, vote_count, winner)
+                    VALUES (?, ?, ?, ?, ?, ?)]], {
+                        run.pollId, run.rerolls or 0, phase, tostring(key or "unknown"),
+                        (run.tally[phaseIndex] or {})[i] or 0,
+                        winners[phase] == key and 1 or 0,
+                    })
+            end)
+        end
+    end
+end
 --[[ {
     gen      = number,
     endsAt   = ms,
@@ -402,6 +450,8 @@ function EndRacePoll()
         local cap  = tonumber(rerollCfg().MaxPerPoll) or 1
 
         if voters > 0 and asked >= needed and used < cap then
+            SavePollAttempt(true)
+            local pollId = PollRun.pollId
             local avoidTracks, avoidModels = OfferedSet()
 
             print(("[Race Poll] Reroll carried %d/%d — redrawing tracks and cars (%d/%d used).")
@@ -416,6 +466,7 @@ function EndRacePoll()
             PollRun = nil
             StartRacePoll({
                 rerolls = used + 1,
+                pollId  = pollId,
                 avoid   = { tracks = avoidTracks, models = avoidModels },
             })
             return
@@ -430,6 +481,7 @@ function EndRacePoll()
     local selection = PollRun.options[2][vehicleIdx]
     local traffic   = PollRun.options[3][trafficIdx]
     local copChase  = ChaseWon()
+    SavePollAttempt(false, track, selection, traffic, copChase)
 
     -- Close every ballot still open (players who never finished, or joined at the
     -- very end) so nobody is left holding a dead menu.
@@ -521,6 +573,8 @@ function StartRacePoll(opts)
 
     PollRun = {
         gen     = (PollRun and PollRun.gen or 0) + 1,
+        pollId  = opts.pollId or newPollId(),
+        startedAt = os.date("%Y-%m-%d %H:%M:%S"),
         endsAt  = GetGameTimer() + window * 1000,
         options = { tracksRaw, vehRaw, trafRaw },
         ui      = { tracksUi, vehUi, trafUi },

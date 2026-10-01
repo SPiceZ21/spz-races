@@ -23,6 +23,7 @@ function LB_WriteRaceSession(results)
             }
         )
     end)
+
 end
 
 ---@param raceId  string
@@ -68,6 +69,28 @@ function LB_BulkWriteResults(raceId, players)
             params
         )
     end)
+
+    -- Persist validated impact samples beside each player's race result.
+    local incidentGroups, incidentParams = {}, {}
+    for _, p in ipairs(players) do
+        local profile = p.source and exports["spz-identity"]:GetProfile(p.source)
+        for _, incident in ipairs(p.collisions or {}) do
+            if profile and incident.x and incident.y and incident.z then
+                incidentGroups[#incidentGroups + 1] = "(?, ?, ?, ?, ?, ?, ?, ?)"
+                local values = { raceId, profile.id, incident.at or 0, incident.speed or 0,
+                    incident.drop or 0, incident.x, incident.y, incident.z }
+                for _, value in ipairs(values) do incidentParams[#incidentParams + 1] = value end
+            end
+        end
+    end
+    if #incidentGroups > 0 then
+        pcall(function()
+            MySQL.query.await(
+                "INSERT INTO race_incidents (race_id, player_id, elapsed_ms, speed_kmh, speed_drop_kmh, x, y, z) VALUES "
+                .. table.concat(incidentGroups, ", "), incidentParams
+            )
+        end)
+    end
 end
 
 ---@param track      string

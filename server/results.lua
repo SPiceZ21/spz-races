@@ -46,7 +46,9 @@ function ProcessRaceResults()
             table.insert(results.dnf, {
                 source      = source,
                 name        = pData.name,
+                dnf         = true,
                 dnf_reason  = pData.dnf_reason or "timeout",
+                collisions  = pData.incidents or {},
                 -- Progress fraction (0–1) for adaptive SR penalty in spz-progression
                 progress    = math.min(1.0, (EffectiveCP(pData) or 1) / totalCPs),
             })
