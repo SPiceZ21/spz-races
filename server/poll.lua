@@ -535,6 +535,14 @@ function EndRacePoll()
     SetRaceState(SPZ.RaceState.WAITING)
 end
 
+--- /srace during an open poll: close every ballot and drop the run without a
+--- winner, so the admin pick can be applied in its place.
+function ClosePollForForced()
+    if not PollRun then return end
+    for src in pairs(RaceSession.players) do TriggerClientEvent("SPZ:pollClosed", src) end
+    PollRun = nil
+end
+
 --- @param opts table|nil { rerolls = n, avoid = { tracks = {}, models = {} } }
 ---   Passed only when this run IS a reroll: `avoid` keeps the new ballot off
 ---   the set that was just rejected, and `rerolls` carries the count so the cap
@@ -542,6 +550,9 @@ end
 function StartRacePoll(opts)
     if RaceSession.state ~= SPZ.RaceState.IDLE
     and RaceSession.state ~= SPZ.RaceState.POLLING then return end
+
+    -- /srace: an admin already picked the track and car (server/srace.lua).
+    if ApplyForcedRace and ApplyForcedRace() then return end
 
     opts = opts or {}
     local avoid = opts.avoid
