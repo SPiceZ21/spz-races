@@ -109,6 +109,11 @@ lib.callback.register("spz-races:srace:start", function(src, data)
     if RaceSession.intermissionActive then return false, "Wait for the intermission to end." end
 
     ForcedRace = { track = track, selection = selection, by = GetPlayerName(src) or tostring(src) }
+    if GetResourceState("spz-analytics") == "started" then
+        pcall(function() exports["spz-analytics"]:Track("admin_race") end)
+        pcall(function() exports["spz-analytics"]:AdminAction(src, "srace",
+            ("%s in %s (%s)"):format(track.name, tostring(selection.model), tostring(data.mode or "now"))) end)
+    end
 
     -- The admin races too.
     if not Player(src).state.inQueue and not Player(src).state.inRace then JoinQueue(src) end

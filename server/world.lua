@@ -295,6 +295,7 @@ function ReconcileUnconfirmed()
     for src, confirmed in pairs(spawnConfirmed) do
         if not confirmed and RaceSession.players[src] then
             RaceSession.players[src] = nil
+            AnalyticsEvent("spawn_fail", "vehicle never confirmed", src)
             exports["spz-core"]:AssignPlayerToBucket(src, 0)
             ClearRaceState(src)
             if GetPlayerName(src) then

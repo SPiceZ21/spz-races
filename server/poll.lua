@@ -496,6 +496,7 @@ function EndRacePoll()
 
     if not track or not selection then
         print("[Race Poll] Poll produced no usable winner. Resetting.")
+        AnalyticsEvent("poll_no_winner")
         ResetToIdle()
         return
     end
@@ -560,6 +561,7 @@ function StartRacePoll(opts)
     local tracksRaw, tracksUi = BuildTrackOptions(avoid and avoid.tracks)
     if not tracksRaw then
         print("[Race Poll] No tracks found for type: " .. tostring(RaceSession.raceType))
+        AnalyticsEvent("poll_no_tracks", RaceSession.raceType)
         ResetToIdle()
         return
     end
@@ -567,6 +569,7 @@ function StartRacePoll(opts)
     local vehRaw, vehUi = BuildVehicleOptions(avoid and avoid.models)
     if not vehRaw then
         print("[Race Poll] No race-eligible vehicles. Resetting.")
+        AnalyticsEvent("poll_no_cars")
         ResetToIdle()
         return
     end

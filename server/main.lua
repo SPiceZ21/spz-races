@@ -14,6 +14,13 @@ RaceSession = {
     intermissionActive = false,
 }
 
+-- spz-analytics (optional): race-engine failures for Grafana.
+function AnalyticsEvent(event, detail, src)
+    if GetResourceState("spz-analytics") == "started" then
+        pcall(function() exports["spz-analytics"]:Event(event, detail, src) end)
+    end
+end
+
 -- ── In-world HUD toggles ──────────────────────────────────────────────────────
 --
 -- Which of the two floating race readouts clients should draw. Published to
@@ -105,6 +112,9 @@ exports("ClearRaceState", ClearRaceState)
 -- uptime, left raceId/track/bucketId pointing at a dead session, and left every
 -- queued player with inQueue still set — permanently unable to rejoin.
 function ResetToIdle()
+    local n = 0
+    for _ in pairs(RaceSession.players) do n = n + 1 end
+    AnalyticsEvent("race_abort", ("%s, %d players"):format(tostring(RaceSession.state), n))
     for src, pData in pairs(RaceSession.players) do
         -- Already released (finished / DNF): they own their freeroam state now,
         -- including any car they spawned since. Same rule as RunRaceCleanup.
