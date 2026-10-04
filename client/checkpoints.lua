@@ -134,14 +134,14 @@ local function _isRaceActive()
 end
 
 -- ── Custom gate props (streamed from stream/, declared in fxmanifest) ───────
--- Each gate has two variants: "_a" while the checkpoint is still ahead of you,
--- "_b" once you have crossed it. Swapping the prop is the visual confirmation
--- that the checkpoint registered.
-local PROP_START      = { pending = 'bzzz_start_a',      cleared = 'bzzz_start_b'      }
-local PROP_FINISH     = { pending = 'bzzz_finish_a',     cleared = 'bzzz_finish_b'     }
-local PROP_CHECKPOINT = { pending = 'bzzz_checkpoint_a', cleared = 'bzzz_checkpoint_b' }
+-- spz_checkpoint* pillars (source: spz-checkpointprop/blender). Orange while a
+-- checkpoint is ahead, green once crossed — the swap is the visual
+-- confirmation that the checkpoint registered. The finish stays chequered.
+local PROP_START      = { pending = 'spz_checkpoint_start',  cleared = 'spz_checkpoint_taken'  }
+local PROP_FINISH     = { pending = 'spz_checkpoint_finish', cleared = 'spz_checkpoint_finish' }
+local PROP_CHECKPOINT = { pending = 'spz_checkpoint',        cleared = 'spz_checkpoint_taken'  }
 
-local GateProps = {}   -- [cpIndex] = { left = handle, right = handle, cleared = bool }
+local GateProps = {}   -- [cpIndex] = { left, right, cleared, grounded, leftPos, rightPos }
 
 local function _gateModelFor(idx, total, cleared)
     -- Circuit: CP1 is the shared start/finish line → start post.
@@ -184,23 +184,55 @@ local function _gateHeading(idx, cp)
     return 0.0
 end
 
+-- Ground height under a gate post, or nil when the ground collision is not
+-- streamed in yet (distant gates, bridges, tunnels). Probes from just above the
+-- recorded point so a bridge deck wins over the road underneath it, and
+-- rejects hits too far from the recorded height to be the same surface.
+local function _groundZ(pos)
+    local ok, gz = GetGroundZFor_3dCoord(pos.x, pos.y, pos.z + 2.0, false)
+    if ok and math.abs(gz - pos.z) < 6.0 then return gz end
+    return nil
+end
+
+-- Stand the prop bolt upright at (pos, heading). The pillar's origin is at its
+-- base, so z = ground. Never PlaceObjectOnGroundProperly: it tilts the prop to
+-- the slope, and with no collision loaded it drops the prop onto its side.
+local function _standGateProp(obj, pos, heading)
+    local gz = _groundZ(pos)
+    SetEntityCoordsNoOffset(obj, pos.x, pos.y, gz or pos.z, false, false, false)
+    SetEntityRotation(obj, 0.0, 0.0, heading, 2, true)
+    return gz ~= nil
+end
+
 local function _placeGateProp(model, pos, heading)
-    local obj = CreateObject(model, pos.x, pos.y, pos.z, false, false, false)
+    local obj = CreateObjectNoOffset(model, pos.x, pos.y, pos.z, false, false, false)
     if obj == 0 then return nil end
-    SetEntityHeading(obj, heading)
-    PlaceObjectOnGroundProperly(obj)
-    FreezeEntityPosition(obj, true)
-    SetEntityCollision(obj, false, false)   -- drive straight through the gate
+    FreezeEntityPosition(obj, true)          -- before positioning: no physics
+    SetEntityCollision(obj, false, false)    -- drive straight through the gate
     SetEntityAsMissionEntity(obj, true, true)
-    return obj
+    local grounded = _standGateProp(obj, pos, heading)
+    return obj, grounded
+end
+
+-- Gates spawned before their ground had streamed in sit at the recorded
+-- height; snap them down once the collision exists.
+local function _regroundGate(g)
+    if g.grounded then return end
+    local ok = true
+    if g.left  and DoesEntityExist(g.left)  then ok = _standGateProp(g.left,  g.leftPos,  g.leftHdg)  and ok end
+    if g.right and DoesEntityExist(g.right) then ok = _standGateProp(g.right, g.rightPos, g.rightHdg) and ok end
+    g.grounded = ok
 end
 
 local function _spawnGate(idx)
     local cleared  = _isCleared(idx)
     local existing = GateProps[idx]
 
-    -- Already spawned in the correct variant? Nothing to do.
-    if existing and existing.cleared == cleared then return end
+    -- Already spawned in the correct variant? Just make sure it is grounded.
+    if existing and existing.cleared == cleared then
+        _regroundGate(existing)
+        return
+    end
 
     local cp = CurrentCheckpoints[idx]
     if not cp then return end
@@ -228,18 +260,23 @@ local function _spawnGate(idx)
 
     local heading = _gateHeading(idx, cp)
 
-    -- Posts sit at the gate edges, not the centre. The right-hand post is
-    -- flipped 180° so both banners face the oncoming driver.
-    local left  = cp.left  and _placeGateProp(model, cp.left,  heading) or nil
-    local right = cp.right and _placeGateProp(model, cp.right, (heading + 180.0) % 360.0) or nil
-
-    -- Gates without left/right data (older tracks) fall back to the centre.
-    if not left and not right then
-        left = _placeGateProp(model, cp.coords, heading)
-    end
+    -- Posts sit at the gate edges, not the centre. Both face the same way: the
+    -- pillar is double-sided, and flipping the right one shows its back, where
+    -- the 3D logo reads mirrored.
+    local rightHdg = heading
+    -- Older tracks have no left/right posts: one pillar at the centre instead.
+    local leftPos  = cp.left or (not cp.right and cp.coords) or nil
+    local left, lg, right, rg
+    if leftPos then left, lg = _placeGateProp(model, leftPos, heading) end
+    if cp.right then right, rg = _placeGateProp(model, cp.right, rightHdg) end
 
     if left or right then
-        GateProps[idx] = { left = left, right = right, cleared = cleared }
+        GateProps[idx] = {
+            left = left, right = right, cleared = cleared,
+            grounded = (not left or lg) and (not right or rg),
+            leftPos = leftPos, leftHdg = heading,
+            rightPos = cp.right, rightHdg = rightHdg,
+        }
     end
 end
 
@@ -661,14 +698,12 @@ exports("IsCheckpointVisualsActive", function()
 end)
 
 -- ── Diagnostics ────────────────────────────────────────────────────────────
--- Verifies every gate archetype resolves. If a "_b" variant reports MISSING,
--- it is not declared in stream/bzzz_checkpoint_package.ytyp and the gate will
--- stay on its "_a" prop after being crossed.
+-- Verifies every gate archetype resolves. A MISSING model is not declared in
+-- stream/spz_checkpoint.ytyp and that gate will not spawn / swap.
 RegisterCommand("checkgateprops", function()
     local models = {
-        "bzzz_start_a",      "bzzz_start_b",
-        "bzzz_finish_a",     "bzzz_finish_b",
-        "bzzz_checkpoint_a", "bzzz_checkpoint_b",
+        "spz_checkpoint",       "spz_checkpoint_taken",
+        "spz_checkpoint_start", "spz_checkpoint_finish",
     }
     print("[Checkpoints] Gate prop availability:")
     for _, name in ipairs(models) do

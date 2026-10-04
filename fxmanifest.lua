@@ -3,7 +3,7 @@ game 'gta5'
 
 name 'spz-races'
 description 'SPiceZ-Core — Race engine, poll, timing, checkpoints'
-version '1.30.0'
+version '1.31.1'
 author 'SPiceZ-Core'
 
 shared_scripts {
@@ -100,10 +100,10 @@ client_scripts {
 -- The .ydr + .ytd stream automatically from stream/, but the .ytyp must be
 -- declared and requested as a DLC ITYP so the models resolve.
 files {
-  'stream/bzzz_checkpoint_package.ytyp',
+  'stream/spz_checkpoint.ytyp',
 }
 
-data_file 'DLC_ITYP_REQUEST' 'stream/bzzz_checkpoint_package.ytyp'
+data_file 'DLC_ITYP_REQUEST' 'stream/spz_checkpoint.ytyp'
 
 dependencies {
   'ox_lib',
