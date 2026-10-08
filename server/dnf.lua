@@ -137,5 +137,3 @@ end
 -- but we export MarkDNF for it to use.
 
 exports("MarkDNF", MarkDNF)
-exports("ProcessDNF", MarkDNF)
-exports("CheckAllFinished", CheckAllFinished)

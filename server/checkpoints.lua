@@ -67,7 +67,7 @@ local function HandleFinish(source, pData)
                 rewind_ms     = pData.rewind_credit_total or 0,
                 collisions    = pData.incidents or {},
                 cleanRace     = (#(pData.incidents or {}) == 0),
-                points_earned = (SPZ.PointsTable and SPZ.PointsTable[pData.position or 1]) or 0,
+                points_earned = 0,   -- filled with the real RP delta by spz-progression
             }
         },
         dnf = {}
@@ -486,4 +486,3 @@ Citizen.CreateThread(function()
     end
 end)
 
-exports("HandleCheckpointAdvance", HandleCheckpointAdvance)

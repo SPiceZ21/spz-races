@@ -81,7 +81,7 @@ function LB_GetClassStandings(classLetter, limit)
         [[SELECT
             p.username       AS name,
             p.rank           AS rank_title,
-            p.class_points   AS points,
+            p.rank_points    AS points,
             p.avatar_url     AS avatar,
             p.alltime_points,
             p.sr,
@@ -99,7 +99,7 @@ function LB_GetClassStandings(classLetter, limit)
           LEFT JOIN race_results rr ON rr.player_id = p.id
           WHERE (p.license_tier = ? OR ? = 5) AND p.banned = 0
           GROUP BY p.id
-          ORDER BY p.class_points DESC, p.alltime_points DESC
+          ORDER BY p.rank_points DESC, p.alltime_points DESC
           LIMIT ?]],
         { tier, tier, limit }
     ) or {}

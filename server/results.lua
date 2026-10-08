@@ -21,6 +21,7 @@ function ProcessRaceResults()
         if pData.finished then
             table.insert(results.finishers, {
                 source        = source,
+                identifier    = pData.identifier,  -- lets scoring find racers who disconnected
                 name          = pData.name,
                 crew_tag      = pData.crew_tag,
                 position      = pData.position,
@@ -39,12 +40,13 @@ function ProcessRaceResults()
                 -- got the clean bonus regardless of how they drove.
                 collisions    = pData.incidents or {},
                 cleanRace     = (#(pData.incidents or {}) == 0),
-                points_earned = (SPZ.PointsTable and SPZ.PointsTable[pData.position]) or 0,
+                points_earned = 0,   -- filled with the real RP delta by spz-progression
             })
         else
             local totalCPs = RaceSession.track and RaceSession.track.checkpoints and #RaceSession.track.checkpoints or 1
             table.insert(results.dnf, {
                 source      = source,
+                identifier  = pData.identifier,  -- a disconnect still counts as a DNF
                 name        = pData.name,
                 dnf         = true,
                 dnf_reason  = pData.dnf_reason or "timeout",
@@ -73,6 +75,3 @@ function ProcessRaceResults()
 
     return results
 end
-
--- Export provided for state machine activation in the ENDED state
-exports("ProcessRaceResults", ProcessRaceResults)

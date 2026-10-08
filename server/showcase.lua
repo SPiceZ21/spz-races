@@ -88,4 +88,3 @@ AddEventHandler("onResourceStop", function(res)
     if res == GetCurrentResourceName() then clearShowcase() end
 end)
 
-exports("ClearShowcase", clearShowcase)

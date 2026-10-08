@@ -35,19 +35,6 @@ function SPZ.GetTrackSectors(track)
     return bounds
 end
 
--- Which sector (1..3) a checkpoint index belongs to, or nil if out of range.
-function SPZ.SectorForCP(track, cpIndex)
-    local bounds = SPZ.GetTrackSectors(track)
-    if not bounds then return nil end
-
-    for i = 1, 3 do
-        if cpIndex >= bounds[i].first and cpIndex <= bounds[i].last then
-            return i
-        end
-    end
-    return nil
-end
-
 -- True when this checkpoint closes a sector (i.e. the sector clock stops here).
 function SPZ.IsSectorEnd(track, cpIndex)
     local bounds = SPZ.GetTrackSectors(track)

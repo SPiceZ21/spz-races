@@ -125,16 +125,9 @@ RegisterNetEvent("SPZ:startTrackEditor", function(data)
     end, { id = data.id })
 end)
 
--- ── Command shortcut ──────────────────────────────────────────────────────────
+exports("IsTrackEditorActive", function() return editorActive end)
 
-RegisterCommand("trackeditor", function(_, args)
-    local trackId = args[1]
-    if not trackId then
-        Notify("Usage: /trackeditor <trackId>", "error")
-        return
-    end
-    TriggerEvent("SPZ:startTrackEditor", { id = trackId })
-end, false)
+-- No commands: the editor is opened from the admin menu (spz-admin → Tracks).
 
 -- ── Main editor loop ──────────────────────────────────────────────────────────
 

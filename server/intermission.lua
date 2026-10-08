@@ -65,6 +65,3 @@ function StartIntermission(results)
         end
     end)
 end
-
--- Called by the ENDED handler in state_machine.lua (overlapped with results)
-exports("StartIntermission", StartIntermission)

@@ -203,8 +203,6 @@ function StartWarmupPhase()
     end)
 end
 
-exports("StartWarmupPhase", StartWarmupPhase)
-
 -- ── 10. Staging + Countdown Sequence ─────────────────────────────────────
 --
 -- Flow:
@@ -260,7 +258,6 @@ local function _runThreeTwoOne()
         remaining = remaining - 1
     end
 end
-
 
 -- Flag girl selection, shared across the lobby. See the call site below.
 local FLAG_GIRL_COUNT = 6      -- #PED_MODELS in client/gridgirl.lua
@@ -428,4 +425,3 @@ function StartRaceTimeoutWatchdog()
     end)
 end
 
-exports("StartCountdownSequence", StartCountdownSequence)

@@ -1296,6 +1296,9 @@ local function stopChase(reason)
     phase, pursuitSince, contactAt, contactEver = "CLEAR", 0, 0, false
     pendingHeat, starsSince = 0.0, 0
     clearPack()
+    -- The server created (and owns) the pack: have it delete whatever this
+    -- client could not, so escaped racers do not leave cop cars behind.
+    TriggerServerEvent("spz-races:copClear")
 
     -- Hands the scanner back to spz-core, which resumes cancelling reports.
     LocalPlayer.state:set("copHeat", false, false)
@@ -1844,6 +1847,3 @@ AddEventHandler("onResourceStop", function(res)
     if res == GetCurrentResourceName() then clearPack() end
 end)
 
-exports("GetChaseStars", function() return stars end)
-exports("IsCopChaseActive", function() return active and stars > 0 end)
-exports("GetChasePhase", function() return phase end)

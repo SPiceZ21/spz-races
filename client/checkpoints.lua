@@ -76,7 +76,6 @@ local ROUTE_COLOUR  = CPB.routeColour or 17      -- blip colour id (blip mode)
 -- its own setting rather than reusing the one above.
 local ROUTE_HUD     = CPB.routeHudColour or 15   -- orange
 
-
 -- Gates past the lookahead: dim dots by default, so the rest of the track sits
 -- on the map as context. hideFar = true drops them entirely.
 local HIDE_FAR      = CPB.hideFar == true
@@ -92,7 +91,6 @@ local SCALE_NEAR    = CPS.near    or 1.20
 local SCALE_AHEAD   = CPS.ahead   or 0.98   -- two gates ahead
 local SCALE_PENDING = CPS.pending or 0.82
 local SCALE_FINISH  = CPS.finish  or 2.00
-
 
 -- ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -383,7 +381,6 @@ local function _buildMultiRoute(idx)
     MultiRouteOn = true
 end
 
-
 --- How far ahead of `idx` a checkpoint sits, or nil if it is behind.
 ---
 --- Wraps on circuits, where the checkpoint two ahead of the last gate is gate
@@ -559,7 +556,6 @@ local function _applyActive(idx)
     _refreshGates()   -- swap crossed gates to their "_b" (cleared) variant
 end
 
-
 -- ── Net events ─────────────────────────────────────────────────────────────
 
 RegisterNetEvent("SPZ:spawnCheckpoints", function(checkpoints, startIdx, trackType)
@@ -640,7 +636,6 @@ exports("GetCheckpointDebug", function()
     return CurrentCheckpoints, CurrentCPIndex, TrackType, LastCaughtIdx
 end)
 
-
 -- Respawn point for the "back to last checkpoint" key: the coords of the last
 -- checkpoint actually crossed (fallback: the first checkpoint / start), with a
 -- heading that faces the NEXT target so you resume pointing the right way.
@@ -659,10 +654,6 @@ exports("GetRespawnPoint", function()
     end
 
     return { coords = fromCp.coords, heading = heading or 0.0 }
-end)
-
-exports("GetRaceState", function()
-    return RaceState
 end)
 
 -- ── Time Trial reuse ───────────────────────────────────────────────────────
@@ -691,10 +682,6 @@ exports("StopCheckpointVisuals", function()
     _clearAllBlips()
     CurrentCheckpoints = {}
     CurrentCPIndex     = 1
-end)
-
-exports("IsCheckpointVisualsActive", function()
-    return _isRaceActive() and #CurrentCheckpoints > 0
 end)
 
 -- ── Diagnostics ────────────────────────────────────────────────────────────

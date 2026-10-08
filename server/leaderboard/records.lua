@@ -135,29 +135,3 @@ function LB_GetAllTrackRecords(carClass)
     return formatted
 end
 
--- Personal best laps for a player across all tracks
-function LB_GetPersonalRecords(source)
-    local profile = source and exports["spz-identity"]:GetProfile(source)
-    if not profile then return {} end
-
-    local rows = MySQL.query.await(
-        [[SELECT tr.track, tr.car_class, tr.best_time AS lap_time_ms, tr.set_at
-          FROM track_records tr
-          WHERE tr.player_id = ?
-          ORDER BY tr.track ASC]],
-        { profile.id }
-    ) or {}
-
-    local result = {}
-    for _, row in ipairs(rows) do
-        table.insert(result, {
-            track       = row.track,
-            track_name  = row.track,
-            car_class   = row.car_class,
-            lap_time_ms = row.lap_time_ms,
-            lap_time_f  = LB_FormatTime(row.lap_time_ms),
-            set_at      = row.set_at,
-        })
-    end
-    return result
-end

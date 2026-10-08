@@ -58,84 +58,7 @@ RegisterNetEvent("SPZ:startTrackCreator", function(data)
     print(("^2[Creator] Started: %s (%s)^7"):format(trackMeta.name, trackMeta.type))
 end)
 
--- ── Exports (called from tablet NUI bridge) ───────────────────────────────────
-
-exports("AddTrackCheckpoint", function(width, heading)
-    if not creatorActive then return false, 0 end
-    local ent   = GetTargetEntity()
-    local pos   = GetEntityCoords(ent)
-    local head  = tonumber(heading) or GetEntityHeading(ent)
-    local w     = tonumber(width) or defaultWidth
-    local left, right = CalcGate(pos, head, w)
-
-    table.insert(checkpoints, {
-        coords  = pos,
-        heading = head,
-        radius  = w,
-        left    = left,
-        right   = right,
-    })
-
-    PlaySoundFrontend(-1, "Place_Prop_Success", "DLC_DHE_PROP_SOUNDS", 1)
-    Notify(("Gate #%d placed"):format(#checkpoints), "success")
-    return true, #checkpoints
-end)
-
-exports("DeleteLastCheckpoint", function()
-    if not creatorActive or #checkpoints == 0 then return false, 0 end
-    table.remove(checkpoints)
-    PlaySoundFrontend(-1, "PROP_DROP_RED", "HUD_FRONTEND_DEFAULT_SOUNDSET", 1)
-    Notify(("Gate removed — %d remaining"):format(#checkpoints), "warning")
-    return true, #checkpoints
-end)
-
-exports("CancelTrackCreator", function()
-    creatorActive = false
-    checkpoints   = {}
-    Notify("Track creation canceled.", "error")
-    return true
-end)
-
-exports("SaveTrack", function(name, type, cb)
-    if not creatorActive then
-        if cb then cb(false, "Creator not active") end
-        return
-    end
-    if #checkpoints < 2 then
-        Notify("Need at least 2 gates to save!", "error")
-        if cb then cb(false, "Too few checkpoints") end
-        return
-    end
-
-    local tName = name or trackMeta.name
-    local tType = type or trackMeta.type
-    local tLaps = trackMeta.laps
-
-    local clean = {}
-    for _, cp in ipairs(checkpoints) do
-        table.insert(clean, {
-            coords  = { x = cp.coords.x, y = cp.coords.y, z = cp.coords.z },
-            left    = { x = cp.left.x,   y = cp.left.y,   z = cp.left.z   },
-            right   = { x = cp.right.x,  y = cp.right.y,  z = cp.right.z  },
-            heading = cp.heading,
-            radius  = cp.radius,
-        })
-    end
-
-    TriggerServerEvent("SPZ:saveCustomTrack", {
-        name        = tName,
-        type        = tType,
-        laps        = tLaps,
-        checkpoints = clean,
-    })
-
-    creatorActive = false
-    checkpoints   = {}
-    if cb then cb(true) end
-end)
-
 -- ── Keyboard-driven in-world controls ────────────────────────────────────────
--- (Works WITHOUT the tablet open — full standalone tool)
 
 CreateThread(function()
     while true do
@@ -304,34 +227,6 @@ CreateThread(function()
     end
 end)
 
--- ── Command shortcut ──────────────────────────────────────────────────────────
+exports("IsTrackCreatorActive", function() return creatorActive end)
 
-RegisterCommand("trackcreator", function()
-    if creatorActive then
-        Notify("Creator already active!", "warning")
-        return
-    end
-    TriggerEvent("SPZ:startTrackCreator", {
-        name  = "Custom_" .. GetGameTimer(),
-        type  = "circuit",
-        laps  = 3,
-    })
-end, false)
-
-RegisterCommand("tracktype", function(_, args)
-    if not creatorActive then return end
-    local t = args[1]
-    if t == "circuit" or t == "sprint" then
-        trackMeta.type = t
-        if t == "sprint" then trackMeta.laps = 1 end
-        Notify("Track type set: " .. t, "info")
-    else
-        Notify("Usage: /tracktype circuit|sprint", "error")
-    end
-end, false)
-
-RegisterCommand("trackname", function(_, args)
-    if not creatorActive then return end
-    trackMeta.name = table.concat(args, " ")
-    Notify("Track name: " .. trackMeta.name, "info")
-end, false)
+-- No commands: the maker is opened from the admin menu (spz-admin → Tracks).

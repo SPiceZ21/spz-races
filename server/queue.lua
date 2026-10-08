@@ -65,8 +65,14 @@ function JoinQueue(src)
         return true
     end
 
-    if GetQueueCount() >= (Config.MaxPlayersPerRace or 16) then
-        Notify(src, "The race queue is currently full")
+    -- 0 / nil = no limit. A capped queue that was full used to drop players
+    -- who had been auto-enrolled from the previous race (FlushPendingToQueue
+    -- clears their pending flag first), so they silently missed the race.
+    local cap = tonumber(Config.MaxPlayersPerRace) or 0
+    if cap > 0 and GetQueueCount() >= cap then
+        Notify(src, "The race queue is currently full — you'll join the next race", "info")
+        PendingNextCycle[src] = true
+        Player(src).state:set("pendingRace", true, true)
         return false
     end
 
@@ -140,6 +146,9 @@ function LeaveQueue(src)
         or RaceSession.state == SPZ.RaceState.WAITING)
     and GetQueueCount() < (Config.MinPlayersToStart or 1) then
         ResetToIdle()
+    elseif RaceSession.state == SPZ.RaceState.POLLING and CheckPollComplete then
+        -- The one ballot everyone was waiting on may have just left.
+        CheckPollComplete()
     end
 end
 
@@ -147,14 +156,6 @@ function GetQueueCount()
     local n = 0
     for _ in pairs(RaceSession.players) do n = n + 1 end
     return n
-end
-
-function GetQueuePlayers()
-    local players = {}
-    for src in pairs(RaceSession.players) do
-        table.insert(players, src)
-    end
-    return players
 end
 
 function IsQueued(src)
@@ -185,7 +186,4 @@ end
 exports("JoinQueue",      JoinQueue)
 exports("LeaveQueue",     LeaveQueue)
 exports("GetQueueCount",  GetQueueCount)
-exports("GetQueuePlayers", GetQueuePlayers)
 exports("IsQueued",       IsQueued)
-exports("FlushPendingToQueue", FlushPendingToQueue)
-exports("ClearPending",   ClearPending)

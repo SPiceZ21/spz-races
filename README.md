@@ -62,15 +62,11 @@ Modes: standard race, time trial, and duel.
 
 | Group | Exports |
 |---|---|
-| State | `GetRaceState` · `SetRaceState` · `ResetToIdle` · `ClearRaceState` |
-| Queue | `JoinQueue` · `LeaveQueue` · `IsQueued` · `GetQueueCount` · `GetQueuePlayers` · `BroadcastQueueUpdate` · `FlushPendingToQueue` · `ClearPending` |
-| Flow | `StartRacePoll` · `StartWarmupPhase` · `StartCountdownSequence` · `SetupRaceWorld` · `StartIntermission` · `RunRaceCleanup` |
-| Checkpoints | `SetActiveCheckpoint` · `GetCurrentCP` · `HandleCheckpointAdvance` · `StartCheckpointVisuals` · `StopCheckpointVisuals` · `IsCheckpointVisualsActive` · `GetRespawnPoint` |
-| Sectors | `RecordSectorHit` · `GetSessionBestSectors` |
-| Positions | `CalculatePositions` · `UpdatePositions` |
-| Results | `CheckAllFinished` · `ProcessRaceResults` · `MarkDNF` · `ProcessDNF` · `HandlePlayerDisconnect` |
+| State | `SetRaceState` |
+| Queue | `JoinQueue` · `LeaveQueue` · `IsQueued` · `GetQueueCount` |
+| Checkpoints | `SetActiveCheckpoint` · `GetCurrentCP` · `StartCheckpointVisuals` · `StopCheckpointVisuals` · `GetRespawnPoint` |
+| Results | `MarkDNF` · `HandlePlayerDisconnect` |
 | Time trial | `IsInTimeTrial` |
-| Track tooling | `SaveTrack` · `AddTrackCheckpoint` · `DeleteLastCheckpoint` · `CancelTrackCreator` |
 | Spawn | `ConfirmRaceSpawn` |
 
 ## Events
@@ -110,7 +106,7 @@ duel.
 | `/timetrail` · `/tt_restart` · `/quittt` | Time trial control (leaving the car also ends the run) |
 | `/duel` | Challenge a player |
 | `/spz_respawn_cp` (F4) · `/spz_flip_car` (X) | Recovery — offered by name when you miss a checkpoint |
-| `/trackcreator` · `/trackeditor` · `/trackname` · `/tracktype` · `/fixheadings` · `/checkgateprops` | Track tooling |
+| `/fixheadings` · `/checkgateprops` | Track tooling (make / edit / on-off is in the admin menu → Tracks) |
 
 ## Dependencies
 

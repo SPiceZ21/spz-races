@@ -14,7 +14,6 @@ shared_scripts {
   -- SPZ.Events rather than declaring its own table.
   '@spz-core/shared/events.lua',
   'shared/events.lua',
-  'shared/points.lua',
   'shared/sectors.lua',
 }
 
@@ -65,6 +64,7 @@ server_scripts {
   -- line to a custom track that did not exist yet.
   'server/startline.lua',
   'server/dev_heading.lua',
+  'server/trackadmin.lua',   -- after creator.lua: overrides apply to custom tracks too
 }
 
 client_scripts {

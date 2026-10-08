@@ -93,6 +93,3 @@ function RunRaceCleanup(results)
     -- Intermission is NOT started here: it runs overlapped with the results
     -- screen and was already started by the ENDED handler in state_machine.lua.
 end
-
--- Export for state machine integration
-exports("RunRaceCleanup", RunRaceCleanup)

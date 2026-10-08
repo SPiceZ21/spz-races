@@ -7,11 +7,12 @@ Config = {}
 -- the queue when it expires races; latecomers can still join during the polls.
 Config.JoinWindowSeconds    = 30      -- countdown armed by the first joiner
 Config.MinPlayersToStart    = 1       -- legacy floor — only used as "queue empty" check
-Config.PollWaitTime         = 2       -- (legacy, unused by the join-window flow)
-Config.MaxPlayersPerRace    = 16      -- hard cap on queue size
+Config.MaxPlayersPerRace    = 0       -- 0 = no limit. Ranking works at any field size;
+                                      -- set a number only if the start line / server can't cope
 
 -- ── Poll ───────────────────────────────────────────────────────────────────
-Config.PollDuration         = 30      -- seconds the poll stays open
+Config.PollDuration         = 30      -- seconds PER PHASE: the poll window is this x 3 (track, car, traffic) = 90 s,
+                                      -- ending early once every ballot is in
 -- Cards per ballot phase — tracks, and cars. Three is a choice; two is a
 -- coin toss, which is what made the reroll worth adding in the first place.
 -- It is capped by what exists: a race type with only two tracks offers two.
@@ -172,26 +173,14 @@ Config.SpawnRetryIntervalMs = 8000    -- ms between respawn retries during warmu
 
 -- ── Poll reroll ─────────────────────────────────────────────────────────────
 --
--- Any ballot can ask for the whole SET to be redrawn — different tracks,
--- different cars — instead of picking the least bad of what came up.
---
--- Decided by a strict majority of the players who actually VOTED, and only
--- once the poll closes. Deliberately not "first click wins": a reroll throws
--- away votes other people have already cast, and on a busy server an instant
--- one is a grief button.
+-- The track and car ballots end with a REROLL card ("none of these"). It is
+-- voted like any other card and counted when the poll closes. If it gets more
+-- votes than every track (or every car) on its ballot, the set is redrawn and
+-- the poll runs again, keeping the rejected tracks/cars off the new ballot.
+-- Deliberately counted at the close, not on the first click: a reroll throws
+-- away votes other people have already cast.
 Config.PollReroll = {
   Enabled    = true,
-
-  -- What counts as "most of them".
-  --
-  -- nil = strict majority: 6 of 10, 4 of 7, 2 of 3. Half is not enough, so a
-  -- 5-5 split never bins the other five players' votes.
-  --
-  -- Set a fraction to lower the bar — 0.4 means 4 of 10 carries it. The
-  -- denominator is players who ACTUALLY VOTED, never the whole session: a
-  -- player who ignores the ballot should not be able to block a reroll by
-  -- doing nothing, which is what counting them would mean.
-  Threshold  = nil,
 
   -- How many redraws a single poll can spend. Two rerolls of a server with
   -- three circuits is the same three circuits again, with the grid still
@@ -247,13 +236,6 @@ Config.Incidents = {
   maxPerRace        = 20,     -- hard cap on reported incidents (anti-spam)
 }
 
--- ── Physics ────────────────────────────────────────────────────────────────
-Config.RaceAssists = {
-  tcs = true,
-  abs = true,
-  esc = false,
-  lc  = true,
-}
 -- ── Post-race ──────────────────────────────────────────────────────────────
 Config.ResultsDisplayTime   = 12000   -- ms stats screen shown before TP back
 
@@ -385,9 +367,6 @@ Config.RecoverKey           = "F4"
 -- Range (metres) within which checkpoint gate props are spawned.
 -- Beyond this the props are removed again to keep the entity count low.
 Config.GateRange            = 130.0
-
--- GPS route colour index (GTA colour palette, 51 = bright yellow).
-Config.GpsRouteColour       = 51
 
 -- Ghost-bots (the cold-start field filler that backfilled thin races with
 -- replayed stored lines) were REMOVED. The standings, the results grid, the map

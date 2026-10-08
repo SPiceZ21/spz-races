@@ -6,7 +6,11 @@ function SetupRaceWorld()
     if RaceSession.state ~= SPZ.RaceState.WAITING then return end
 
     if not RaceSession.raceId then
-        RaceSession.raceId = string.format("R%d", math.random(1000, 9999))
+        -- Unique per race: "R" + UTC timestamp + 3 random digits. The old
+        -- "R1000".."R9999" collided within a few hundred races, which breaks
+        -- race_sessions.race_id (UNIQUE), the replay archive and the
+        -- rank_awards ledger that stops a race being scored twice.
+        RaceSession.raceId = string.format("R%s%03d", os.date("!%y%m%d%H%M%S"), math.random(0, 999))
     end
 
     -- Enable ambient population in the race bucket only if players voted for
@@ -366,4 +370,3 @@ AddEventHandler("SPZ:raceVehicleSpawned", function(src)
     end
 end)
 
-exports("SetupRaceWorld", SetupRaceWorld)

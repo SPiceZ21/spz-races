@@ -68,20 +68,6 @@ local function _stopVisuals()
     exports["spz-races"]:StopCheckpointVisuals()
 end
 
--- ── Gate-width radius helper ──────────────────────────────────────────────────
-
-local function _gateR2(cp)
-    if cp.left then
-        local dx = cp.coords.x - cp.left.x
-        local dy = cp.coords.y - cp.left.y
-        local dz = cp.coords.z - cp.left.z
-        local r  = math.sqrt(dx*dx + dy*dy + dz*dz)
-        return r * r
-    end
-    local r = cp.radius or 5.0
-    return r * r
-end
-
 -- ── Logical → Physical CP index ──────────────────────────────────────────────
 -- Server uses logical indexing for circuits: a lap runs 1, 2, ..., n where
 -- crossing the start/finish line IS logical CP n. Physical CP 1 is the line.
@@ -571,19 +557,6 @@ end)
 
 AddEventHandler("SPZ:tt:nuiDismissResults", function()
     UI("tt_hide", {})
-end)
-
-AddEventHandler("SPZ:tt:nuiRestartBtn", function()
-    if TTActive then
-        if TTRestartActive then
-            _cancelRestart()
-        else
-            TTRestartActive = true
-            TTRestartEndsAt = GetGameTimer() + RESTART_MS
-            UI("tt_restart_start", { totalMs = RESTART_MS })
-            PlaySoundFrontend(-1, "WAYPOINT_SET", "HUD_FRONTEND_DEFAULT_SOUNDSET", 1)
-        end
-    end
 end)
 
 -- ── Export ────────────────────────────────────────────────────────────────────

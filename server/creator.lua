@@ -12,6 +12,15 @@
 -- back to the editor — so every custom track lost its direction the moment it
 -- was written. Keep `heading` in any new mapping added here.
 
+-- The built-in tracks (data/tracks.lua), captured at file load, before the
+-- custom tracks are merged in. An editor save of a built-in track writes a
+-- copy into custom_tracks.json under the same id; deleting that copy puts the
+-- original back instead of removing the track.
+local BuiltinTracks = {}
+for id, t in pairs(SPZ.Tracks or {}) do BuiltinTracks[id] = t end
+
+function IsBuiltinTrack(id) return BuiltinTracks[id] ~= nil end
+
 local function LoadCustomTracks()
     local file = LoadResourceFile(GetCurrentResourceName(), "data/custom_tracks.json")
     if file then
@@ -58,6 +67,9 @@ end)
 
 RegisterNetEvent("SPZ:saveCustomTrack", function(payload)
     local src = source
+    -- Admin only (TrackAdminAllowed in server/trackadmin.lua). Without this any
+    -- client could overwrite or add tracks by firing the event.
+    if not (TrackAdminAllowed and TrackAdminAllowed(src)) then return end
     if not payload or not payload.checkpoints or #payload.checkpoints < 2 then
         TriggerClientEvent("ox_lib:notify", src, { description = "Save failed: need at least 2 checkpoints.", type = "error", position = "center-left" })
         return
@@ -138,30 +150,21 @@ RegisterNetEvent("SPZ:saveCustomTrack", function(payload)
     end
     
     SPZ.Tracks[trackId] = loadedTrack
-    
+    -- Keep the track manager's on/off, laps and weight for this id.
+    if ApplyTrackOverride then ApplyTrackOverride(trackId) end
+    if GetResourceState("spz-analytics") == "started" then
+        pcall(function() exports["spz-analytics"]:AdminAction(src, "track_save",
+            ("%s (%s), %d gates"):format(cleanTrack.name, trackId, #cleanTrack.checkpoints)) end)
+    end
+
     SPZ.Notify(src, ("Track '%s' saved and live (%d gates, %d laps)!"):format(cleanTrack.name, #cleanTrack.checkpoints, cleanTrack.laps), "success")
     print(string.format("^2[spz-races] Saved custom track '%s' (ID: %s)^7", cleanTrack.name, trackId))
 end)
 
 -- ── Callbacks ────────────────────────────────────────────────────────────────
 
-lib.callback.register("spz-races:getTracks", function(source)
-    local list = {}
-    for id, track in pairs(SPZ.Tracks) do
-        table.insert(list, {
-            id = id,
-            name = track.name,
-            type = track.type or "circuit",
-            laps = track.laps or 3,
-            checkpointCount = track.checkpoints and #track.checkpoints or 0,
-            isCustom = (id:sub(1, 7) == "custom_") or (id:find("custom") ~= nil) or false
-        })
-    end
-    table.sort(list, function(a, b) return a.name < b.name end)
-    return list
-end)
-
 lib.callback.register("spz-races:deleteTrack", function(source, data)
+    if not (TrackAdminAllowed and TrackAdminAllowed(source)) then return false, "Not authorised" end
     if not data or not data.id then
         return false, "Invalid Track ID"
     end
@@ -181,17 +184,28 @@ lib.callback.register("spz-races:deleteTrack", function(source, data)
         end
     end
 
-    if currentTracks[trackId] then
-        currentTracks[trackId] = nil
-        SaveResourceFile(GetCurrentResourceName(), "data/custom_tracks.json", json.encode(currentTracks, { indent = true }), -1)
+    -- Only tracks made in the creator can be deleted; built-in ones live in
+    -- data/tracks.lua and come back on restart, so switch them off instead.
+    if not currentTracks[trackId] then
+        return false, "Built-in track: switch it off in the track manager instead"
+    end
+    currentTracks[trackId] = nil
+    SaveResourceFile(GetCurrentResourceName(), "data/custom_tracks.json", json.encode(currentTracks, { indent = true }), -1)
+    if GetResourceState("spz-analytics") == "started" then
+        pcall(function() exports["spz-analytics"]:AdminAction(source, "track_delete", trackId) end)
     end
 
+    if BuiltinTracks[trackId] then
+        SPZ.Tracks[trackId] = BuiltinTracks[trackId]
+        if ApplyTrackOverride then ApplyTrackOverride(trackId) end
+        return true, "Edits removed, original track restored"
+    end
     SPZ.Tracks[trackId] = nil
-    TriggerClientEvent('ox_lib:notify', source, { description = "Track deleted.", type = "success", position = "center-left" })
-    return true
+    return true, "Track deleted"
 end)
 
 lib.callback.register("spz-races:getTrackDetails", function(source, data)
+    if not (TrackAdminAllowed and TrackAdminAllowed(source)) then return nil end
     if not data or not data.id then
         return nil
     end
@@ -222,6 +236,4 @@ lib.callback.register("spz-races:getTrackDetails", function(source, data)
         checkpoints = cps
     }
 end)
-
-
 

@@ -230,5 +230,3 @@ function TT_RecordSectorHit(source, s, cpIndex, now)
     })
 end
 
-exports("RecordSectorHit", RecordSectorHit)
-exports("GetSessionBestSectors", function() return SessionBest end)

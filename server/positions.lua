@@ -292,7 +292,3 @@ function UpdateAllPositions()
     CalculatePositions()
     -- We can optionally force a broadcast here too if we want immediate HUD updates
 end
-
--- Export for external systems
-exports("UpdatePositions", UpdateAllPositions)
-exports("CalculatePositions", CalculatePositions)

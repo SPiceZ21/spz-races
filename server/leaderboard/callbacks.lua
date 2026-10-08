@@ -45,10 +45,6 @@ lib.callback.register("spz-races:getClassStandings", function(source, data)
     return safeCall(LB_GetClassStandings, {}, data and (data.class or data.tier) or "D", data and data.limit)
 end)
 
-lib.callback.register("spz-races:getTrackRecords", function(source, data)
-    return safeCall(LB_GetTrackRecords, {}, data and data.track, data and data.carClass, data and data.limit)
-end)
-
 lib.callback.register("spz-races:getPlayerStats", function(source, data)
     local target = (data and data.source) or source
     return safeCall(LB_GetPlayerStats, nil, target)
@@ -78,10 +74,6 @@ end)
 
 lib.callback.register("spz-races:getAllTrackRecords", function(source, data)
     return safeCall(LB_GetAllTrackRecords, {}, data and data.carClass or nil)
-end)
-
-lib.callback.register("spz-races:getPersonalRecords", function(source)
-    return safeCall(LB_GetPersonalRecords, {}, source)
 end)
 
 -- Race archive: the list of finished races, and the full classification of one.

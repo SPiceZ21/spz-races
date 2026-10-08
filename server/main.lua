@@ -103,8 +103,6 @@ function ClearRaceState(src, keepDnfFlag)
     end
 end
 
-exports("ClearRaceState", ClearRaceState)
-
 -- ── ResetToIdle ───────────────────────────────────────────────────────────────
 -- Abort path for a cycle that never reached the finish (empty queue, dead poll,
 -- nobody spawned). This used to drop the players table and nothing else, so an
@@ -112,6 +110,9 @@ exports("ClearRaceState", ClearRaceState)
 -- uptime, left raceId/track/bucketId pointing at a dead session, and left every
 -- queued player with inQueue still set — permanently unable to rejoin.
 function ResetToIdle()
+    -- An open poll must die with the session, or its timer later picks a race
+    -- for a queue that no longer exists.
+    if ClosePollForForced then ClosePollForForced() end
     local n = 0
     for _ in pairs(RaceSession.players) do n = n + 1 end
     AnalyticsEvent("race_abort", ("%s, %d players"):format(tostring(RaceSession.state), n))
@@ -159,8 +160,6 @@ function ResetToIdle()
     SetRaceState(SPZ.RaceState.IDLE)
     if BroadcastQueueUpdate then BroadcastQueueUpdate() end
 end
-
-exports("ResetToIdle", ResetToIdle)
 
 -- ── Display name ──────────────────────────────────────────────────────────────
 --
@@ -257,8 +256,6 @@ function BroadcastQueueUpdate()
     })
 end
 
-exports("BroadcastQueueUpdate", BroadcastQueueUpdate)
-
 -- ── Resync handler ────────────────────────────────────────────────────────────
 RegisterNetEvent("SPZ:requestResync", function()
     local src   = source
@@ -304,6 +301,13 @@ exports("HandlePlayerDisconnect", function(src)
         if MarkDNF then MarkDNF(src, "disconnect") end
     else
         RaceSession.players[src] = nil
+        if RaceSession.state == SPZ.RaceState.POLLING then
+            if GetQueueCount() < (Config.MinPlayersToStart or 1) then
+                ResetToIdle()
+            elseif CheckPollComplete then
+                CheckPollComplete()
+            end
+        end
     end
 end)
 
@@ -358,9 +362,12 @@ AddEventHandler("playerDropped", function()
         RaceSession.players[src] = nil
         print(string.format("[Race Engine] Player %s left the queue.", name))
 
-        if RaceSession.state == SPZ.RaceState.POLLING
-        and GetQueueCount() < (Config.MinPlayersToStart or 1) then
-            ResetToIdle()
+        if RaceSession.state == SPZ.RaceState.POLLING then
+            if GetQueueCount() < (Config.MinPlayersToStart or 1) then
+                ResetToIdle()
+            elseif CheckPollComplete then
+                CheckPollComplete()   -- they may have been the last ballot out
+            end
         end
     end
 end)
