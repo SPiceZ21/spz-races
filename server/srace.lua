@@ -6,7 +6,10 @@
 -- admin is put in the queue automatically; "now" starts with whoever is
 -- queued, "window" opens the normal join window first so others can /joinrace.
 
-ForcedRace = nil   -- { track, selection, by }
+ForcedRace = nil   -- { track, selection, traffic, by }
+
+-- Same levels as the poll's traffic ballot (server/world.lua reads them).
+local TRAFFIC = { none = true, light = true, heavy = true }
 
 local function isAdmin(src)
     local ok, allowed = pcall(function() return exports["spz-core"]:HasPermission(src, "spz.admin") end)
@@ -26,10 +29,10 @@ function ApplyForcedRace()
     RaceSession.track        = track
     RaceSession.selection    = selection
     RaceSession.carClassId   = selection.class
-    RaceSession.trafficLevel = "none"
-    RaceSession.copChase     = false
-    GlobalState:set("raceTraffic", "none", true)
-    GlobalState:set("raceCopChase", false, true)
+    RaceSession.trafficLevel = f.traffic or "none"
+    RaceSession.copChase     = f.cops == true
+    GlobalState:set("raceTraffic", RaceSession.trafficLevel, true)
+    GlobalState:set("raceCopChase", RaceSession.copChase, true)
 
     local meta = exports["spz-vehicles"]:GetClassMeta(selection.class)
     RaceSession.carClass = {
@@ -39,12 +42,13 @@ function ApplyForcedRace()
         model    = selection.model,
     }
 
-    print(("[srace] %s set the race: %s | %s"):format(f.by, track.name, tostring(selection.model)))
+    print(("[srace] %s set the race: %s | %s | traffic %s | cops %s"):format(f.by, track.name, tostring(selection.model),
+        RaceSession.trafficLevel, tostring(RaceSession.copChase)))
 
     for src in pairs(RaceSession.players) do
         TriggerClientEvent("SPZ:pollResult", src, {
             phase = "final", track = track.name, class = RaceSession.carClass,
-            type = track.type, laps = track.laps, traffic = "none", chase = false,
+            type = track.type, laps = track.laps, traffic = RaceSession.trafficLevel, chase = RaceSession.copChase,
         })
     end
     SetRaceState(SPZ.RaceState.WAITING)
@@ -80,7 +84,8 @@ lib.callback.register("spz-races:srace:options", function(src)
     end
     table.sort(classes, function(a, b) return a.name < b.name end)
 
-    return { tracks = tracks, classes = classes, state = RaceSession.state, queued = GetQueueCount() }
+    return { tracks = tracks, classes = classes, state = RaceSession.state, queued = GetQueueCount(),
+             copsAvailable = (Config.CopChase or {}).Enabled ~= false }
 end)
 
 -- ── Start ────────────────────────────────────────────────────────────────────
@@ -108,11 +113,14 @@ lib.callback.register("spz-races:srace:start", function(src, data)
     end
     if RaceSession.intermissionActive then return false, "Wait for the intermission to end." end
 
-    ForcedRace = { track = track, selection = selection, by = GetPlayerName(src) or tostring(src) }
+    local traffic = TRAFFIC[data.traffic] and data.traffic or "none"
+    local cops = data.cops == true and (Config.CopChase or {}).Enabled ~= false
+    ForcedRace = { track = track, selection = selection, traffic = traffic, cops = cops,
+                   by = GetPlayerName(src) or tostring(src) }
     if GetResourceState("spz-analytics") == "started" then
         pcall(function() exports["spz-analytics"]:Track("admin_race") end)
         pcall(function() exports["spz-analytics"]:AdminAction(src, "srace",
-            ("%s in %s (%s)"):format(track.name, tostring(selection.model), tostring(data.mode or "now"))) end)
+            ("%s in %s (%s, traffic %s, cops %s)"):format(track.name, tostring(selection.model), tostring(data.mode or "now"), traffic, tostring(cops))) end)
     end
 
     -- The admin races too.
@@ -148,6 +156,17 @@ lib.callback.register("spz-races:srace:start", function(src, data)
     for _, sid in ipairs(GetPlayers()) do
         SPZ.Notify(tonumber(sid), ("Admin race: %s in %s%s"):format(track.name, selection.label or selection.model,
             data.mode == "window" and " · /joinrace to enter" or ""), "inform", 6000)
+    end
+
+    -- Chat announcement (spz-chat system line, same payload as its join/leave notices).
+    local TL = { none = "no traffic", light = "light traffic", heavy = "heavy traffic" }
+    local line = ("🏁 %s started an admin race: %s · %s · %s%s%s"):format(
+        GetPlayerName(src) or "An admin", track.name, selection.label or selection.model,
+        TL[traffic] or traffic, cops and " · cops ON" or "",
+        data.mode == "window" and " — type /joinrace to enter" or "")
+    local payload = { channel = "system", text = line, ts = os.time() }
+    for _, sid in ipairs(GetPlayers()) do
+        TriggerClientEvent("spz-chat:receive", tonumber(sid), payload)
     end
     return true
 end)

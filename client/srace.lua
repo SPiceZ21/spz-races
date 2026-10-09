@@ -3,13 +3,25 @@
 --   Start a race
 --     Track: <pick>        → circuits / sprints
 --     Car:   <pick>        → class → car
+--     Traffic: <pick>      → none / light / heavy (default none)
+--     Cops: on / off       NPC cop chase (toggle, default off)
 --     Start now            race with whoever is queued (you're added)
 --     Start with join window   the normal 30 s window so others can /joinrace
 --
 -- The server re-checks admin and both picks; this menu is only the picker.
 
 local MENU = "spz_srace"
-local data, pick = nil, { track = nil, car = nil }
+local data, pick = nil, { track = nil, car = nil, traffic = "none", cops = false }
+
+local TRAFFIC = {
+    { id = "none",  label = "No Traffic",    desc = "Empty streets", color = "#9AA0A6" },
+    { id = "light", label = "Light Traffic", desc = "A few cars",    color = "#FFB020" },
+    { id = "heavy", label = "Heavy Traffic", desc = "Busy roads",    color = "#FF6200" },
+}
+local function trafficOf(id)
+    for _, t in ipairs(TRAFFIC) do if t.id == id then return t end end
+    return TRAFFIC[1]
+end
 
 local function trackLabel(t)
     return ("%s"):format(t.name)
@@ -81,11 +93,26 @@ local function openClasses()
     lib.showContext(MENU .. "_classes")
 end
 
+local function openTraffic()
+    local opts = {}
+    for _, t in ipairs(TRAFFIC) do
+        local on = pick.traffic == t.id
+        opts[#opts + 1] = {
+            title = t.label, description = t.desc,
+            icon = on and "check" or "traffic-light", iconColor = on and "#ff6200" or t.color,
+            onSelect = function() pick.traffic = t.id; openMain() end,
+        }
+    end
+    lib.registerContext({ id = MENU .. "_traffic", title = "Traffic", menu = MENU, options = opts })
+    lib.showContext(MENU .. "_traffic")
+end
+
 local function start(mode)
     local ok, err = lib.callback.await("spz-races:srace:start", false,
-        { trackId = pick.track.id, model = pick.car.model, mode = mode })
+        { trackId = pick.track.id, model = pick.car.model, mode = mode, traffic = pick.traffic, cops = pick.cops })
     if ok then
-        lib.notify({ title = "Admin race", description = ("%s · %s"):format(pick.track.name, pick.car.label), type = "success" })
+        lib.notify({ title = "Admin race", description = ("%s · %s · %s"):format(pick.track.name, pick.car.label,
+            trafficOf(pick.traffic).label .. (pick.cops and " · Cops" or "")), type = "success" })
     else
         lib.notify({ title = "Admin race", description = err or "Couldn't start the race.", type = "error" })
     end
@@ -101,6 +128,15 @@ openMain = function()
         { title = "Car: " .. (pick.car and pick.car.label or "—"),
           description = pick.car and pick.car.class or "Everyone races this car",
           icon = "car", arrow = true, onSelect = openClasses },
+        { title = "Traffic: " .. trafficOf(pick.traffic).label,
+          description = trafficOf(pick.traffic).desc,
+          icon = "traffic-light", iconColor = trafficOf(pick.traffic).color, arrow = true, onSelect = openTraffic },
+        { title = "Cops: " .. (pick.cops and "ON" or "OFF"),
+          description = data.copsAvailable == false and "Cop chase is disabled in the server config"
+              or (pick.cops and "NPC police chase reckless racers" or "Click to turn the cop chase on"),
+          icon = "shield-halved", iconColor = pick.cops and "#3b82f6" or nil,
+          disabled = data.copsAvailable == false,
+          onSelect = function() pick.cops = not pick.cops; openMain() end },
         { title = "Start now", icon = "play", iconColor = ready and not busy and "#ff6200" or nil,
           description = busy and ("A race is running (%s)"):format(data.state)
               or ("Race with the %d queued player%s (you're added)"):format(data.queued, data.queued == 1 and "" or "s"),
