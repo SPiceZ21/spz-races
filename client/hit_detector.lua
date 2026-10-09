@@ -104,6 +104,15 @@ local _side      = nil    -- last side of the gate plane the player was on
 local MISS_COOLDOWN_MS = 8000
 local _lastMissAt = 0
 
+-- A wide crossing is only a CANDIDATE miss. It is confirmed after this long if
+-- the car is still on the far side of the gate and getting further from it;
+-- crossing back (the far side of a U-turn coming round) or scoring the gate
+-- cancels it. Without this, hairpins that bend back past a gate flagged a miss
+-- moments before the car drove through the gate correctly.
+local MISS_CONFIRM_MS = 2200
+local MISS_AWAY_M     = 6.0     -- must be at least this much further away by then
+local _missCand = nil           -- { idx, side, at, dist }
+
 local function _promptMissedCheckpoint()
     local now = GetGameTimer()
     if now - _lastMissAt < MISS_COOLDOWN_MS then return end
@@ -166,6 +175,7 @@ Citizen.CreateThread(function()
                 end
 
                 if crossed then
+                    _missCand = nil
                     TriggerServerEvent("SPZ:checkpointHit", cpIndex)
                     if not _pending[1] then _pendingAt = GetGameTimer() end
                     _pending[#_pending + 1] = cpIndex
@@ -173,7 +183,18 @@ Citizen.CreateThread(function()
                     -- crossing can't be reported twice.
                     Citizen.Wait(0)
                 else
-                    if missed then _promptMissedCheckpoint() end
+                    local gdx, gdy = pos.x - cp.coords.x, pos.y - cp.coords.y
+                    local gdist = math.sqrt(gdx * gdx + gdy * gdy)
+                    if missed then
+                        _missCand = { idx = cpIndex, side = side, at = now, dist = gdist }
+                    elseif _missCand then
+                        if _missCand.idx ~= cpIndex or (side ~= nil and side ~= _missCand.side) then
+                            _missCand = nil            -- gate moved on, or they came back across
+                        elseif now - _missCand.at >= MISS_CONFIRM_MS then
+                            if gdist >= _missCand.dist + MISS_AWAY_M then _promptMissedCheckpoint() end
+                            _missCand = nil
+                        end
+                    end
                     -- Poll fast when close so a fast car can't tunnel the plane.
                     -- The 40 m band is set to sit OUTSIDE cp_cross's tracking
                     -- corridor (50 m deep, plus lateral slack): the whole
@@ -191,6 +212,7 @@ Citizen.CreateThread(function()
             end
         else
             _lastIndex, _side = nil, nil
+            _missCand = nil
             _pending = {}
             _trail = {}          -- a rewind scrubs back through gates: never count that
             Citizen.Wait(500)

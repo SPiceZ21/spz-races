@@ -26,6 +26,14 @@ local HYSTERESIS   = 0.4    -- dead band around the plane; kills stationary jitt
 local TRACK_SPAN   = 1.0    -- gate widths of lateral slack on each side
 local TRACK_DEPTH  = 50.0   -- metres in front of / behind the plane
 
+-- How far outside the posts a wide crossing still counts as a MISS. A real
+-- miss is a car cutting past right beside the gate. Further out it is usually
+-- another stretch of the same road: on a hairpin / U-turn the track doubles
+-- back past the gate inside TRACK_SPAN, and every lap flagged a "checkpoint
+-- missed" there for a car that then went through the gate correctly.
+local MISS_SPAN    = 0.5    -- gate widths outside each post
+local MISS_MIN     = 8.0    -- ...but never less than this many metres
+
 -- cp    : { coords, left, right, radius }
 -- pos   : player position (vector3)
 -- prev  : the previous side value this detector stored for this checkpoint
@@ -156,7 +164,9 @@ function SPZ_GateCross(cp, pos, prev)
     -- Same flip, but wide of the posts: the player went past this checkpoint
     -- without going through it. Being inside the corridor is already the
     -- proximity test, so no extra distance check is needed here.
-    return false, side, (flipped and zOk)
+    local missSlack = math.max(glen * MISS_SPAN, MISS_MIN)
+    local nearPosts = t >= -missSlack and t <= (glen + missSlack)
+    return false, side, (flipped and zOk and nearPosts)
 end
 
 -- ── Path test ────────────────────────────────────────────────────────────────
