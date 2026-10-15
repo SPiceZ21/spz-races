@@ -97,6 +97,8 @@ local function _endSession(src)
     })
 
     TT[src] = nil
+    -- replicated so clients can tell (e.g. minigame invites stay quiet mid-run)
+    if GetPlayerName(src) then Player(src).state:set("inTimeTrial", nil, true) end
 end
 
 -- ── /timetrail — open the car → track selection chain ────────────────────────
@@ -156,6 +158,7 @@ RegisterNetEvent("SPZ:tt:SelectTrack", function(trackIndex, model)
         SetPlayerRoutingBucket(src, bid)
     end
 
+    Player(src).state:set("inTimeTrial", true, true)
     TT[src] = {
         source     = src,
         track      = track,
@@ -409,6 +412,7 @@ function StartDuelSession(src, d)
         SetPlayerRoutingBucket(src, bid)
     end
 
+    Player(src).state:set("inTimeTrial", true, true)
     TT[src] = {
         source = src, track = track, bucketId = bid, model = d.oppLine.model,
         phase = "OUT_LAP", currentLap = 0, currentCp = _startCp(track), lapStart = nil,
