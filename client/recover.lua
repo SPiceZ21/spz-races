@@ -55,6 +55,7 @@ end
 
 RegisterCommand("spz_respawn_cp", respawnToLastCP, false)
 RegisterKeyMapping("spz_respawn_cp", "Race: back to last checkpoint", "keyboard", KEY_RESPAWN)
+RegisterKeyMapping("spz_respawn_cp", "Race: back to last checkpoint (controller)", "PAD_DIGITALBUTTON", "LLEFT_INDEX")
 
 -- ── Flip car upright ─────────────────────────────────────────────────────────
 
@@ -81,6 +82,7 @@ end
 
 RegisterCommand("spz_flip_car", flipCar, false)
 RegisterKeyMapping("spz_flip_car", "Race: flip car upright", "keyboard", KEY_FLIP)
+RegisterKeyMapping("spz_flip_car", "Race: flip car upright (controller)", "PAD_DIGITALBUTTON", "RLEFT_INDEX")
 
 -- ── Tell the HUD which keys to print ─────────────────────────────────────────
 -- The recovery keys live here, but the surface that shows them is spz-raceUI.
@@ -88,9 +90,11 @@ RegisterKeyMapping("spz_flip_car", "Race: flip car upright", "keyboard", KEY_FLI
 CreateThread(function()
     while GetResourceState("spz-raceUI") ~= "started" do Wait(500) end
     local rw = Config and Config.Rewind or {}
+    -- commands, not keys: spz-raceUI reads the player's live binding for each
     exports["spz-raceUI"]:SetKeyHints({
-        respawn = KEY_RESPAWN,
-        flip    = KEY_FLIP,
-        rewind  = (rw.enabled ~= false) and (rw.key or "B") or nil,
+        respawn = { cmd = "spz_respawn_cp", default = KEY_RESPAWN, pad = "LLEFT_INDEX" },
+        flip    = { cmd = "spz_flip_car",   default = KEY_FLIP,    pad = "RLEFT_INDEX" },
+        rewind  = (rw.enabled ~= false) and { cmd = "+spz_rewind", default = rw.key or "B", pad = "L1_INDEX" } or nil,
+        restart = { cmd = "tt_restart",     default = "BKSP",      pad = "LUP_INDEX" },
     })
 end)

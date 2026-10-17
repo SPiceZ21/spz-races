@@ -226,6 +226,7 @@ RegisterCommand("tt_restart", function()
 end, false)
 
 RegisterKeyMapping("tt_restart", "Time Trial — Restart to Start", "keyboard", TT_RESTART_KEY)
+RegisterKeyMapping("tt_restart", "Time Trial — Restart to Start (controller)", "PAD_DIGITALBUTTON", "LUP_INDEX")
 
 -- ── Restart countdown thread ──────────────────────────────────────────────────
 

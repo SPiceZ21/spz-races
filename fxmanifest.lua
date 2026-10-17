@@ -90,8 +90,7 @@ client_scripts {
   'client/timetrail.lua',
   'client/srace.lua',
   'client/duel.lua',
-  'client/creator.lua',
-  'client/editor.lua',
+  'client/trackstudio.lua',   -- track maker + 3D editor (replaced creator.lua / editor.lua)
   'client/dev_heading.lua',
   'client/startline.lua',
 }
