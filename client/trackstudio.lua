@@ -7,7 +7,7 @@
 -- and saved through the same server event (SPZ:saveCustomTrack), so the
 -- server side is unchanged.
 --
--- Two modes, toggled with F3 (not F: that is exit-vehicle):
+-- Two modes, toggled with P (not F: exit-vehicle; not F3: raceline panel):
 --   DRIVE  — drive the route; E drops a gate where your car is (the old maker).
 --   CAMERA — free-fly camera with a mouse cursor. Hover a gate to highlight it,
 --            click to select, drag the centre to move it on the ground, drag a
@@ -170,8 +170,8 @@ end
 
 -- Live key labels: every Track Studio key is a key mapping, so show the
 -- player's actual binding (spz-core KeyFor) rather than the default.
-local DEFAULTS = { camera = "F3", place = "E", delete = "DEL", nextg = "→", prevg = "←", ground = "G",
-                   undo = "Z", lapsup = "=", lapsdown = "-", save = "ENTER", cancel = "BKSP" }
+local DEFAULTS = { camera = "P", place = "E", delete = "DEL", nextg = "→", prevg = "←", ground = "Y",
+                   undo = "U", lapsup = "=", lapsdown = "-", save = "ENTER", cancel = "BKSP" }
 -- controller buttons for the actions that make sense on a pad (driving the
 -- route and stepping through gates); mouse editing stays keyboard + mouse.
 local PADS = { camera = "SELECT_INDEX", place = "RDOWN_INDEX", nextg = "R1_INDEX", prevg = "L1_INDEX", undo = "RLEFT_INDEX" }
@@ -219,7 +219,7 @@ local function start(data, loaded)
     defaultWidth = tonumber(data.defaultWidth) or defaultWidth
     if #gates > 0 then sel = 1 end
     showHelp(true)
-    notify(("%s — %d gates. Press %s for the 3D camera."):format(meta.name, #gates, K("camera", "F3")), "success")
+    notify(("%s — %d gates. Press %s for the 3D camera."):format(meta.name, #gates, K("camera", "P")), "success")
 end
 
 local function stop()
@@ -301,7 +301,7 @@ local function place()
 end
 
 local actions = {
-    camera   = { "F3",        "Track Studio: camera / drive", function() if mode == "camera" then camExit() else camEnter() end end },
+    camera   = { "P",         "Track Studio: camera / drive", function() if mode == "camera" then camExit() else camEnter() end end },
     place    = { "E",         "Track Studio: place gate",     place },
     delete   = { "DELETE",    "Track Studio: delete gate",    function()
         if not gates[sel] then return end
@@ -310,12 +310,12 @@ local actions = {
     end },
     nextg    = { "RIGHT",     "Track Studio: next gate",      function() if #gates > 0 then sel = sel % #gates + 1 end end },
     prevg    = { "LEFT",      "Track Studio: previous gate",  function() if #gates > 0 then sel = (sel - 2) % #gates + 1 end end },
-    ground   = { "G",         "Track Studio: snap to ground", function()
+    ground   = { "Y",         "Track Studio: snap to ground", function()
         local g = gates[sel]; if not g then return end
         local z = groundZ(g.coords); if not z then return end
         snapshot(); g.coords = vector3(g.coords.x, g.coords.y, z + 1.0); recalc(g)
     end },
-    undo     = { "Z",         "Track Studio: undo",           undo },
+    undo     = { "U",         "Track Studio: undo",           undo },
     lapsup   = { "EQUALS",    "Track Studio: laps +",         function()
         if meta.type ~= "circuit" then return end
         meta.laps = math.min(20, meta.laps + 1); notify(("Laps: %d"):format(meta.laps))
