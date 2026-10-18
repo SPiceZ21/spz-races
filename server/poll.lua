@@ -150,6 +150,19 @@ end
 -- with the last one always kept so a circuit still closes on its start line.
 local PATH_MAX = 160
 
+-- Preferred: the fastest recorded lap from spz-raceline, which follows the
+-- roads. Checkpoints are the fallback — on many tracks they sit hundreds of
+-- metres apart, and any line drawn between them cuts across the map.
+local function RecordedPath(track)
+    if GetResourceState("spz-raceline") ~= "started" then return nil end
+    local first = track.checkpoints and track.checkpoints[1] and track.checkpoints[1].coords
+    local ok, out = pcall(function()
+        return exports["spz-raceline"]:GetTrackOutline(track.name, PATH_MAX,
+            first and { x = first.x, y = first.y } or nil)
+    end)
+    return ok and type(out) == "table" and #out >= 10 and out or nil
+end
+
 local function TrackPath(track)
     local cps = track.checkpoints
     if not cps or #cps < 2 then return nil end
@@ -176,6 +189,7 @@ local function BuildTrackOptions(avoid)
 
     local ui = {}
     for _, track in ipairs(tracks) do
+        local recorded = RecordedPath(track)
         ui[#ui + 1] = {
             name             = track.name,
             type             = track.type,
@@ -184,7 +198,10 @@ local function BuildTrackOptions(avoid)
             recommendedClass = track.recommendedClass or "Any",
             -- Preview: the route itself, plus whether it closes back on its
             -- start line (circuits) or ends elsewhere (sprints).
-            path             = TrackPath(track),
+            path             = recorded or TrackPath(track),
+            -- "line" = a driven lap (dense, follows roads); "cp" = checkpoints
+            -- (sparse), drawn as straight legs so it never overshoots a corner.
+            pathKind         = recorded and "line" or "cp",
             loop             = track.type == "circuit",
         }
     end
