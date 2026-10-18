@@ -71,6 +71,7 @@ client_scripts {
   'client/main.lua',
   'client/gridgirl.lua',
   'client/startcam.lua',
+  'client/cp_anim.lua',
   'client/checkpoints.lua',
   'client/cp_cross.lua',
   -- After cp_cross.lua: the overlay renders SPZ_GateProbe's output and defines
@@ -100,6 +101,8 @@ client_scripts {
 -- declared and requested as a DLC ITYP so the models resolve.
 files {
   'stream/spz_checkpoint.ytyp',
+  'html/cp/anim.html',
+  'html/cp/*.png',
 }
 
 data_file 'DLC_ITYP_REQUEST' 'stream/spz_checkpoint.ytyp'

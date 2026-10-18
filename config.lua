@@ -248,6 +248,14 @@ Config.FlagAnimLeadMs       = 5000
 -- ════════════════════════════════════════════════════════════════════════════
 -- 4. FEATURES
 -- ════════════════════════════════════════════════════════════════════════════
+-- ── Animated gates ─────────────────────────────────────────────────────────
+-- The inside of every checkpoint / start / finish gate drifts (client/cp_anim.lua
+-- renders html/cp/anim.html over the gate textures). The logo is untouched.
+-- false = static gates exactly as streamed (slightly cheaper on low-end PCs).
+-- If you repaint a gate atlas, copy the PNG into html/cp/ too, or the live
+-- version keeps showing the old art.
+Config.AnimatedGates = true
+
 -- ── In-world race HUD elements ────────────────────────────────────────────────
 --
 --   CpDistancePill  anchored to the CHECKPOINT, with a stem down to the gate

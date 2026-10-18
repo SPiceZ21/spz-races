@@ -141,11 +141,20 @@ local PROP_CHECKPOINT = { pending = 'spz_checkpoint',        cleared = 'spz_chec
 
 local GateProps = {}   -- [cpIndex] = { left, right, cleared, grounded, leftPos, rightPos }
 
+-- Last lap of a live race: a circuit's start line is now the finish line.
+local function _isFinalLap()
+    if TTMode or RaceState ~= "LIVE" then return false end
+    local st = LocalPlayer.state
+    return (tonumber(st.raceLap) or 1) >= (tonumber(st.raceLaps) or 1)
+end
+
 local function _gateModelFor(idx, total, cleared)
-    -- Circuit: CP1 is the shared start/finish line → start post.
+    -- Circuit: CP1 is the shared start/finish line → start post, and the
+    -- chequered finish post on the final lap.
     -- Sprint: CP1 = start, last CP = finish, everything else = checkpoint.
     local set
-    if idx == 1 then set = PROP_START
+    if idx == 1 then
+        set = (TrackType == "circuit" and _isFinalLap()) and PROP_FINISH or PROP_START
     elseif idx == _finishIdx(total) then set = PROP_FINISH
     else set = PROP_CHECKPOINT end
     return cleared and set.cleared or set.pending
@@ -169,6 +178,7 @@ end
 local function _clearAllGates()
     for idx in pairs(GateProps) do _removeGate(idx) end
     GateProps = {}
+    if SPZ_CpAnimRelease then SPZ_CpAnimRelease() end   -- client/cp_anim.lua
 end
 
 local function _gateHeading(idx, cp)
@@ -203,6 +213,7 @@ local function _standGateProp(obj, pos, heading)
 end
 
 local function _placeGateProp(model, pos, heading)
+    if SPZ_CpAnimAcquire then SPZ_CpAnimAcquire() end   -- moving panels (client/cp_anim.lua)
     local obj = CreateObjectNoOffset(model, pos.x, pos.y, pos.z, false, false, false)
     if obj == 0 then return nil end
     FreezeEntityPosition(obj, true)          -- before positioning: no physics
@@ -225,24 +236,22 @@ end
 local function _spawnGate(idx)
     local cleared  = _isCleared(idx)
     local existing = GateProps[idx]
+    local cp = CurrentCheckpoints[idx]
+    if not cp then return end
+    local model = _gateModelFor(idx, #CurrentCheckpoints, cleared)
 
-    -- Already spawned in the correct variant? Just make sure it is grounded.
-    if existing and existing.cleared == cleared then
+    -- Already spawned as the right model? Just make sure it is grounded.
+    if existing and existing.model == model then
         _regroundGate(existing)
         return
     end
-
-    local cp = CurrentCheckpoints[idx]
-    if not cp then return end
-
-    local model = _gateModelFor(idx, #CurrentCheckpoints, cleared)
 
     -- Validate BEFORE tearing down the old prop. If the requested variant is
     -- missing from the .ytyp (e.g. the "_b" archetypes were never declared),
     -- keep whatever is standing rather than leaving an empty gate.
     if not IsModelInCdimage(model) then
-        if cleared and existing then
-            existing.cleared = true   -- stop retrying every tick
+        if existing then
+            existing.model = model    -- stop retrying every tick
             print(("[Checkpoints] Gate variant missing from .ytyp: %s — keeping current prop"):format(model))
         end
         return
@@ -270,7 +279,7 @@ local function _spawnGate(idx)
 
     if left or right then
         GateProps[idx] = {
-            left = left, right = right, cleared = cleared,
+            left = left, right = right, cleared = cleared, model = model,
             grounded = (not left or lg) and (not right or rg),
             leftPos = leftPos, leftHdg = heading,
             rightPos = cp.right, rightHdg = rightHdg,
@@ -285,8 +294,9 @@ local function _refreshGates()
     -- Collect first: _spawnGate removes and re-adds the key, and adding keys
     -- during a pairs() traversal is undefined in Lua.
     local stale = {}
+    local total = #CurrentCheckpoints
     for idx, g in pairs(GateProps) do
-        if g.cleared ~= _isCleared(idx) then stale[#stale + 1] = idx end
+        if g.model ~= _gateModelFor(idx, total, _isCleared(idx)) then stale[#stale + 1] = idx end
     end
     for _, idx in ipairs(stale) do _spawnGate(idx) end
 end
@@ -548,6 +558,11 @@ Citizen.CreateThread(function()
     end
 end)
 
+-- Lap counter / race state moved: the start line may have become the finish.
+AddStateBagChangeHandler("raceLap", ("player:%d"):format(GetPlayerServerId(PlayerId())), function()
+    SetTimeout(0, function() _refreshGates() end)
+end)
+
 -- ── Apply active CP state ──────────────────────────────────────────────────
 
 local function _applyActive(idx)
@@ -600,6 +615,8 @@ local function _onRaceStateChange(newState)
         CurrentCheckpoints = {}
         CurrentCPIndex     = 1
         LastCaughtIdx      = nil
+    elseif newState == "LIVE" then
+        _refreshGates()   -- a one-lap circuit's start line is the finish from GO
     end
 end
 
