@@ -56,7 +56,7 @@ end)
 
 local function notify(src, msg, kind)
     TriggerClientEvent("ox_lib:notify", src, {
-        description = msg, type = kind or "inform", position = "center-left",
+        description = msg, type = kind or "inform", 
     })
 end
 

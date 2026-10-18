@@ -519,7 +519,6 @@ RegisterNetEvent("SPZ:raceEnd", function(results)
                 description = ("Press %s for the full classification"):format(key),
                 type        = "inform",
                 duration    = 7000,
-                position    = "top",
             })
         end)
     end
@@ -601,12 +600,20 @@ local function _isSpectating()
         and exports["spz-spectate"]:IsSpectating() == true
 end
 
+-- The first-join tour (spz-tutorial) holds NUI focus while it points at this
+-- pill, so the pill must not hide itself for that.
+local function _tourActive()
+    if GetResourceState("spz-tutorial") ~= "started" then return false end
+    local ok, on = pcall(function() return exports["spz-tutorial"]:IsActive() end)
+    return ok and on == true
+end
+
 local function _lobbyMode()
     if LocalPlayer.state.inRace then return { mode = "hidden" } end
     if LocalPlayer.state.inMinigame then return { mode = "hidden" } end  -- pursuit etc. own E
     if _G.SPZ_InTimeTrial then return { mode = "hidden" } end  -- no join UI in TT
     if _isSpectating() then return { mode = "hidden" } end      -- no join UI while spectating
-    if IsNuiFocused() then return { mode = "hidden" } end       -- spawn menu / any focused NUI open
+    if IsNuiFocused() and not _tourActive() then return { mode = "hidden" } end   -- spawn menu / any focused NUI open
 
     local qCount = GlobalState.queueCount or 0
 

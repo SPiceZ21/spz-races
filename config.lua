@@ -1,6 +1,41 @@
 -- config.lua
 Config = {}
 
+-- ════════════════════════════════════════════════════════════════════════════
+-- 1. LOCATIONS
+-- ════════════════════════════════════════════════════════════════════════════
+-- ── Safe Zone ──────────────────────────────────────────────────────────────
+-- Location players are sent after race cleanup. Set to your paddock / lobby spawn.
+Config.SafeZone             = vector3(-1323.8, -1199.1, 4.0)
+Config.SafeZoneHeading      = 210.0
+
+-- ── Showcase car ────────────────────────────────────────────────────────────
+-- After every race the car that was raced is parked here as a static, locked
+-- display for everyone in freeroam (server/showcase.lua). Coords are ped height:
+-- the owning client drops the car onto the ground before it is frozen.
+Config.Showcase = {
+  Enabled = true,
+  Coords  = vector3(-1319.44, -1217.39, 4.82),
+  Heading = 31.7,
+}
+
+-- ── In-world record boards ─────────────────────────────────────────────────
+-- Physical floating scoreboards showing the fastest lap holders for a track.
+-- Walk near one and the top times render in the world. Each board is pinned to
+-- a track name (must match a key/name in data/tracks.lua). Add as many as you
+-- like — e.g. one at spawn, one at each track's start line.
+Config.RecordBoards = {
+    -- { coords = vector3(x, y, z), heading = 0.0, track = "10-80" },
+    -- Removed: this board sat right on the after-race safe-zone TP spot
+    -- (SafeZone -1323.8,-1199.1) so it rendered in the player's face every race.
+    -- { coords = vector3(-1327.5, -1196.0, 5.6), heading = 120.0, track = "10-80" },
+}
+Config.BoardRange   = 12.0     -- metres: render when the player is this close
+Config.BoardRefresh = 30000    -- ms between record re-fetches
+
+-- ════════════════════════════════════════════════════════════════════════════
+-- 2. RACE FLOW — queue → poll → warmup → race → results
+-- ════════════════════════════════════════════════════════════════════════════
 -- ── Queue ──────────────────────────────────────────────────────────────────
 -- No minimum player count: the FIRST player to join arms a join window that
 -- counts down for everyone ("race starting in Ns — press E"). Whoever is in
@@ -18,49 +53,21 @@ Config.PollDuration         = 30      -- seconds PER PHASE: the poll window is t
 -- It is capped by what exists: a race type with only two tracks offers two.
 Config.PollOptionsPerType   = 3
 
--- ── Checkpoint blips ───────────────────────────────────────────────────────
--- How the route reads on the minimap while driving.
+-- ── Poll reroll ─────────────────────────────────────────────────────────────
 --
--- The way line is the game's own orange GPS route, painted along the road on the
--- minimap. The track is plotted as POINTS — the checkpoints — and the game
--- pathfinds the roads between them (StartGpsMultiRoute): player → gate 1 →
--- gate 2 → gate 3, each leg solved in turn.
---
--- That chaining is the reason it is not SetBlipRoute. A blip route always runs
--- from the PLAYER to one blip, so a route to gate 2 is the best road to gate 2 —
--- which is generally not the road through gate 1. Routing every gate that way
--- draws a fan of shortcuts rather than the course.
---
---   routeMode      "multi" chained road route (default) | "blip" per-gate blip
---                  routes | "off" markers only
---   routeHudColour HUD colour index for the multi-route line (15 = orange).
---                  NOTE: HUD colours are a different scale from blip colours.
---   lookahead      gates plotted ahead, counting the one you are driving at
---   routeAll       blip mode only: route the whole lookahead, not just the first
---   routeColour    blip mode only: blip colour id (17 = bright orange)
---   hideFar        drop the gates past the lookahead instead of dimming them
---
--- Note that the route line is road PATHFINDING to each gate, so where a track
--- deliberately leaves the road network — an alley, the wrong side of a divided
--- road, a dirt cut, a car park — the line takes the road version of that leg.
-Config.CpBlips = {
-    routeMode      = "multi",
-    routeHudColour = 15,
-    lookahead      = 3,
-    routeAll       = true,
-    routeColour    = 17,
-    hideFar        = false,
+-- The track and car ballots end with a REROLL card ("none of these"). It is
+-- voted like any other card and counted when the poll closes. If it gets more
+-- votes than every track (or every car) on its ballot, the set is redrawn and
+-- the poll runs again, keeping the rejected tracks/cars off the new ballot.
+-- Deliberately counted at the close, not on the first click: a reroll throws
+-- away votes other people have already cast.
+Config.PollReroll = {
+  Enabled    = true,
 
-    -- Gate marker sizes on the minimap. These are a LADDER, not five
-    -- independent dials: the descending order is what tells a driver at speed
-    -- which gate is next. Scale them together, or the cue goes away.
-    scale = {
-        active  = 1.55,   -- the gate you are driving at
-        near    = 1.20,   -- the one after it
-        ahead   = 0.98,   -- two gates ahead
-        pending = 0.82,   -- the rest of the course, as context
-        finish  = 2.00,   -- the line
-    },
+  -- How many redraws a single poll can spend. 0 = unlimited (the reroll card
+  -- is always on the ballot; once every track/car has been offered the draw
+  -- starts over from the full list).
+  MaxPerPoll = 0,
 }
 
 -- ── Cycle ──────────────────────────────────────────────────────────────────
@@ -99,142 +106,36 @@ Config.PositionBroadcastInterval = 1000   -- ms between live position updates
 -- everyone watching from outside the race.
 Config.StandingsBroadcastInterval = 2500
 
--- ── In-world race HUD elements ────────────────────────────────────────────────
+-- Personalised lap count per circuit by track length (server/lapcount.lua).
+-- Long tracks get fewer laps, short tracks more, so total race distance stays
+-- roughly even. Sprints are always 1 lap.
+-- Threshold ~ the median lap length across all 75 circuits (~9.5 km), so the
+-- split is roughly even: longer half = 2 laps, shorter half = 3.
+Config.LongTrackMetres = 9500.0   -- a lap longer than this counts as "long"
+Config.LongTrackLaps   = 2
+Config.ShortTrackLaps  = 3
+
+-- ── Checkpoints ────────────────────────────────────────────────────────────
+-- How long (ms) a racer can go without hitting any checkpoint before they are
+-- automatically DNF'd for idling / going off-route.
+Config.IdleKickMs           = 120000  -- 2 minutes
+-- Only counts as idle if the car also moved less than this since its last
+-- checkpoint. A racer who is DRIVING but not registering gates (a missed gate)
+-- is lost, not idle: warned at IdleWarnMs, and only DNF'd at LostKickMs.
+Config.IdleMinMoveM         = 150.0
+Config.IdleWarnMs           = 45000   -- 45 s: "missed one? press F4"
+Config.LostKickMs           = 300000  -- 5 minutes
+
+-- Teleport back to the last checkpoint you crossed (client/recover.lua).
+-- Declared here, not inline in the key mapping, because the missed-checkpoint
+-- prompt and the HUD key strip both print it — one source, no drift.
 --
---   CpDistancePill  anchored to the CHECKPOINT, with a stem down to the gate
---                   point. Tells you where the gate is and how far. Useful on
---                   unfamiliar tracks and for spotting a gate hidden behind
---                   geometry.
---
--- This is a DEFAULT. It can be overridden live from server.cfg without touching
--- this file or restarting the resource:
---
---   setr spz_hud_cp_pill 0
---
--- The convar wins when it is set; otherwise the value here applies.
-Config.Hud = {
-  CpDistancePill = true,
-}
+-- NOT F6: spz-leaderboard already owns that key for the results board.
+Config.RecoverKey           = "F4"
 
--- Overtake auto-clips. A pass triggers a real VIDEO clip recorded from the
--- overtaker's screen via `screencapture`, uploaded to FiveManage, and posted
--- to Discord. Recording starts the instant the pass is detected (so the clip
--- contains the overtake, not just the aftermath) and runs ClipDurationS.
--- Cooldown is per overtaking pair to stop spam in a back-and-forth battle.
-Config.OvertakeCooldown = 20000
-
--- Nitrous flourish on a completed pass: the OVERTAKER's car spits exhaust
--- flames (networked, so the whole field sees it). Fires off the same detection
--- as the auto-clip, so it inherits OvertakeCooldown and cannot spam in a
--- back-and-forth battle.
-Config.OvertakeNos = {
-  enabled    = true,
-  durationMs = 1400,   -- how long the flames burn
-  pulseMs    = 110,    -- gap between particle bursts (lower = denser flame)
-  scale      = 1.6,
-
-  -- Rocket-Voltic boost on top of the flames. OFF deliberately: it is a real
-  -- speed gain, so it pays for a pass with pace and makes overtaking
-  -- self-reinforcing — the leader pulls away for winning a position. Turn it on
-  -- only if that is the racing you want.
-  boost      = false,
-  boostMs    = 900,
-}
-Config.Clip = {
-  enabled     = true,
-  durationS   = 10,     -- seconds of video captured per overtake
-  maxWidth    = 1280,
-  maxHeight   = 720,
-  -- FiveManage: create a Media API token at https://fivemanage.com and paste
-  -- it here. Without a token the clip system falls back to a screenshot still,
-  -- then to a text-only Discord post.
-  fivemanageUrl   = "https://api.fivemanage.com/api/v3/file",
-  fivemanageToken = "",   -- e.g. "fmapi_xxxxxxxxxxxxxxxx"
-}
-Config.SpawnTimeout         = 30000   -- ms hard ceiling when NOBODY has spawned yet
-
--- Gap between grid vehicle creations. Only there to keep every car off the same
--- network tick — it is NOT a pacing mechanism. Keep it small: the whole grid
--- must be spawned well before the spawn monitor advances the session, or the
--- spawn loop ends up running against a race that has already staged.
---   16 players × 800ms ≈ 13s   (fits inside SpawnTimeout)
---   16 players × 5000ms ≈ 75s  (the old value — outlived WARMUP)
-Config.SpawnStaggerMs       = 800
-
--- ms to let the client-side grid teleport land (and collision stream in) before
--- the race vehicle is created at that spot.
-Config.GridTpSettleMs       = 400
-
--- Warmup doubles as spawn grace: once the FIRST racer is ready, the race moves
--- on after this delay and slow clients keep spawning during the whole warmup
--- (with automatic retries). They're only cut at warmup end.
-Config.FirstReadyGraceMs    = 5000    -- ms after first confirm before advancing
-Config.SpawnRetryIntervalMs = 8000    -- ms between respawn retries during warmup
-
--- ── Poll reroll ─────────────────────────────────────────────────────────────
---
--- The track and car ballots end with a REROLL card ("none of these"). It is
--- voted like any other card and counted when the poll closes. If it gets more
--- votes than every track (or every car) on its ballot, the set is redrawn and
--- the poll runs again, keeping the rejected tracks/cars off the new ballot.
--- Deliberately counted at the close, not on the first click: a reroll throws
--- away votes other people have already cast.
-Config.PollReroll = {
-  Enabled    = true,
-
-  -- How many redraws a single poll can spend. 0 = unlimited (the reroll card
-  -- is always on the ballot; once every track/car has been offered the draw
-  -- starts over from the full list).
-  MaxPerPoll = 0,
-}
-
--- ── Race intro (cover → sweep → details card) ───────────────────────────────
---
--- The warmup ends with the whole field being teleported back onto the grid,
--- which is the ugliest moment in a race from the driver's seat: the world jumps
--- and collision streams back in around them. So a branded cover — the same
--- screen spz-spawn uses — goes up first, the teleport happens behind it, and
--- it sweeps away onto the start camera with a card naming the race.
---
--- Set Enabled = false and the sequence is exactly what it was before: no
--- cover, no card, straight from warmup to the grid.
-Config.RaceIntro = {
-  Enabled    = true,
-
-  -- How long the cover is up BEFORE the teleport is sent. It only has to
-  -- outlast one NUI frame; the rest of the cover's life is the teleport and
-  -- settle that follow, which are timed by their own config below.
-  CoverLeadMs = 700,
-
-  -- How long the card stays up once the sweep has opened. Clamped so it always
-  -- ends before the lights: the staging phase is the window it lives in, and
-  -- anything still on screen at T-3 is competing with the countdown.
-  --
-  -- nil = fill the staging phase, less the gap below.
-  CardHoldMs  = nil,
-  CardGapMs   = 1500,   -- clear this long before the 3-2-1 starts
-}
-
--- ── Mid-race reconnect ──────────────────────────────────────────────────────
--- A crash/timeout during a LIVE race no longer means instant DNF: the grid
--- slot is held this long, and rejoining restores lap/checkpoint/time at the
--- last crossed checkpoint. Must be shorter than IdleKickMs.
-Config.ReconnectWindowMs    = 60000
-
--- ── Incidents (clean-race / SR) ─────────────────────────────────────────────
--- Racers are ghosted from each other, so a tracked incident is a hard impact
--- with the world (walls, barriers, props). The client detects these and
--- reports them; spz-progression converts the count into an SR penalty and
--- gates the clean-race bonus. Kept lenient so light kerb-hopping is ignored.
-Config.Incidents = {
-  enabled           = true,
-  minImpactSpeed    = 30,     -- km/h below which an impact is ignored
-  minSpeedDropKmh   = 22,     -- sudden speed loss in one frame that counts as a hit
-  minBodyDamage     = 45.0,   -- body-health drop that counts as a hit
-  cooldownMs        = 1500,   -- ignore repeat hits within this window (one crash = one incident)
-  startBufferMs     = 3000,   -- ignore impacts in the first N ms after GO (grid shuffle)
-  maxPerRace        = 20,     -- hard cap on reported incidents (anti-spam)
-}
+-- Range (metres) within which checkpoint gate props are spawned.
+-- Beyond this the props are removed again to keep the entity count low.
+Config.GateRange            = 130.0
 
 -- ── Post-race ──────────────────────────────────────────────────────────────
 Config.ResultsDisplayTime   = 12000   -- ms stats screen shown before TP back
@@ -249,6 +150,9 @@ Config.FinishWindowSeconds  = 120   -- 2 minutes, counted down on the HUD
 -- results appear, not after they close.
 Config.IntermissionTime     = 30      -- seconds between races
 
+-- ════════════════════════════════════════════════════════════════════════════
+-- 3. GRID & START
+-- ════════════════════════════════════════════════════════════════════════════
 -- ── Grid ───────────────────────────────────────────────────────────────────
 -- Passed to SPZ.Math.GridPositions
 -- "grid" = staggered F1 grid · "point" = everyone on a ring at the start point
@@ -305,6 +209,22 @@ Config.RaceStartMode        = "split"
 -- between and be seen from both packs; narrow enough to stay on the road.
 Config.SplitPointGap        = 7.0
 
+Config.PointSpawnRadius     = 0.0     -- 0 = one point · >0 = ring of that radius
+Config.PointSpawnMaxRadius  = 12.0    -- metres; past this the ring is wider than
+                                      -- the road, so it falls back to a grid and
+                                      -- logs why. ~14 cars at the default arc.
+
+Config.GridRowSpacing       = 8.0     -- metres front-to-back (grid mode)
+Config.GridColSpacing       = 4.5     -- metres side-to-side (grid mode)
+Config.GridCarsPerRow       = 2       -- rows are what decide a race before the
+                                      -- lights: 16 cars at 2 abreast is 8 rows
+                                      -- and 56 m of stagger, at 4 abreast it is
+                                      -- 4 rows and 24 m. Raise it only as far as
+                                      -- the start line is genuinely wide.
+
+-- Fallback for anything still reading the old single-mode key.
+Config.SpawnMode            = Config.WarmupSpawnMode
+
 -- ── Flag girl ──────────────────────────────────────────────────────────────
 -- The ped who starts the race from the lane the split grid opens up
 -- (client/gridgirl.lua). She is placed on her mark for staging and performs the
@@ -325,84 +245,97 @@ Config.FlagAnimEndOffsetMs  = -3000
 -- forms, which is the whole time the start camera is on her.
 Config.FlagAnimLeadMs       = 5000
 
-Config.PointSpawnRadius     = 0.0     -- 0 = one point · >0 = ring of that radius
-Config.PointSpawnMaxRadius  = 12.0    -- metres; past this the ring is wider than
-                                      -- the road, so it falls back to a grid and
-                                      -- logs why. ~14 cars at the default arc.
-
-Config.GridRowSpacing       = 8.0     -- metres front-to-back (grid mode)
-Config.GridColSpacing       = 4.5     -- metres side-to-side (grid mode)
-Config.GridCarsPerRow       = 2       -- rows are what decide a race before the
-                                      -- lights: 16 cars at 2 abreast is 8 rows
-                                      -- and 56 m of stagger, at 4 abreast it is
-                                      -- 4 rows and 24 m. Raise it only as far as
-                                      -- the start line is genuinely wide.
-
--- Fallback for anything still reading the old single-mode key.
-Config.SpawnMode            = Config.WarmupSpawnMode
-
--- ── Safe Zone ──────────────────────────────────────────────────────────────
--- Location players are sent after race cleanup. Set to your paddock / lobby spawn.
-Config.SafeZone             = vector3(-1323.8, -1199.1, 4.0)
-Config.SafeZoneHeading      = 210.0
-
--- ── Checkpoints ────────────────────────────────────────────────────────────
--- How long (ms) a racer can go without hitting any checkpoint before they are
--- automatically DNF'd for idling / going off-route.
-Config.IdleKickMs           = 120000  -- 2 minutes
--- Only counts as idle if the car also moved less than this since its last
--- checkpoint. A racer who is DRIVING but not registering gates (a missed gate)
--- is lost, not idle: warned at IdleWarnMs, and only DNF'd at LostKickMs.
-Config.IdleMinMoveM         = 150.0
-Config.IdleWarnMs           = 45000   -- 45 s: "missed one? press F4"
-Config.LostKickMs           = 300000  -- 5 minutes
-
--- Teleport back to the last checkpoint you crossed (client/recover.lua).
--- Declared here, not inline in the key mapping, because the missed-checkpoint
--- prompt and the HUD key strip both print it — one source, no drift.
+-- ════════════════════════════════════════════════════════════════════════════
+-- 4. FEATURES
+-- ════════════════════════════════════════════════════════════════════════════
+-- ── In-world race HUD elements ────────────────────────────────────────────────
 --
--- NOT F6: spz-leaderboard already owns that key for the results board.
-Config.RecoverKey           = "F4"
-
--- Range (metres) within which checkpoint gate props are spawned.
--- Beyond this the props are removed again to keep the entity count low.
-Config.GateRange            = 130.0
-
--- Ghost-bots (the cold-start field filler that backfilled thin races with
--- replayed stored lines) were REMOVED. The standings, the results grid, the map
--- blips and the race board are humans only again. Ghost DUELS below and the
--- time-trial ghost in spz-raceline are separate features and still live.
-
--- ── Ghost duels (async PvP wagers) ──────────────────────────────────────────
--- /duel <player|id> <track> <stake> — race an opponent's STORED best line (a
--- ghost) for credits. Reuses the Time-Trial harness (bucket, CP timing, ghost).
--- Server-authoritative: it compares its measured lap to the stored best_ms.
-Config.Duel = {
-  Enabled  = true,
-  MinStake = 100,
-  MaxStake = 10000,
-  -- HouseFunded = true  → winnings are a house bounty; the (possibly offline)
-  --   opponent is NEVER charged. Winner nets +stake (stake back + matched bonus).
-  -- HouseFunded = false → the opponent's balance covers the matched stake: they
-  --   lose it if their ghost is beaten, win the challenger's stake if it holds.
-  --   Charges an offline player without consent — off by default.
-  HouseFunded = true,
-  -- Car for the challenger when the opponent's stored model can't be resolved to
-  -- a registered race vehicle.
-  FallbackModel = "sultan",
+--   CpDistancePill  anchored to the CHECKPOINT, with a stem down to the gate
+--                   point. Tells you where the gate is and how far. Useful on
+--                   unfamiliar tracks and for spotting a gate hidden behind
+--                   geometry.
+--
+-- This is a DEFAULT. It can be overridden live from server.cfg without touching
+-- this file or restarting the resource:
+--
+--   setr spz_hud_cp_pill 0
+--
+-- The convar wins when it is set; otherwise the value here applies.
+Config.Hud = {
+  CpDistancePill = true,
 }
 
--- ── Debug ──────────────────────────────────────────────────────────────────
-Config.Debug                = false
+-- ── Checkpoint blips ───────────────────────────────────────────────────────
+-- How the route reads on the minimap while driving.
+--
+-- The way line is the game's own orange GPS route, painted along the road on the
+-- minimap. The track is plotted as POINTS — the checkpoints — and the game
+-- pathfinds the roads between them (StartGpsMultiRoute): player → gate 1 →
+-- gate 2 → gate 3, each leg solved in turn.
+--
+-- That chaining is the reason it is not SetBlipRoute. A blip route always runs
+-- from the PLAYER to one blip, so a route to gate 2 is the best road to gate 2 —
+-- which is generally not the road through gate 1. Routing every gate that way
+-- draws a fan of shortcuts rather than the course.
+--
+--   routeMode      "multi" chained road route (default) | "blip" per-gate blip
+--                  routes | "off" markers only
+--   routeHudColour HUD colour index for the multi-route line (15 = orange).
+--                  NOTE: HUD colours are a different scale from blip colours.
+--   lookahead      gates plotted ahead, counting the one you are driving at
+--   routeAll       blip mode only: route the whole lookahead, not just the first
+--   routeColour    blip mode only: blip colour id (17 = bright orange)
+--   hideFar        drop the gates past the lookahead instead of dimming them
+--
+-- Note that the route line is road PATHFINDING to each gate, so where a track
+-- deliberately leaves the road network — an alley, the wrong side of a divided
+-- road, a dirt cut, a car park — the line takes the road version of that leg.
+Config.CpBlips = {
+    routeMode      = "multi",
+    routeHudColour = 15,
+    lookahead      = 3,
+    routeAll       = true,
+    routeColour    = 17,
+    hideFar        = false,
 
--- Personalised lap count per circuit by track length (server/lapcount.lua).
--- Long tracks get fewer laps, short tracks more, so total race distance stays
--- roughly even. Sprints are always 1 lap.
--- Threshold ~ the median lap length across all 75 circuits (~9.5 km), so the
--- split is roughly even: longer half = 2 laps, shorter half = 3.
-Config.LongTrackMetres = 9500.0   -- a lap longer than this counts as "long"
-Config.LongTrackLaps   = 2
-Config.ShortTrackLaps  = 3
+    -- Gate marker sizes on the minimap. These are a LADDER, not five
+    -- independent dials: the descending order is what tells a driver at speed
+    -- which gate is next. Scale them together, or the cue goes away.
+    scale = {
+        active  = 1.55,   -- the gate you are driving at
+        near    = 1.20,   -- the one after it
+        ahead   = 0.98,   -- two gates ahead
+        pending = 0.82,   -- the rest of the course, as context
+        finish  = 2.00,   -- the line
+    },
+}
+
+-- ── Race intro (cover → sweep → details card) ───────────────────────────────
+--
+-- The warmup ends with the whole field being teleported back onto the grid,
+-- which is the ugliest moment in a race from the driver's seat: the world jumps
+-- and collision streams back in around them. So a branded cover — the same
+-- screen spz-spawn uses — goes up first, the teleport happens behind it, and
+-- it sweeps away onto the start camera with a card naming the race.
+--
+-- Set Enabled = false and the sequence is exactly what it was before: no
+-- cover, no card, straight from warmup to the grid.
+Config.RaceIntro = {
+  Enabled    = true,
+
+  -- How long the cover is up BEFORE the teleport is sent. It only has to
+  -- outlast one NUI frame; the rest of the cover's life is the teleport and
+  -- settle that follow, which are timed by their own config below.
+  CoverLeadMs = 700,
+
+  -- How long the card stays up once the sweep has opened. Clamped so it always
+  -- ends before the lights: the staging phase is the window it lives in, and
+  -- anything still on screen at T-3 is competing with the countdown.
+  --
+  -- nil = fill the staging phase, less the gap below.
+  CardHoldMs  = nil,
+  CardGapMs   = 1500,   -- clear this long before the 3-2-1 starts
+}
 
 -- ── Rewind (Forza Horizon-style time rewind) ────────────────────────────────
 -- Hold the key to scrub the car backward along its recent path; release to
@@ -453,32 +386,110 @@ Config.Rewind = {
   clearDebrisRadius = 12.0,
 }
 
--- ── In-world record boards ─────────────────────────────────────────────────
--- Physical floating scoreboards showing the fastest lap holders for a track.
--- Walk near one and the top times render in the world. Each board is pinned to
--- a track name (must match a key/name in data/tracks.lua). Add as many as you
--- like — e.g. one at spawn, one at each track's start line.
-Config.RecordBoards = {
-    -- { coords = vector3(x, y, z), heading = 0.0, track = "10-80" },
-    -- Removed: this board sat right on the after-race safe-zone TP spot
-    -- (SafeZone -1323.8,-1199.1) so it rendered in the player's face every race.
-    -- { coords = vector3(-1327.5, -1196.0, 5.6), heading = 120.0, track = "10-80" },
+-- ── Incidents (clean-race / SR) ─────────────────────────────────────────────
+-- Racers are ghosted from each other, so a tracked incident is a hard impact
+-- with the world (walls, barriers, props). The client detects these and
+-- reports them; spz-progression converts the count into an SR penalty and
+-- gates the clean-race bonus. Kept lenient so light kerb-hopping is ignored.
+Config.Incidents = {
+  enabled           = true,
+  minImpactSpeed    = 30,     -- km/h below which an impact is ignored
+  minSpeedDropKmh   = 22,     -- sudden speed loss in one frame that counts as a hit
+  minBodyDamage     = 45.0,   -- body-health drop that counts as a hit
+  cooldownMs        = 1500,   -- ignore repeat hits within this window (one crash = one incident)
+  startBufferMs     = 3000,   -- ignore impacts in the first N ms after GO (grid shuffle)
+  maxPerRace        = 20,     -- hard cap on reported incidents (anti-spam)
 }
-Config.BoardRange   = 12.0     -- metres: render when the player is this close
-Config.BoardRefresh = 30000    -- ms between record re-fetches
 
--- ── NPC cop chase ───────────────────────────────────────────────────────────
--- Street-race heat. Racers pick this up as a wanted level from how they drive
--- (speed on public road, wrecking traffic, mowing down peds); once they have
--- stars, scripted police units spawn behind them and hunt.
---
--- The units NEVER shoot. They are drivers only: follow at low heat, ram/PIT at
--- high heat. Vanilla dispatch stays off (spz-core kills it server-wide) — every
--- car here is spawned, tasked and deleted by client/copchase.lua, LOCALLY, so
--- each racer is chased by their own pack and nobody eats another player's cops.
---
--- Voted on per race: the traffic ballot carries an on/off switch, majority wins
--- (`Default` breaks a tie and covers a poll where nobody touched it).
+-- ── Mid-race reconnect ──────────────────────────────────────────────────────
+-- A crash/timeout during a LIVE race no longer means instant DNF: the grid
+-- slot is held this long, and rejoining restores lap/checkpoint/time at the
+-- last crossed checkpoint. Must be shorter than IdleKickMs.
+Config.ReconnectWindowMs    = 60000
+
+-- ── Ghost duels (async PvP wagers) ──────────────────────────────────────────
+-- /duel <player|id> <track> <stake> — race an opponent's STORED best line (a
+-- ghost) for credits. Reuses the Time-Trial harness (bucket, CP timing, ghost).
+-- Server-authoritative: it compares its measured lap to the stored best_ms.
+Config.Duel = {
+  Enabled  = true,
+  MinStake = 100,
+  MaxStake = 10000,
+  -- HouseFunded = true  → winnings are a house bounty; the (possibly offline)
+  --   opponent is NEVER charged. Winner nets +stake (stake back + matched bonus).
+  -- HouseFunded = false → the opponent's balance covers the matched stake: they
+  --   lose it if their ghost is beaten, win the challenger's stake if it holds.
+  --   Charges an offline player without consent — off by default.
+  HouseFunded = true,
+  -- Car for the challenger when the opponent's stored model can't be resolved to
+  -- a registered race vehicle.
+  FallbackModel = "sultan",
+}
+
+-- Ghost-bots (the cold-start field filler that backfilled thin races with
+-- replayed stored lines) were REMOVED. The standings, the results grid, the map
+-- blips and the race board are humans only again. Ghost DUELS below and the
+-- time-trial ghost in spz-raceline are separate features and still live.
+
+-- Overtake auto-clips. A pass triggers a real VIDEO clip recorded from the
+-- overtaker's screen via `screencapture`, uploaded to FiveManage, and posted
+-- to Discord. Recording starts the instant the pass is detected (so the clip
+-- contains the overtake, not just the aftermath) and runs ClipDurationS.
+-- Cooldown is per overtaking pair to stop spam in a back-and-forth battle.
+Config.OvertakeCooldown = 20000
+
+-- Nitrous flourish on a completed pass: the OVERTAKER's car spits exhaust
+-- flames (networked, so the whole field sees it). Fires off the same detection
+-- as the auto-clip, so it inherits OvertakeCooldown and cannot spam in a
+-- back-and-forth battle.
+Config.OvertakeNos = {
+  enabled    = true,
+  durationMs = 1400,   -- how long the flames burn
+  pulseMs    = 110,    -- gap between particle bursts (lower = denser flame)
+  scale      = 1.6,
+
+  -- Rocket-Voltic boost on top of the flames. OFF deliberately: it is a real
+  -- speed gain, so it pays for a pass with pace and makes overtaking
+  -- self-reinforcing — the leader pulls away for winning a position. Turn it on
+  -- only if that is the racing you want.
+  boost      = false,
+  boostMs    = 900,
+}
+Config.Clip = {
+  enabled     = true,
+  durationS   = 10,     -- seconds of video captured per overtake
+  maxWidth    = 1280,
+  maxHeight   = 720,
+  -- FiveManage: create a Media API token at https://fivemanage.com and paste
+  -- it here. Without a token the clip system falls back to a screenshot still,
+  -- then to a text-only Discord post.
+  fivemanageUrl   = "https://api.fivemanage.com/api/v3/file",
+  fivemanageToken = "",   -- e.g. "fmapi_xxxxxxxxxxxxxxxx"
+}
+
+-- ════════════════════════════════════════════════════════════════════════════
+-- 5. ADVANCED — spawning, tools, police
+-- ════════════════════════════════════════════════════════════════════════════
+Config.SpawnTimeout         = 30000   -- ms hard ceiling when NOBODY has spawned yet
+
+-- Gap between grid vehicle creations. Only there to keep every car off the same
+-- network tick — it is NOT a pacing mechanism. Keep it small: the whole grid
+-- must be spawned well before the spawn monitor advances the session, or the
+-- spawn loop ends up running against a race that has already staged.
+--   16 players × 800ms ≈ 13s   (fits inside SpawnTimeout)
+--   16 players × 5000ms ≈ 75s  (the old value — outlived WARMUP)
+Config.SpawnStaggerMs       = 800
+
+-- ms to let the client-side grid teleport land (and collision stream in) before
+-- the race vehicle is created at that spot.
+Config.GridTpSettleMs       = 400
+
+-- Warmup doubles as spawn grace: once the FIRST racer is ready, the race moves
+-- on after this delay and slow clients keep spawning during the whole warmup
+-- (with automatic retries). They're only cut at warmup end.
+Config.FirstReadyGraceMs    = 5000    -- ms after first confirm before advancing
+Config.SpawnRetryIntervalMs = 8000    -- ms between respawn retries during warmup
+
 -- ── Start-line tool (/setstart) ─────────────────────────────────────────────
 -- The in-game surveying tool that sets a track's start line from two points.
 -- See spz-races/server/startline.lua.
@@ -502,6 +513,18 @@ Config.StartLineTool = {
   RequireAce = false,   -- true = back to ACE "spz.dev" / spz_dev convar
 }
 
+-- ── NPC cop chase ───────────────────────────────────────────────────────────
+-- Street-race heat. Racers pick this up as a wanted level from how they drive
+-- (speed on public road, wrecking traffic, mowing down peds); once they have
+-- stars, scripted police units spawn behind them and hunt.
+--
+-- The units NEVER shoot. They are drivers only: follow at low heat, ram/PIT at
+-- high heat. Vanilla dispatch stays off (spz-core kills it server-wide) — every
+-- car here is spawned, tasked and deleted by client/copchase.lua, LOCALLY, so
+-- each racer is chased by their own pack and nobody eats another player's cops.
+--
+-- Voted on per race: the traffic ballot carries an on/off switch, majority wins
+-- (`Default` breaks a tie and covers a poll where nobody touched it).
 Config.CopChase = {
   Enabled  = true,     -- false removes the switch from the ballot entirely
   -- true: cops are spawned by the SERVER as networked entities, so every racer
@@ -773,3 +796,9 @@ Config.CopChase = {
   -- is disabled — it summons nothing.
   UseNativeWanted = true,
 }
+
+-- ════════════════════════════════════════════════════════════════════════════
+-- 6. DEBUG
+-- ════════════════════════════════════════════════════════════════════════════
+-- ── Debug ──────────────────────────────────────────────────────────────────
+Config.Debug                = false

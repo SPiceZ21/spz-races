@@ -137,7 +137,6 @@ local function _promptMissedCheckpoint()
         description = msg,
         type        = "error",
         duration    = 6000,
-        position    = "center-left",
     })
 end
 

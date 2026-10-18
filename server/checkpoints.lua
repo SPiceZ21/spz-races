@@ -429,7 +429,7 @@ end)
 local function notify(src, msg, ntype)
     TriggerClientEvent("ox_lib:notify", src, {
         title = "Race", description = msg, type = ntype or "warning",
-        position = "center-left", duration = 8000,
+        duration = 8000,
     })
 end
 

@@ -3,8 +3,10 @@
 -- fixed spot near the safe zone. Server-spawned (networked) so everyone sees it;
 -- the previous showcase is removed each time so only the latest race car stands.
 
-local SHOWCASE_COORDS  = vector3(-1319.44, -1217.39, 4.82)
-local SHOWCASE_HEADING = 31.7
+-- Spot lives in config.lua (Config.Showcase) with the other locations.
+local SC = Config.Showcase or {}
+local SHOWCASE_COORDS  = SC.Coords  or vector3(-1319.44, -1217.39, 4.82)
+local SHOWCASE_HEADING = SC.Heading or 31.7
 
 local currentShowcase = nil
 
@@ -16,7 +18,7 @@ local function clearShowcase()
 end
 
 local function spawnShowcase(model)
-    if not model then return end
+    if not model or SC.Enabled == false then return end
     local hash = (type(model) == "number") and model or GetHashKey(model)
 
     clearShowcase()

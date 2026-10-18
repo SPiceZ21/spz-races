@@ -71,7 +71,7 @@ RegisterNetEvent("SPZ:saveCustomTrack", function(payload)
     -- client could overwrite or add tracks by firing the event.
     if not (TrackAdminAllowed and TrackAdminAllowed(src)) then return end
     if not payload or not payload.checkpoints or #payload.checkpoints < 2 then
-        TriggerClientEvent("ox_lib:notify", src, { description = "Save failed: need at least 2 checkpoints.", type = "error", position = "center-left" })
+        TriggerClientEvent("ox_lib:notify", src, { description = "Save failed: need at least 2 checkpoints.", type = "error" })
         return
     end
 

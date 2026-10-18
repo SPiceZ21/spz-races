@@ -9,7 +9,6 @@ RegisterNetEvent("SPZ:perfectLapFlourish", function()
         description  = "All sectors purple",
         type        = "success",
         duration    = 6000,
-        position    = "top",
         icon        = "bolt",
     })
 
@@ -124,6 +123,5 @@ RegisterNetEvent("SPZ:bonusGranted", function(d)
     lib.notify({
         description = ("%s — %s"):format(table.concat(bits, "  "), d.reason or "Bonus"),
         type        = "success",
-        position    = "top",
     })
 end)
