@@ -642,10 +642,18 @@ local function _lobbyMode()
     return { mode = "join", queueCount = qCount, seconds = qCount > 0 and winSecs or nil }
 end
 
+-- Second pill: the minigame hub key, read from the player's live binding.
+local function _mgKey()
+    if GetResourceState("spz-minigames") ~= "started" then return nil end
+    local ok, k = pcall(function() return exports["spz-core"]:KeyFor("minigames", "M") end)
+    return (ok and k and k ~= "") and k or "M"
+end
+
 _pushLobby = function()
     if GetResourceState("spz-raceUI") ~= "started" then return end
     local lb  = _lobbyMode()
-    local sig = ("%s|%s|%s|%s"):format(lb.mode, lb.queueCount or "", lb.queuePos or "", lb.seconds or "")
+    if lb.mode ~= "hidden" then lb.mgKey = _mgKey() end
+    local sig = ("%s|%s|%s|%s|%s"):format(lb.mode, lb.queueCount or "", lb.queuePos or "", lb.seconds or "", lb.mgKey or "")
     if sig ~= _lastLobbySig then
         _lastLobbySig = sig
         exports["spz-raceUI"]:UpdateLobby(lb)
