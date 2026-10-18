@@ -103,6 +103,7 @@ function StartWarmupPhase()
     if RaceSession.state ~= SPZ.RaceState.WARMUP then return end
 
     local warmupTotal = Config.WarmupTimeSeconds or 60
+    RaceSession.warmupEndsAt = GetGameTimer() + warmupTotal * 1000   -- late-join cutoff
     print(string.format("[Warmup] Free-drive phase started: %d seconds", warmupTotal))
 
     -- Unfreeze — let players drive

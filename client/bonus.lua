@@ -99,12 +99,8 @@ end
 
 RegisterNetEvent("SPZ:overtake", function(data)
     if not data then return end
-
-    lib.notify({
-        title = "OVERTAKE",
-        description = ("%s passed %s"):format(data.over or "?", data.under or "?"),
-        type = "inform", duration = 4000, position = "top",
-    })
+    -- No on-screen toast (removed: it spammed the screen in close battles);
+    -- only the overtaker's nitrous flourish below.
 
     if NOS.enabled == false then return end
     if data.overSrc ~= GetPlayerServerId(PlayerId()) then return end

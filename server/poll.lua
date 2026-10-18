@@ -329,8 +329,10 @@ local function rerollEnabled()
     return rerollCfg().Enabled ~= false
 end
 
+-- 0 / nil / negative = unlimited rerolls.
 local function rerollCap()
-    return tonumber(rerollCfg().MaxPerPoll) or 1
+    local n = tonumber(rerollCfg().MaxPerPoll) or 0
+    return n > 0 and n or math.huge
 end
 
 local function RerollCard(phase)
@@ -466,7 +468,7 @@ function EndRacePoll()
         local what = (trackReroll and carReroll) and "tracks and cars"
             or trackReroll and "tracks" or "cars"
 
-        print(("[Race Poll] Reroll won on %s — redrawing (%d/%d used)."):format(what, used + 1, rerollCap()))
+        print(("[Race Poll] Reroll won on %s — redrawing (reroll #%d)."):format(what, used + 1))
 
         for src in pairs(RaceSession.players) do
             TriggerClientEvent("SPZ:pollClosed", src)

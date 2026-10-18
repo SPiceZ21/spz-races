@@ -45,7 +45,32 @@ RegisterNetEvent("SPZ:pollResult", function(data)
 end)
 
 -- ── Warmup panel (spz-raceUI tile HUD) ────────────────────────────────────────
+-- Warmup is the one moment a racer can still set the car up, so the tuner is a
+-- key away (Y, rebindable) and the panel says so.
+local _inWarmup = false
+
+local function _tuneKey()
+    local ok, k = pcall(function() return exports["spz-core"]:KeyFor("spz_warmuptune", "Y") end)
+    return (ok and k) or "Y"
+end
+
+RegisterCommand("spz_warmuptune", function()
+    if not _inWarmup or not LocalPlayer.state.inRace then return end
+    if GetResourceState("spz-tunners") ~= "started" then
+        lib.notify({ description = "Tuner is not available right now", type = "error" })
+        return
+    end
+    local veh = GetVehiclePedIsIn(PlayerPedId(), false)
+    if veh == 0 then
+        lib.notify({ description = "Get in your car to tune it", type = "error" })
+        return
+    end
+    exports["spz-tunners"]:OpenTunerMenu(veh)
+end, false)
+RegisterKeyMapping("spz_warmuptune", "Race: tune car during warmup", "keyboard", "Y")
+
 RegisterNetEvent("SPZ:warmupPhase", function(data)
+    _inWarmup = true
     if GetResourceState("spz-raceUI") ~= "started" then return end
     exports["spz-raceUI"]:ShowWarmup({
         remaining = data.remaining,
@@ -53,10 +78,12 @@ RegisterNetEvent("SPZ:warmupPhase", function(data)
         track     = data.track,
         class     = data.class,
         gridPos   = data.gridPos,
+        tuneKey   = GetResourceState("spz-tunners") == "started" and _tuneKey() or nil,
     })
 end)
 
 RegisterNetEvent("SPZ:warmupEnd", function()
+    _inWarmup = false
     if GetResourceState("spz-raceUI") ~= "started" then return end
     exports["spz-raceUI"]:HideWarmup()
 end)
@@ -548,10 +575,20 @@ end)
 -- Join window: armed by the first joiner, counts down for everyone
 local _joinWindowEnd = 0
 
+local _pushLobby   -- defined with the pill loop below
+
 RegisterNetEvent("SPZ:joinWindow", function(data)
     local secs = (data and data.seconds) or 0
     _joinWindowEnd = secs > 0 and (GetGameTimer() + secs * 1000) or 0
+    if _pushLobby then _pushLobby() end   -- show / clear the seconds right away
 end)
+
+-- Joining / leaving the queue redraws the pill now, not on the next tick.
+for _, key in ipairs({ "inQueue", "pendingRace", "queuePosition" }) do
+    AddStateBagChangeHandler(key, ("player:%d"):format(GetPlayerServerId(PlayerId())), function()
+        SetTimeout(0, function() if _pushLobby then _pushLobby() end end)
+    end)
+end
 
 -- Poll opening means the break / join window is over
 RegisterNetEvent("SPZ:pollOpen", function()
@@ -594,20 +631,24 @@ local function _lobbyMode()
         }
     end
 
-    return { mode = "join", queueCount = qCount, seconds = winSecs }
+    -- Not queued: no countdown unless other racers are actually waiting on it.
+    return { mode = "join", queueCount = qCount, seconds = qCount > 0 and winSecs or nil }
+end
+
+_pushLobby = function()
+    if GetResourceState("spz-raceUI") ~= "started" then return end
+    local lb  = _lobbyMode()
+    local sig = ("%s|%s|%s|%s"):format(lb.mode, lb.queueCount or "", lb.queuePos or "", lb.seconds or "")
+    if sig ~= _lastLobbySig then
+        _lastLobbySig = sig
+        exports["spz-raceUI"]:UpdateLobby(lb)
+    end
 end
 
 Citizen.CreateThread(function()
     while true do
         Citizen.Wait(500)
-        if GetResourceState("spz-raceUI") == "started" then
-            local lb  = _lobbyMode()
-            local sig = ("%s|%s|%s|%s"):format(lb.mode, lb.queueCount or "", lb.queuePos or "", lb.seconds or "")
-            if sig ~= _lastLobbySig then
-                _lastLobbySig = sig
-                exports["spz-raceUI"]:UpdateLobby(lb)
-            end
-        end
+        _pushLobby()
     end
 end)
 

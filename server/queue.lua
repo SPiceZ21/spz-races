@@ -13,6 +13,16 @@ end
 -- No minimum player count. The first joiner arms a countdown that is
 -- broadcast to everyone; when it expires the poll starts with whoever queued.
 local joinWindowArmed = false
+local joinWindowToken = 0
+
+-- The queue emptied before the window ran out: stop the countdown so the next
+-- joiner gets a fresh full window and nobody keeps seeing stale seconds.
+function CancelJoinWindow()
+    if not joinWindowArmed then return end
+    joinWindowArmed = false
+    joinWindowToken = joinWindowToken + 1
+    TriggerClientEvent("SPZ:joinWindow", -1, { seconds = 0 })
+end
 
 function ArmJoinWindow()
     if joinWindowArmed then return end
@@ -21,11 +31,14 @@ function ArmJoinWindow()
     if GetQueueCount() < 1 then return end
 
     joinWindowArmed = true
+    joinWindowToken = joinWindowToken + 1
+    local token = joinWindowToken
     local secs = Config.JoinWindowSeconds or 30
     TriggerClientEvent("SPZ:joinWindow", -1, { seconds = secs })
     print(("[Race Engine] Join window armed: %ds"):format(secs))
 
     Citizen.SetTimeout(secs * 1000, function()
+        if token ~= joinWindowToken then return end   -- cancelled / re-armed
         joinWindowArmed = false
         if RaceSession.state == SPZ.RaceState.IDLE
         and not RaceSession.intermissionActive
@@ -53,6 +66,16 @@ function JoinQueue(src)
     -- auto-enrol into the next cycle.
     local joinable = RaceSession.state == SPZ.RaceState.IDLE
                   or RaceSession.state == SPZ.RaceState.POLLING
+
+    -- Field already in the race world but the lights are not out: drop the
+    -- player straight onto a free warmup slot.
+    if not joinable and LateJoinRace and CanLateJoin() then
+        ClearPending(src)
+        if LateJoinRace(src) then
+            Notify(src, "Joining the warmup — your car is on the grid", "success")
+            return true
+        end
+    end
 
     if not joinable then
         if Player(src).state.pendingRace then
@@ -139,6 +162,10 @@ function LeaveQueue(src)
 
     Notify(src, "Left the race", "info")
     BroadcastQueueUpdate()
+
+    if RaceSession.state == SPZ.RaceState.IDLE and GetQueueCount() < 1 then
+        CancelJoinWindow()
+    end
 
     -- If leaving emptied an in-progress cycle, reset the engine to idle.
     if (RaceSession.state == SPZ.RaceState.POLLING

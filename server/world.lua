@@ -2,6 +2,57 @@
 
 local spawnConfirmed = {}
 
+-- Race-start placement for n racers (see the two-placement note in
+-- SetupRaceWorld). Shared with LateJoinRace, which rebuilds it for the bigger field.
+local function BuildRaceGrid(n, startHeading)
+    local raceGrid
+    local manual = RaceSession.track.start_points
+
+    if manual and manual[1] and manual[2] then
+        -- MANUAL two-point start, set in game with /setstart.
+        --
+        -- Same shape as split mode — half the field on each point, each pack
+        -- laid out by point mode so the radius rules still apply — but the two
+        -- origins and headings are the ones someone stood on, instead of being
+        -- computed as start_coords ± SplitPointGap. That computation is what
+        -- lands wrong on tracks whose start point or heading is off; a surveyed
+        -- point cannot be.
+        --
+        -- Packs are interleaved (1st, 3rd, 5th… on point 1; 2nd, 4th… on
+        -- point 2) so the grid order does not put the whole front of the field
+        -- on one side.
+        local packs = { {}, {} }
+        for i = 1, n do
+            local side = (i % 2 == 1) and 1 or 2
+            packs[side][#packs[side] + 1] = i
+        end
+
+        raceGrid = {}
+        for side = 1, 2 do
+            local n = #packs[side]
+            if n > 0 then
+                local slots = SPZ.Math.GridPositions(
+                    manual[side].coords, manual[side].heading, n,
+                    Config.GridRowSpacing or 8.0, Config.GridColSpacing or 4.5, "point")
+                for k, i in ipairs(packs[side]) do
+                    raceGrid[i] = slots[k]
+                end
+            end
+        end
+        print(("[World Setup] Manual two-point start for %s"):format(RaceSession.track.name or "?"))
+    else
+        raceGrid = SPZ.Math.GridPositions(
+            RaceSession.track.start_coords,
+            startHeading,
+            n,
+            Config.GridRowSpacing or 8.0,
+            Config.GridColSpacing or 4.5,
+            Config.RaceStartMode or "split"
+        )
+    end
+    return raceGrid
+end
+
 function SetupRaceWorld()
     if RaceSession.state ~= SPZ.RaceState.WAITING then return end
 
@@ -77,51 +128,7 @@ function SetupRaceWorld()
         Config.WarmupSpawnMode or "grid"
     )
 
-    local raceGrid
-    local manual = RaceSession.track.start_points
-
-    if manual and manual[1] and manual[2] then
-        -- MANUAL two-point start, set in game with /setstart.
-        --
-        -- Same shape as split mode — half the field on each point, each pack
-        -- laid out by point mode so the radius rules still apply — but the two
-        -- origins and headings are the ones someone stood on, instead of being
-        -- computed as start_coords ± SplitPointGap. That computation is what
-        -- lands wrong on tracks whose start point or heading is off; a surveyed
-        -- point cannot be.
-        --
-        -- Packs are interleaved (1st, 3rd, 5th… on point 1; 2nd, 4th… on
-        -- point 2) so the grid order does not put the whole front of the field
-        -- on one side.
-        local packs = { {}, {} }
-        for i = 1, #playersInOrder do
-            local side = (i % 2 == 1) and 1 or 2
-            packs[side][#packs[side] + 1] = i
-        end
-
-        raceGrid = {}
-        for side = 1, 2 do
-            local n = #packs[side]
-            if n > 0 then
-                local slots = SPZ.Math.GridPositions(
-                    manual[side].coords, manual[side].heading, n,
-                    Config.GridRowSpacing or 8.0, Config.GridColSpacing or 4.5, "point")
-                for k, i in ipairs(packs[side]) do
-                    raceGrid[i] = slots[k]
-                end
-            end
-        end
-        print(("[World Setup] Manual two-point start for %s"):format(RaceSession.track.name or "?"))
-    else
-        raceGrid = SPZ.Math.GridPositions(
-            RaceSession.track.start_coords,
-            startHeading,
-            #playersInOrder,
-            Config.GridRowSpacing or 8.0,
-            Config.GridColSpacing or 4.5,
-            Config.RaceStartMode or "split"
-        )
-    end
+    local raceGrid = BuildRaceGrid(#playersInOrder, startHeading)
 
     -- Warmup slots are what the cars are CREATED on, so this is the one the
     -- spawn loop below reads.
@@ -370,3 +377,109 @@ AddEventHandler("SPZ:raceVehicleSpawned", function(src)
     end
 end)
 
+
+-- ── Late join (WAITING / WARMUP) ─────────────────────────────────────────────
+-- A player who presses E while the field is already in the race world is
+-- spawned straight onto the next free warmup slot instead of being told to wait
+-- for the next race. The race-start ring is rebuilt for the bigger field so the
+-- re-stage at warmup end still has a clean slot for everyone.
+local LATE_JOIN_MIN_MS = 12000   -- not worth it with less warmup than this left
+
+function CanLateJoin()
+    local st = RaceSession.state
+    if st ~= SPZ.RaceState.WAITING and st ~= SPZ.RaceState.WARMUP then return false end
+    if not RaceSession.track or not RaceSession.bucketId or not RaceSession.startHeading then return false end
+    if st == SPZ.RaceState.WARMUP and RaceSession.warmupEndsAt
+    and RaceSession.warmupEndsAt - GetGameTimer() < LATE_JOIN_MIN_MS then return false end
+    local cap = tonumber(Config.MaxPlayersPerRace) or 0
+    if cap > 0 and GetQueueCount() >= cap then return false end
+    return true
+end
+
+function LateJoinRace(src)
+    if not CanLateJoin() then return false end
+    local pData = CreatePlayerRaceData(src)
+    RaceSession.players[src] = pData
+
+    -- Next index after everyone already placed.
+    local idx = 0
+    for _, d in pairs(RaceSession.players) do
+        if d.gridIndex and d.gridIndex > idx then idx = d.gridIndex end
+    end
+    idx = idx + 1
+
+    local track   = RaceSession.track
+    local heading = RaceSession.startHeading
+    local warmupGrid = SPZ.Math.GridPositions(track.start_coords, heading, idx,
+        Config.GridRowSpacing or 8.0, Config.GridColSpacing or 4.5, Config.WarmupSpawnMode or "grid")
+    local slot = warmupGrid[idx] or warmupGrid[#warmupGrid]
+    if not slot then
+        RaceSession.players[src] = nil
+        return false
+    end
+    pData.gridIndex, pData.gridCoords, pData.gridHeading = idx, slot.coords, slot.heading
+
+    -- Re-seat the whole field on a race-start ring sized for the new count.
+    local order = {}
+    for s2, d in pairs(RaceSession.players) do order[#order + 1] = { src = s2, i = d.gridIndex or 999 } end
+    table.sort(order, function(x, y) return x.i < y.i end)
+    local raceGrid = BuildRaceGrid(#order, heading) or {}
+    for k, o in ipairs(order) do
+        local d  = RaceSession.players[o.src]
+        local rp = raceGrid[k]
+        if d and rp then d.raceCoords, d.raceHeading = rp.coords, rp.heading end
+    end
+
+    spawnConfirmed[src] = false
+    Player(src).state:set("inQueue", true, true)
+    Player(src).state:set("queuePosition", GetQueueCount(), true)
+    BroadcastQueueUpdate()
+
+    local raceId = RaceSession.raceId
+    local model  = (type(RaceSession.carClass) == "table" and RaceSession.carClass.model) or "sultan"
+    Citizen.CreateThread(function()
+        exports["spz-core"]:AssignPlayerToBucket(src, RaceSession.bucketId)
+        TriggerClientEvent("SPZ:tpToGridPoint", src, slot.coords)
+        Citizen.Wait(Config.GridTpSettleMs or 400)
+        if RaceSession.raceId ~= raceId or not RaceSession.players[src] then return end
+
+        local profile = Player(src).state.profile
+        local isRental = not ((profile and profile.license_tier or 0) >= (RaceSession.carClassId or 0))
+        local ok, err = pcall(function()
+            exports["spz-vehicles"]:SpawnRaceVehicle(src, model, slot.coords, slot.heading, isRental)
+        end)
+        if not ok then print(("[World Setup] Late-join spawn failed for %d: %s"):format(src, tostring(err))) end
+
+        local pb, tb = 0, 0
+        pcall(function()
+            pb = LB_GetPersonalBest(src, track.name, RaceSession.carClassId) or 0
+            local records = LB_GetTrackRecords(track.name, RaceSession.carClassId, 1)
+            tb = records and records[1] and records[1].lap_time_ms or 0
+        end)
+        local st = Player(src).state
+        st:set("inRace",       true,                    true)
+        st:set("raceId",       RaceSession.raceId,      true)
+        st:set("raceClass",    RaceSession.carClassId,  true)
+        st:set("raceTrack",    track.name,              true)
+        st:set("raceLap",      1,                       true)
+        st:set("raceLaps",     track.laps or 1,         true)
+        st:set("personalBest", pb,                      true)
+        st:set("allTimeBest",  tb,                      true)
+        st:set("racePosition", 0,                       true)
+        st:set("raceTime",     0,                       true)
+        st:set("dnf",          false,                   true)
+
+        -- Wait for the car, then hand over what the field got at WARMUP start.
+        local deadline = GetGameTimer() + 15000
+        while spawnConfirmed[src] == false and GetGameTimer() < deadline do Citizen.Wait(250) end
+        if RaceSession.raceId ~= raceId or not RaceSession.players[src] then return end
+        if RaceSession.state == SPZ.RaceState.WARMUP then
+            if track.checkpoints then
+                TriggerClientEvent("SPZ:spawnCheckpoints", src, track.checkpoints, 1, track.type or "circuit")
+            end
+            TriggerClientEvent("SPZ:freezeRacer", src, false)
+        end
+        print(("[World Setup] Late join: %d on warmup slot %d"):format(src, idx))
+    end)
+    return true
+end

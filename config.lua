@@ -182,10 +182,10 @@ Config.SpawnRetryIntervalMs = 8000    -- ms between respawn retries during warmu
 Config.PollReroll = {
   Enabled    = true,
 
-  -- How many redraws a single poll can spend. Two rerolls of a server with
-  -- three circuits is the same three circuits again, with the grid still
-  -- waiting — raise it only if the track and car lists are deep.
-  MaxPerPoll = 1,
+  -- How many redraws a single poll can spend. 0 = unlimited (the reroll card
+  -- is always on the ballot; once every track/car has been offered the draw
+  -- starts over from the full list).
+  MaxPerPoll = 0,
 }
 
 -- ── Race intro (cover → sweep → details card) ───────────────────────────────
