@@ -645,8 +645,8 @@ end
 -- Second pill: the minigame hub key, read from the player's live binding.
 local function _mgKey()
     if GetResourceState("spz-minigames") ~= "started" then return nil end
-    local ok, k = pcall(function() return exports["spz-core"]:KeyFor("minigames", "M") end)
-    return (ok and k and k ~= "") and k or "M"
+    local ok, k = pcall(function() return exports["spz-minigames"]:HubKey() end)
+    return (ok and k and k ~= "") and k or "F7"
 end
 
 _pushLobby = function()
