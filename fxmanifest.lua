@@ -3,7 +3,7 @@ game 'gta5'
 
 name 'spz-races'
 description 'SPiceZ-Core — Race engine, poll, timing, checkpoints'
-version '1.38.1'
+version '1.39.0'
 author 'SPiceZ-Core'
 
 shared_scripts {
