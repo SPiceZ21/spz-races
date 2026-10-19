@@ -69,10 +69,21 @@ function JoinQueue(src)
 
     -- Field already in the race world but the lights are not out: drop the
     -- player straight onto a free warmup slot.
-    if not joinable and LateJoinRace and CanLateJoin() then
-        ClearPending(src)
-        if LateJoinRace(src) then
-            Notify(src, "Joining the warmup — your car is on the grid", "success")
+    if not joinable and LateJoinRace and CanLateJoin then
+        local can, why = CanLateJoin()
+        if can then
+            ClearPending(src)
+            if LateJoinRace(src) then
+                Notify(src, "Joining the warmup — your car is on the grid", "success")
+                return true
+            end
+            why = "could not place you on the grid"
+        end
+        print(("[Race Engine] Late join refused for %d: %s"):format(src, tostring(why)))
+        if RaceSession.state == SPZ.RaceState.WARMUP or RaceSession.state == SPZ.RaceState.WAITING then
+            Notify(src, ("Can't join this warmup (%s) — you'll auto-join the next race"):format(why), "info")
+            PendingNextCycle[src] = true
+            Player(src).state:set("pendingRace", true, true)
             return true
         end
     end

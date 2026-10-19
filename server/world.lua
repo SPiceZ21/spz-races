@@ -385,14 +385,21 @@ end)
 -- re-stage at warmup end still has a clean slot for everyone.
 local LATE_JOIN_MIN_MS = 12000   -- not worth it with less warmup than this left
 
+--- @return boolean ok, string|nil why-not (shown to the player and logged)
 function CanLateJoin()
     local st = RaceSession.state
-    if st ~= SPZ.RaceState.WAITING and st ~= SPZ.RaceState.WARMUP then return false end
-    if not RaceSession.track or not RaceSession.bucketId or not RaceSession.startHeading then return false end
+    if st ~= SPZ.RaceState.WAITING and st ~= SPZ.RaceState.WARMUP then
+        return false, ("race is %s"):format(tostring(st))
+    end
+    if not RaceSession.track or not RaceSession.bucketId or not RaceSession.startHeading then
+        return false, "race world is still being set up"
+    end
     if st == SPZ.RaceState.WARMUP and RaceSession.warmupEndsAt
-    and RaceSession.warmupEndsAt - GetGameTimer() < LATE_JOIN_MIN_MS then return false end
+    and RaceSession.warmupEndsAt - GetGameTimer() < LATE_JOIN_MIN_MS then
+        return false, "warmup is almost over"
+    end
     local cap = tonumber(Config.MaxPlayersPerRace) or 0
-    if cap > 0 and GetQueueCount() >= cap then return false end
+    if cap > 0 and GetQueueCount() >= cap then return false, "the grid is full" end
     return true
 end
 
