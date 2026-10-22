@@ -98,8 +98,21 @@ end
 
 RegisterNetEvent("SPZ:overtake", function(data)
     if not data then return end
-    -- No on-screen toast (removed: it spammed the screen in close battles);
-    -- only the overtaker's nitrous flourish below.
+
+    -- Centre-screen callout for the two drivers involved only, at most once
+    -- every 2 minutes each, so a back-and-forth battle can't spam it.
+    local me = GetPlayerServerId(PlayerId())
+    if (data.overSrc == me or data.underSrc == me) and GetGameTimer() >= (_G.SPZ_OvertakeShownAt or 0)
+    and GetResourceState("spz-raceUI") == "started" then
+        _G.SPZ_OvertakeShownAt = GetGameTimer() + 120000
+        if data.overSrc == me then
+            exports["spz-raceUI"]:ShowFlourish({ icon = "overtake", title = "Overtake!",
+                value = "passed " .. tostring(data.under or "?"), color = "#22c55e", ms = 2200 })
+        else
+            exports["spz-raceUI"]:ShowFlourish({ icon = "down", title = "Overtaken",
+                value = "by " .. tostring(data.over or "?"), color = "#ff3d55", ms = 2200 })
+        end
+    end
 
     if NOS.enabled == false then return end
     if data.overSrc ~= GetPlayerServerId(PlayerId()) then return end

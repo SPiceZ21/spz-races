@@ -1,76 +1,59 @@
 <!doctype html>
 <!--
-  Live gate texture. client/cp_anim.lua opens this page in a DUI per atlas and
-  swaps it over the streamed texture in spz_checkpoint.ytd, so the inside of
-  every gate drifts instead of standing still.
-
-  ?tex=spz_cp_gate   which atlas (spz_cp_gate | spz_cp_start | spz_cp_finish)
-
-  Atlas layout (see spz-checkpointprop/README.md), per 512 px block:
-    panel x 0-375  -> animated: scrolls sideways (the art tiles horizontally)
-    rim   x 384-439, body x 448-503 -> drawn as-is, with a gentle glow pulse
-  The logo is its own texture (spz_cp_logo) and is never touched here.
+  Live checkpoint-pole texture. client/cp_anim.lua opens this in a DUI and
+  swaps it over spz_cp_gate in spz_checkpoint.ytd.
+  Texture: 256 x 1024, four 64 px columns [pending | taken | start | finish],
+  bottom of the image = bottom of the pole. The colour bands scroll UP the
+  pole; the bottom fade (alpha) stays where it is.
 -->
 <html>
 <head>
 <meta charset="utf-8">
-<style>
-  html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; }
-  canvas { display: block; }
-</style>
+<style>html,body{margin:0;background:transparent;overflow:hidden}canvas{display:block}</style>
 </head>
 <body>
 <canvas id="c"></canvas>
 <script>
 (function () {
-  var q = new URLSearchParams(location.search);
-  var tex = q.get('tex') || 'spz_cp_gate';
-  var BLOCK = 512, PANEL = 376;
-  // panel drift, px per second; the finish chequer moves slower than the smoke
-  var SPEED = tex === 'spz_cp_finish' ? 18 : 34;
-
-  var cv = document.getElementById('c');
-  var ctx = cv.getContext('2d');
+  var SPEED = 160;          // px per second up the pole (texture is 1024 tall)
+  var cv = document.getElementById('c'), ctx = cv.getContext('2d');
   var img = new Image();
   img.onload = function () {
-    cv.width = img.width; cv.height = img.height;
-    var blocks = Math.max(1, Math.round(img.width / BLOCK));
-    var start = performance.now();
-
+    var W = img.width, H = img.height;
+    cv.width = W; cv.height = H;
+    // fade mask from the original alpha, so scrolling never moves the fade
+    var mask = document.createElement('canvas'); mask.width = W; mask.height = H;
+    var m = mask.getContext('2d'); m.drawImage(img, 0, 0);
+    // opaque copy of the colours to scroll
+    var solid = document.createElement('canvas'); solid.width = W; solid.height = H;
+    var s = solid.getContext('2d');
+    s.drawImage(img, 0, 0);
+    s.globalCompositeOperation = 'destination-over'; s.fillStyle = '#000'; s.fillRect(0, 0, W, H);
+    // the top band (bright) source region, repeated: use the upper 70% so the
+    // faded bottom rows are never scrolled into view
+    var top = Math.floor(H * 0.3), span = H - top;
+    var t0 = performance.now();
     function frame(now) {
-      var t = (now - start) / 1000;
-      var W = cv.width, H = cv.height;
+      var off = ((now - t0) / 1000 * SPEED) % span;
+      ctx.globalCompositeOperation = 'source-over';
       ctx.clearRect(0, 0, W, H);
-
-      // rim + body: as authored
-      ctx.drawImage(img, 0, 0);
-
-      // panel: two side-by-side copies, shifted, so the scroll wraps seamlessly
-      var off = (t * SPEED) % PANEL;
-      for (var b = 0; b < blocks; b++) {
-        var x0 = b * BLOCK;
-        ctx.save();
-        ctx.beginPath(); ctx.rect(x0, 0, PANEL, H); ctx.clip();
-        ctx.clearRect(x0, 0, PANEL, H);
-        ctx.drawImage(img, x0, 0, PANEL, H, x0 + off, 0, PANEL, H);
-        ctx.drawImage(img, x0, 0, PANEL, H, x0 + off - PANEL, 0, PANEL, H);
-        // soft brightness swell travelling up the panel
-        var y = H - ((t * 120) % (H * 1.4));
-        var g = ctx.createLinearGradient(0, y - 180, 0, y + 180);
-        g.addColorStop(0, 'rgba(255,255,255,0)');
-        g.addColorStop(0.5, 'rgba(255,255,255,0.10)');
-        g.addColorStop(1, 'rgba(255,255,255,0)');
-        ctx.globalCompositeOperation = 'source-atop';   // only where the panel has paint (keeps the bottom fade)
-        ctx.fillStyle = g;
-        ctx.fillRect(x0, 0, PANEL, H);
-        ctx.globalCompositeOperation = 'source-over';
-        ctx.restore();
+      // tile the bright part of each column downward, moving up over time
+      for (var y = -span + off; y < H; y += span) {
+        ctx.drawImage(solid, 0, top, W, span, 0, H - (y + span), W, span);
       }
+      // a soft light pulse travelling up
+      var py = H - ((now - t0) / 1000 * SPEED * 1.6) % (H * 1.3);
+      var g = ctx.createLinearGradient(0, py - 120, 0, py + 120);
+      g.addColorStop(0, 'rgba(255,255,255,0)'); g.addColorStop(.5, 'rgba(255,255,255,.22)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+      // keep the original bottom fade
+      ctx.globalCompositeOperation = 'destination-in';
+      ctx.drawImage(mask, 0, 0);
       requestAnimationFrame(frame);
     }
     requestAnimationFrame(frame);
   };
-  img.src = tex + '.png';
+  img.src = 'spz_cp_gate.png';
 })();
 </script>
 </body>

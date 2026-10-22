@@ -3,15 +3,14 @@
 -- atlas is rendered live by a small DUI page (html/cp/anim.html) and swapped
 -- over the streamed one in spz_checkpoint.ytd with AddReplaceTexture.
 --
--- Only the three atlases are replaced. The logo (spz_cp_logo) stays the
--- streamed texture, so swapping it in OpenIV keeps working.
+-- The poles (spz-checkpointprop) use one texture; its colour bands flow up.
 --
 -- The DUIs exist only while gates are on screen: checkpoints.lua acquires on
 -- the first prop it places and releases when it clears them; a short linger
 -- avoids rebuilding the pages between back-to-back races.
 
 local TXD    = "spz_checkpoint"
-local ATLAS  = { spz_cp_gate = { 1024, 1024 }, spz_cp_start = { 512, 1024 }, spz_cp_finish = { 512, 1024 } }
+local ATLAS  = { spz_cp_gate = { 256, 1024 } }   -- one texture: [pending | taken | start | finish] columns
 local LINGER = 20000
 
 local active   = false

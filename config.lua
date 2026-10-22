@@ -256,6 +256,10 @@ Config.FlagAnimLeadMs       = 5000
 -- version keeps showing the old art.
 Config.AnimatedGates = true
 
+-- Gate poles lean their top arm outward, away from the racing line. If they
+-- lean inward on your tracks, set this to false.
+Config.GateArmsOut = true
+
 -- ── In-world race HUD elements ────────────────────────────────────────────────
 --
 --   CpDistancePill  anchored to the CHECKPOINT, with a stem down to the gate

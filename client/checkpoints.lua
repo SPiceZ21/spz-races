@@ -267,10 +267,9 @@ local function _spawnGate(idx)
 
     local heading = _gateHeading(idx, cp)
 
-    -- Posts sit at the gate edges, not the centre. Both face the same way: the
-    -- pillar is double-sided, and flipping the right one shows its back, where
-    -- the 3D logo reads mirrored.
-    local rightHdg = heading
+    -- Posts sit at the gate edges. The pole's arm leans toward its local -X, so
+    -- the right post is turned round to lean outward too (Config.GateArmsOut).
+    local rightHdg = (Config.GateArmsOut == false) and heading or (heading + 180.0) % 360.0
     -- Older tracks have no left/right posts: one pillar at the centre instead.
     local leftPos  = cp.left or (not cp.right and cp.coords) or nil
     local left, lg, right, rg
