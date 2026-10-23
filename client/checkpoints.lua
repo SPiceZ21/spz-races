@@ -269,18 +269,22 @@ local function _spawnGate(idx)
 
     -- Posts sit at the gate edges. The pole's arm leans toward its local -X, so
     -- the right post is turned round to lean outward too (Config.GateArmsOut).
-    local rightHdg = (Config.GateArmsOut == false) and heading or (heading + 180.0) % 360.0
+    -- In game the arm leans to the pole's local +X, so the LEFT post is the one
+    -- turned round (Config.GateArmsOut = false swaps it back).
+    local flip = (heading + 180.0) % 360.0
+    local leftHdg, rightHdg = flip, heading
+    if Config.GateArmsOut == false then leftHdg, rightHdg = heading, flip end
     -- Older tracks have no left/right posts: one pillar at the centre instead.
     local leftPos  = cp.left or (not cp.right and cp.coords) or nil
     local left, lg, right, rg
-    if leftPos then left, lg = _placeGateProp(model, leftPos, heading) end
+    if leftPos then left, lg = _placeGateProp(model, leftPos, leftHdg) end
     if cp.right then right, rg = _placeGateProp(model, cp.right, rightHdg) end
 
     if left or right then
         GateProps[idx] = {
             left = left, right = right, cleared = cleared, model = model,
             grounded = (not left or lg) and (not right or rg),
-            leftPos = leftPos, leftHdg = heading,
+            leftPos = leftPos, leftHdg = leftHdg,
             rightPos = cp.right, rightHdg = rightHdg,
         }
     end
