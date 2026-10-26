@@ -43,11 +43,17 @@ local pedBag = {}
 -- count is unknown here and SetPedRandomProps on a model with none is a no-op.
 local function roster()
     local list = {}
-    for _, name in ipairs(GlobalState.gridAddonPeds or {}) do
+    local names = GlobalState.gridAddonPeds or {}
+    for _, name in ipairs(names) do
         local hash = joaat(name)
-        if IsModelInCdimage(hash) and IsModelAPed(hash) then
+        if IsModelInCdimage(hash) then
             list[#list + 1] = { model = hash, props = 1, components = 0 }
+        else
+            print(("^3[spz-races] Addon grid ped '%s' is not streamed — skipped.^7"):format(name))
         end
+    end
+    if #names > 0 and #list == 0 then
+        print("^3[spz-races] No addon grid peds loaded — using the stock peds.^7")
     end
     return #list > 0 and list or PED_MODELS
 end

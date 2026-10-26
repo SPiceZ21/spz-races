@@ -271,12 +271,14 @@ local flagGirlBag = {}
 -- empty (or missing) folder leaves the six stock GTA peds in charge.
 local function scanAddonPeds()
     local dir = GetResourcePath(GetCurrentResourceName()) .. "/stream/addonpeds"
-    local isWin = package.config:sub(1, 1) == "\\"
+    local isWin = type(package) == "table" and type(package.config) == "string"
+        and package.config:sub(1, 1) == "\\"
     local cmd = isWin
-        and ('dir /b "%s\*.yft" 2>nul'):format(dir:gsub("/", "\\"))
+        and ('dir /b "%s\\*.yft" 2>nul'):format((dir:gsub("/", "\\")))
         or  ('ls -1 "%s" 2>/dev/null'):format(dir)
 
     local names, seen = {}, {}
+    if type(io) ~= "table" or type(io.popen) ~= "function" then return names end
     local ok, pipe = pcall(io.popen, cmd)
     if ok and pipe then
         for line in pipe:lines() do
@@ -296,7 +298,9 @@ local addonPeds = scanAddonPeds()
 GlobalState.gridAddonPeds = addonPeds
 if #addonPeds > 0 then
     FLAG_GIRL_COUNT = #addonPeds
-    print(("[spz-races] Grid peds: %d addon model(s) from stream/addonpeds."):format(#addonPeds))
+    print(("[spz-races] Grid peds: %d addon model(s) from stream/addonpeds: %s"):format(#addonPeds, table.concat(addonPeds, ", ")))
+else
+    print("[spz-races] Grid peds: no addon models in stream/addonpeds — stock GTA peds.")
 end
 
 local function nextFlagGirl()
