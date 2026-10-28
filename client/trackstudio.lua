@@ -6,7 +6,7 @@
 --   SPZ:startTrackEditor  { id }                               existing track
 --   SPZ:saveCustomTrack   → server/creator.lua
 --
--- Works the way the Bablo racing track creator does: you DRIVE the route and a
+-- You DRIVE the route and a
 -- preview gate rides in front of the car. Shape it with the arrow keys, drop
 -- it with Enter, take the last one back with Delete, save with Shift+Enter.
 -- Editing an existing track loads its gates and carries on from the last one.

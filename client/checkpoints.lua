@@ -79,7 +79,7 @@ local ROUTE_MODE    = CPB.routeMode or "multi"
 -- Gates the course line runs through (more than the lookahead blips: a line is
 -- readable much further ahead than numbered dots).
 local ROUTE_AHEAD   = CPB.routeAhead or 6
--- "multi" (the Bablo way): road GPS from the car through only the gate you're
+-- "multi": road GPS from the car through only the gate you're
 -- driving at and the one after it. Re-plotted every time a gate is taken, so
 -- the line is always "here -> next -> next+1" and never a long chain the
 -- pathfinder can wander off on.

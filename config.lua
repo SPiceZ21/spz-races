@@ -295,7 +295,7 @@ Config.Hud = {
 -- draws a fan of shortcuts rather than the course.
 --
 --   routeMode      "multi" road GPS from the car through the next 2 gate centres,
---                  re-plotted at every gate (default, the Bablo way) |
+--                  re-plotted at every gate (default) |
 --                  "course" straight lines gate to gate | "blip" per-gate blip
 --                  routes | "off" markers only
 --   routeHudColour HUD colour index for the multi-route line (15 = orange).
@@ -310,7 +310,7 @@ Config.Hud = {
 -- road, a dirt cut, a car park — the line takes the road version of that leg.
 Config.CpBlips = {
     routeMode      = "multi",
-    multiAhead     = 3,         -- multi: gates the road route runs through (Bablo uses 2)
+    multiAhead     = 3,         -- multi: gates the road route runs through
     routeHudColour = 15,
     lookahead      = 3,
     routeAll       = true,
