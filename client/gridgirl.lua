@@ -37,27 +37,6 @@ local PED_MODELS = {
 
 local pedBag = {}
 
--- Addon peds from stream/addonpeds (listed by server/countdown.lua). When any
--- of them actually exist in the game's image they ARE the roster; otherwise
--- the stock list above is. Props are asked for, since an addon ped's prop
--- count is unknown here and SetPedRandomProps on a model with none is a no-op.
-local function roster()
-    local list = {}
-    local names = GlobalState.gridAddonPeds or {}
-    for _, name in ipairs(names) do
-        local hash = joaat(name)
-        if IsModelInCdimage(hash) then
-            list[#list + 1] = { model = hash, props = 1, components = 0 }
-        else
-            print(("^3[spz-races] Addon grid ped '%s' is not streamed — skipped.^7"):format(name))
-        end
-    end
-    if #names > 0 and #list == 0 then
-        print("^3[spz-races] No addon grid peds loaded — using the stock peds.^7")
-    end
-    return #list > 0 and list or PED_MODELS
-end
-
 --- The next model in the shuffled order, refilling when the bag runs dry.
 ---
 --- `idx` is the SERVER'S pick, sent with the grid. It is used whenever there is
@@ -73,14 +52,12 @@ end
 --- falls back to a local shuffled bag, which still guarantees all six appear
 --- before any of them repeats.
 local function nextPed(idx)
-    local models = roster()
     if idx then
-        return models[((math.floor(idx) - 1) % #models) + 1]
+        return PED_MODELS[((math.floor(idx) - 1) % #PED_MODELS) + 1]
     end
 
-    if #pedBag == 0 or pedBag.src ~= models then
-        pedBag = { src = models }
-        for i = 1, #models do pedBag[i] = models[i] end
+    if #pedBag == 0 then
+        for i = 1, #PED_MODELS do pedBag[i] = PED_MODELS[i] end
         -- Fisher-Yates.
         for i = #pedBag, 2, -1 do
             local j = math.random(i)

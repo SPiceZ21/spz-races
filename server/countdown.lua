@@ -264,45 +264,6 @@ end
 local FLAG_GIRL_COUNT = 6      -- #PED_MODELS in client/gridgirl.lua
 local flagGirlBag = {}
 
--- ── Addon grid peds ──────────────────────────────────────────────────────────
--- Any ped model dropped into stream/addonpeds/ replaces the stock roster: the
--- folder is listed once at start, every <name>.yft becomes a model name, and
--- the list goes out on GlobalState.gridAddonPeds for client/gridgirl.lua. An
--- empty (or missing) folder leaves the six stock GTA peds in charge.
-local function scanAddonPeds()
-    local dir = GetResourcePath(GetCurrentResourceName()) .. "/stream/addonpeds"
-    local isWin = type(package) == "table" and type(package.config) == "string"
-        and package.config:sub(1, 1) == "\\"
-    local cmd = isWin
-        and ('dir /b "%s\\*.yft" 2>nul'):format((dir:gsub("/", "\\")))
-        or  ('ls -1 "%s" 2>/dev/null'):format(dir)
-
-    local names, seen = {}, {}
-    if type(io) ~= "table" or type(io.popen) ~= "function" then return names end
-    local ok, pipe = pcall(io.popen, cmd)
-    if ok and pipe then
-        for line in pipe:lines() do
-            local name = line:match("^([%w_%-]+)%.yft$")
-            -- _hi variants are LODs of the same model, not a model of their own.
-            if name and not name:match("_hi$") and not seen[name:lower()] then
-                seen[name:lower()] = true
-                names[#names + 1] = name
-            end
-        end
-        pipe:close()
-    end
-    return names
-end
-
-local addonPeds = scanAddonPeds()
-GlobalState.gridAddonPeds = addonPeds
-if #addonPeds > 0 then
-    FLAG_GIRL_COUNT = #addonPeds
-    print(("[spz-races] Grid peds: %d addon model(s) from stream/addonpeds: %s"):format(#addonPeds, table.concat(addonPeds, ", ")))
-else
-    print("[spz-races] Grid peds: no addon models in stream/addonpeds — stock GTA peds.")
-end
-
 local function nextFlagGirl()
     if #flagGirlBag == 0 then
         for i = 1, FLAG_GIRL_COUNT do flagGirlBag[i] = i end
