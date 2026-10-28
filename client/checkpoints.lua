@@ -75,10 +75,26 @@ local LOOKAHEAD     = CPB.lookahead or 3
 -- "course" is the GPS CUSTOM route (what Rockstar's own races use): it draws
 -- exactly the points it is given -- car -> next gate -> the gates after it --
 -- with no pathfinding, so it can only ever show the intended course.
-local ROUTE_MODE    = CPB.routeMode or "course"
+local ROUTE_MODE    = CPB.routeMode or "multi"
 -- Gates the course line runs through (more than the lookahead blips: a line is
 -- readable much further ahead than numbered dots).
 local ROUTE_AHEAD   = CPB.routeAhead or 6
+-- "multi" (the Bablo way): road GPS from the car through only the gate you're
+-- driving at and the one after it. Re-plotted every time a gate is taken, so
+-- the line is always "here -> next -> next+1" and never a long chain the
+-- pathfinder can wander off on.
+local MULTI_AHEAD   = CPB.multiAhead or 2
+
+-- Middle of the two posts: the gap you drive through, on the road. cp.coords
+-- sits on one post on plenty of tracks -- at the road edge or past it -- and
+-- the GPS snapped that point to whatever road was nearest, which is where the
+-- "route goes some other way" came from.
+local function _gateCentre(cp)
+    if cp.left and cp.right then
+        return (cp.left.x + cp.right.x) * 0.5, (cp.left.y + cp.right.y) * 0.5, (cp.left.z + cp.right.z) * 0.5
+    end
+    return cp.coords.x, cp.coords.y, cp.coords.z
+end
 local ROUTE_ALL     = CPB.routeAll ~= false
 local ROUTE_COLOUR  = CPB.routeColour or 17      -- blip colour id (blip mode)
 -- HUD colour index — a DIFFERENT scale from blip colours, which is why this is
@@ -387,7 +403,7 @@ local function _buildCourseRoute(idx, total)
         end
         local cp = CurrentCheckpoints[at]
         if not cp then break end
-        AddPointToGpsCustomRoute(cp.coords.x, cp.coords.y, cp.coords.z)
+        AddPointToGpsCustomRoute(_gateCentre(cp))
         added = added + 1
     end
     if added == 0 then ClearGpsCustomRoute() return end
@@ -409,7 +425,7 @@ local function _buildMultiRoute(idx)
     StartGpsMultiRoute(ROUTE_HUD, true, true)
 
     local added = 0
-    for n = 0, LOOKAHEAD - 1 do
+    for n = 0, MULTI_AHEAD - 1 do
         local at = idx + n
         if at > total then
             if TrackType ~= "circuit" then break end
@@ -417,7 +433,7 @@ local function _buildMultiRoute(idx)
         end
         local cp = CurrentCheckpoints[at]
         if not cp then break end
-        AddPointToGpsMultiRoute(cp.coords.x, cp.coords.y, cp.coords.z)
+        AddPointToGpsMultiRoute(_gateCentre(cp))
         added = added + 1
     end
 

@@ -23,9 +23,9 @@ local TXD, TEX  = "spz_cp_pill", "pill"
 
 local HUD       = (Config and Config.Hud) or {}
 local AHEAD     = math.max(0, math.min(SLOTS - 1, HUD.CpPillAhead or 2))  -- gates shown after the active one
-local SIZE_K    = 0.055                  -- quad width per metre of distance
-local SIZE_MIN  = 2.6                    -- quad width up close (m)
-local LIFT_MIN  = 2.5                    -- height over the gate up close (m)
+local SIZE_K    = 0.09                   -- quad width per metre of distance
+local SIZE_MIN  = 4.2                    -- quad width up close (m)
+local LIFT_MIN  = 3.5                    -- height over the gate up close (m)
 local LIFT_MAX  = 22.0
 local ACCENT    = { 255, 106, 0 }        -- stem colour, matches the pill border
 
