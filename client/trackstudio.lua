@@ -34,23 +34,38 @@ local camRot      = vector3(-25.0, 0.0, 0.0)
 
 local MAX_UNDO = 50
 
+-- Drive mode places from a live PREVIEW gate standing in front of the car,
+-- shaped with the arrow keys before it's dropped (the Bablo track builder
+-- way): Up/Down = width, Left/Right = slide sideways, Shift+Left/Right = left
+-- post only, Ctrl+Left/Right = right post only.
+local PREVIEW_AHEAD = 7.0        -- metres in front of the car
+local MIN_GAP       = 8.0        -- a new gate this close to the last one is refused
+local CIRCUIT_CLOSE = 250.0      -- circuit: warn if the last gate is this far from the start
+local pv = { l = 6.0, r = 6.0 }  -- preview half-widths left / right of the car's centre line
+local pvGate = nil               -- { left, right } in world space, this frame
+
 -- ── helpers ──────────────────────────────────────────────────────────────────
 
 local function notify(msg, t) lib.notify({ title = "Track Studio", description = msg, type = t or "inform" }) end
 
+-- heading is a GTA heading (forward = (-sin h, cos h), what GetEntityHeading
+-- and cp_cross.lua use), so the posts sit along the car's RIGHT vector
+-- (cos h, sin h): across the road. This used to offset along heading + 90,
+-- which is the FORWARD vector -- every gate dropped while driving had its
+-- posts in line with the road, and post-built gates got a heading 90 deg off.
 local function recalc(g)
-    local rad  = math.rad(g.heading + 90.0)
+    local rad  = math.rad(g.heading)
     local half = g.radius / 2
     local off  = vector3(math.cos(rad) * half, math.sin(rad) * half, 0.0)
-    g.left, g.right = g.coords + off, g.coords - off
+    g.left, g.right = g.coords - off, g.coords + off
 end
 
 -- rebuild centre / width / heading from the two posts (post drag)
 local function fromPosts(g)
-    local d = g.left - g.right
+    local d = g.right - g.left
     g.coords  = (g.left + g.right) / 2
     g.radius  = math.max(3.0, math.min(60.0, #(vector2(d.x, d.y))))
-    g.heading = (math.deg(math.atan(d.y, d.x)) - 90.0) % 360.0
+    g.heading = math.deg(math.atan(d.y, d.x)) % 360.0
     recalc(g)
 end
 
@@ -186,7 +201,8 @@ local function showHelp(force)
         and ("**Click** select · **drag** centre = move · **drag post** = reshape  \n"
           .. "**Wheel** width · **Ctrl+Wheel** rotate · **Shift+Wheel** height  \n"
           .. "**WASD** fly · **Space/Q** up/down · **Hold RMB** look")
-        or "Drive the route and press **[" .. K("place") .. "]** at each gate"
+        or ("Drive the route and press **[" .. K("place") .. "]** to drop the preview gate  \n"
+          .. "**Up/Down** width - **Left/Right** slide - **Shift / Ctrl + Left/Right** left / right post")
     local text = table.concat({
         "**TRACK STUDIO** — " .. meta.name .. ("  ·  %d gates"):format(#gates),
         ("**[%s]** %s   **[%s]** place gate"):format(K("camera"), mode == "camera" and "back to driving" or "3D camera", K("place")),
@@ -217,7 +233,8 @@ local function start(data, loaded)
         type = data.type or "circuit", laps = tonumber(data.laps) or 3,
     }
     defaultWidth = tonumber(data.defaultWidth) or defaultWidth
-    if #gates > 0 then sel = 1 end
+    pv = { l = defaultWidth / 2, r = defaultWidth / 2 }
+    if #gates > 0 then sel = #gates end   -- new gates go after the last one
     showHelp(true)
     notify(("%s — %d gates. Press %s for the 3D camera."):format(meta.name, #gates, K("camera", "P")), "success")
 end
@@ -240,12 +257,14 @@ RegisterNetEvent("SPZ:startTrackEditor", function(data)
     local loaded = {}
     for _, cp in ipairs(track.checkpoints) do
         local c = vector3(cp.coords.x, cp.coords.y, cp.coords.z)
+        -- Posts first: they're what races cross, and saved headings from before
+        -- the recalc fix are 90 deg off on post-edited gates.
         local g
-        if cp.heading then
-            g = newGate(c, cp.heading, cp.radius or 10.0)
-        else
+        if cp.left and cp.right then
             g = { left = vector3(cp.left.x, cp.left.y, cp.left.z), right = vector3(cp.right.x, cp.right.y, cp.right.z) }
             fromPosts(g)
+        else
+            g = newGate(c, cp.heading or 0.0, cp.radius or 10.0)
         end
         loaded[#loaded + 1] = g
     end
@@ -261,6 +280,28 @@ exports("IsTrackEditorActive", function() return false end)
 
 local function save()
     if #gates < 2 then return notify("Need at least 2 gates", "error") end
+    if meta.type == "circuit" and #gates > 2 and #(gates[#gates].coords - gates[1].coords) > CIRCUIT_CLOSE then
+        notify(("Last gate is %dm from the start line - the lap closes in a straight line back to it")
+            :format(math.floor(#(gates[#gates].coords - gates[1].coords))), "warning")
+    end
+    -- Face every gate along the course. cp_cross.lua uses the heading to tell
+    -- "before" from "past" the line, so a gate whose posts are mirrored (older
+    -- tracks, hand-dragged posts) would read backwards. Forward vs the
+    -- direction to the next gate (the previous one for the last gate).
+    for i, g in ipairs(gates) do
+        local a, b = g, gates[i + 1]
+        if not b then a, b = gates[i - 1], g end
+        if a and b then
+            local rad = math.rad(g.heading)
+            local fx, fy = -math.sin(rad), math.cos(rad)
+            local d = b.coords - a.coords
+            if fx * d.x + fy * d.y < 0 then
+                g.left, g.right = g.right, g.left
+                fromPosts(g)
+            end
+        end
+    end
+
     local clean = {}
     for i, g in ipairs(gates) do
         clean[i] = {
@@ -290,8 +331,19 @@ local function place()
         heading = prev and (math.deg(math.atan(pos.y - prev.coords.y, pos.x - prev.coords.x)) - 90.0)
             or camRot.z
     else
-        local ent = targetEnt()
-        pos, heading = GetEntityCoords(ent), GetEntityHeading(ent)
+        -- Drop the preview gate exactly as shown.
+        if not pvGate then return end
+        local g = { left = pvGate.left, right = pvGate.right }
+        fromPosts(g)
+        local prev = gates[sel]
+        if prev and #(prev.coords - g.coords) < MIN_GAP then
+            return notify(("Too close to gate #%d - drive at least %dm on"):format(sel, MIN_GAP), "error")
+        end
+        snapshot()
+        table.insert(gates, sel + 1, g)
+        sel = sel + 1
+        PlaySoundFrontend(-1, "Place_Prop_Success", "DLC_DHE_PROP_SOUNDS", true)
+        return
     end
     snapshot()
     local w = gates[sel] and gates[sel].radius or defaultWidth
@@ -308,8 +360,15 @@ local actions = {
         snapshot(); table.remove(gates, sel); sel = math.min(sel, #gates)
         PlaySoundFrontend(-1, "PROP_DROP_RED", "HUD_FRONTEND_DEFAULT_SOUNDSET", true)
     end },
-    nextg    = { "RIGHT",     "Track Studio: next gate",      function() if #gates > 0 then sel = sel % #gates + 1 end end },
-    prevg    = { "LEFT",      "Track Studio: previous gate",  function() if #gates > 0 then sel = (sel - 2) % #gates + 1 end end },
+    -- On a keyboard in drive mode the arrows shape the preview gate instead.
+    nextg    = { "RIGHT",     "Track Studio: next gate",      function()
+        if mode == "drive" and IsUsingKeyboard(0) then return end
+        if #gates > 0 then sel = sel % #gates + 1 end
+    end },
+    prevg    = { "LEFT",      "Track Studio: previous gate",  function()
+        if mode == "drive" and IsUsingKeyboard(0) then return end
+        if #gates > 0 then sel = (sel - 2) % #gates + 1 end
+    end },
     ground   = { "Y",         "Track Studio: snap to ground", function()
         local g = gates[sel]; if not g then return end
         local z = groundZ(g.coords); if not z then return end
@@ -414,6 +473,66 @@ CreateThread(function()
             end
             Wait(0)
         else
+            Wait(250)
+        end
+    end
+end)
+
+-- ── drive mode: the preview gate ─────────────────────────────────────────────
+
+CreateThread(function()
+    while true do
+        if active and mode == "drive" then
+            -- Arrow keys are ours while building (no phone, no radio wheel).
+            for _, c in ipairs({ 172, 173, 174, 175 }) do DisableControlAction(0, c, true) end
+            local step  = 0.08
+            local shift = IsControlPressed(0, 21)
+            local ctrl  = IsControlPressed(0, 36)
+            if IsDisabledControlPressed(0, 172) then pv.l, pv.r = pv.l + step, pv.r + step end   -- wider
+            if IsDisabledControlPressed(0, 173) then pv.l, pv.r = pv.l - step, pv.r - step end   -- narrower
+            for _, k in ipairs({ { 174, -1 }, { 175, 1 } }) do
+                if IsDisabledControlPressed(0, k[1]) then
+                    local d = k[2] * step
+                    if shift then     pv.l = pv.l - d              -- left post only
+                    elseif ctrl then  pv.r = pv.r + d              -- right post only
+                    else              pv.l, pv.r = pv.l - d, pv.r + d end
+                end
+            end
+            pv.l = math.max(-25.0, math.min(30.0, pv.l))
+            pv.r = math.max(-25.0, math.min(30.0, pv.r))
+            if pv.l + pv.r < 3.0 then pv.r = 3.0 - pv.l end    -- keep a drivable gap
+
+            local ent = targetEnt()
+            local function post(x)
+                local p = GetOffsetFromEntityInWorldCoords(ent, x, PREVIEW_AHEAD, 0.0)
+                local z = groundZ(p)
+                return z and vector3(p.x, p.y, z + 1.0) or p
+            end
+            pvGate = { left = post(-pv.l), right = post(pv.r) }
+
+            local L, R = pvGate.left, pvGate.right
+            local mid  = (L + R) / 2
+            local prev = gates[sel]
+            local tooClose = prev and #(prev.coords - mid) < MIN_GAP
+            local cr, cg, cb = 90, 200, 255
+            if tooClose then cr, cg, cb = 255, 70, 70 end
+            DrawMarker(1, L.x, L.y, L.z - 1.0, 0, 0, 0, 0, 0, 0, 0.5, 0.5, 3.2, 230, 60, 60, 140, false, false, 2, false, nil, nil, false)
+            DrawMarker(1, R.x, R.y, R.z - 1.0, 0, 0, 0, 0, 0, 0, 0.5, 0.5, 3.2, 60, 230, 90, 140, false, false, 2, false, nil, nil, false)
+            DrawLine(L.x, L.y, L.z + 1.5, R.x, R.y, R.z + 1.5, cr, cg, cb, 255)
+            if prev then
+                DrawLine(prev.coords.x, prev.coords.y, prev.coords.z + 0.3, mid.x, mid.y, mid.z + 0.3, cr, cg, cb, 160)
+            end
+            local on, sx, sy = GetScreenCoordFrom3dCoords(mid.x, mid.y, mid.z + 2.6)
+            if on then
+                SetTextScale(0.32, 0.32); SetTextFont(4); SetTextCentre(true)
+                SetTextColour(cr, cg, cb, 255); SetTextOutline()
+                BeginTextCommandDisplayText("STRING")
+                AddTextComponentSubstringPlayerName(tooClose and "TOO CLOSE" or ("NEXT  #%d  -  %.1fm"):format(sel + 1, pv.l + pv.r))
+                EndTextCommandDisplayText(sx, sy)
+            end
+            Wait(0)
+        else
+            pvGate = nil
             Wait(250)
         end
     end

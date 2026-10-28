@@ -383,7 +383,40 @@ end)
 -- spawned straight onto the next free warmup slot instead of being told to wait
 -- for the next race. The race-start ring is rebuilt for the bigger field so the
 -- re-stage at warmup end still has a clean slot for everyone.
-local LATE_JOIN_MIN_MS = 12000   -- not worth it with less warmup than this left
+-- Not worth it with less warmup than this left. Must cover the car's spawn
+-- chain (the confirm wait below allows 15s) or the joiner is cut at warmup
+-- end by ReconcileUnconfirmed -- the old 12s let that happen now and then.
+local LATE_JOIN_MIN_MS = 20000
+
+-- GlobalState.lateJoin = { track, endsAt } while a warmup is joinable, so
+-- freeroam players get a "JOIN WARMUP" pill. endsAt is unix time (compared
+-- with GetCloudTimeAsInt on the client) because GetGameTimer differs per
+-- machine; nil while WAITING, when the warmup clock hasn't started.
+function PublishLateJoin()
+    local st = RaceSession.state
+    local open = (st == SPZ.RaceState.WAITING or st == SPZ.RaceState.WARMUP)
+        and RaceSession.track and CanLateJoin()
+    if not open then
+        if GlobalState.lateJoin then GlobalState.lateJoin = nil end
+        return
+    end
+    local untilUnix = nil
+    if st == SPZ.RaceState.WARMUP and RaceSession.warmupEndsAt then
+        local left = RaceSession.warmupEndsAt - GetGameTimer() - LATE_JOIN_MIN_MS
+        untilUnix = os.time() + math.max(0, math.floor(left / 1000))
+    end
+    local cur = GlobalState.lateJoin
+    if not cur or cur.endsAt ~= untilUnix or cur.track ~= RaceSession.track.name then
+        GlobalState.lateJoin = { track = RaceSession.track.name, endsAt = untilUnix }
+    end
+end
+
+Citizen.CreateThread(function()
+    while true do
+        Citizen.Wait(1000)
+        PublishLateJoin()
+    end
+end)
 
 --- @return boolean ok, string|nil why-not (shown to the player and logged)
 function CanLateJoin()
@@ -480,7 +513,24 @@ function LateJoinRace(src)
         local deadline = GetGameTimer() + 15000
         while spawnConfirmed[src] == false and GetGameTimer() < deadline do Citizen.Wait(250) end
         if RaceSession.raceId ~= raceId or not RaceSession.players[src] then return end
+        if spawnConfirmed[src] == false then
+            -- Still no car. The warmup grace loop retries it; say so instead
+            -- of leaving the player standing on the grid wondering.
+            SPZ.Notify(src, "Your car is still loading — retrying, hang on", "info", 5000)
+        end
         if RaceSession.state == SPZ.RaceState.WARMUP then
+            -- The warmup HUD only ticks for the field once a second; give the
+            -- joiner theirs now so they can see they're in.
+            local left = RaceSession.warmupEndsAt and math.max(0, math.floor((RaceSession.warmupEndsAt - GetGameTimer()) / 1000)) or 0
+            TriggerClientEvent("SPZ:warmupPhase", src, {
+                remaining = left,
+                total     = Config.WarmupTimeSeconds or 60,
+                track     = track.name,
+                class     = type(RaceSession.carClass) == "table" and RaceSession.carClass.name or tostring(RaceSession.carClass),
+                laps      = track.laps,
+                gridPos   = idx,
+            })
+            SPZ.Notify(src, ("You're in! Warmup on %s — tune with Y, race starts in %ds"):format(track.name, left), "success", 6000)
             if track.checkpoints then
                 TriggerClientEvent("SPZ:spawnCheckpoints", src, track.checkpoints, 1, track.type or "circuit")
             end

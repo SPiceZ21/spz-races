@@ -275,6 +275,10 @@ Config.GateArmsOut = true
 -- The convar wins when it is set; otherwise the value here applies.
 Config.Hud = {
   CpDistancePill = true,
+  -- Draw the pill IN THE WORLD over the gate (and the next CpPillAhead gates
+  -- after it) instead of flat on the screen. client/cp_pill3d.lua.
+  CpPill3D       = true,
+  CpPillAhead    = 2,       -- 0-3
 }
 
 -- ── Checkpoint blips ───────────────────────────────────────────────────────
@@ -290,7 +294,9 @@ Config.Hud = {
 -- which is generally not the road through gate 1. Routing every gate that way
 -- draws a fan of shortcuts rather than the course.
 --
---   routeMode      "multi" chained road route (default) | "blip" per-gate blip
+--   routeMode      "course" line straight through the next gates, no road
+--                  pathfinding, so it never shows a different way (default) |
+--                  "multi" chained road route | "blip" per-gate blip
 --                  routes | "off" markers only
 --   routeHudColour HUD colour index for the multi-route line (15 = orange).
 --                  NOTE: HUD colours are a different scale from blip colours.
@@ -303,7 +309,7 @@ Config.Hud = {
 -- deliberately leaves the road network — an alley, the wrong side of a divided
 -- road, a dirt cut, a car park — the line takes the road version of that leg.
 Config.CpBlips = {
-    routeMode      = "multi",
+    routeMode      = "course",
     routeHudColour = 15,
     lookahead      = 3,
     routeAll       = true,

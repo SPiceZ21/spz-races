@@ -81,6 +81,7 @@ client_scripts {
   'client/incidents.lua',
   'client/copchase.lua',
   'client/nui_bridge.lua',
+  'client/cp_pill3d.lua',     -- 3D distance pills over the next gates
   'client/raceblips.lua',
   'client/trackboard.lua',
   'client/showcase.lua',
@@ -102,6 +103,7 @@ client_scripts {
 files {
   'stream/spz_checkpoint.ytyp',
   'html/cp/anim.html',
+  'html/cp/pill.html',
   'html/cp/*.png',
 }
 

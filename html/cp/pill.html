@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<!-- 3D checkpoint pill atlas (client/cp_pill3d.lua).
+     SLOTS rows of 512x256 stacked vertically; the Lua side maps row i onto the
+     billboard over gate i (0 = the gate you're driving at, 1+ = the ones after).
+     Transparent background: only the pill itself shows in the world. -->
+<style>
+  :root { --accent: #ff6a00; }
+  html, body { margin: 0; padding: 0; width: 512px; height: 1024px; overflow: hidden; background: transparent; }
+  body { font-family: "Arial Black", "Segoe UI", Arial, sans-serif; color: #fff; }
+  .slot {
+    position: absolute; left: 0; width: 512px; height: 256px;
+    display: flex; flex-direction: column; align-items: center; justify-content: flex-end;
+    padding-bottom: 14px; box-sizing: border-box; visibility: hidden;
+  }
+  .slot.on { visibility: visible; }
+  .pill {
+    display: flex; align-items: baseline; gap: 10px;
+    padding: 10px 30px 12px; border-radius: 999px;
+    background: rgba(10, 12, 16, 0.78);
+    border: 5px solid var(--accent);
+  }
+  .dist { font-size: 84px; line-height: 1; font-style: italic; letter-spacing: -2px; }
+  .unit { font-size: 40px; opacity: .8; }
+  .label {
+    margin-top: 8px; font-size: 30px; letter-spacing: 8px; text-transform: uppercase;
+    text-shadow: 0 2px 6px #000, 0 0 2px #000;
+  }
+  .tip { margin-top: 6px; width: 0; height: 0; border-left: 18px solid transparent;
+         border-right: 18px solid transparent; border-top: 22px solid var(--accent); }
+  /* Gates after the active one: white, smaller, quieter. */
+  .slot.next .pill { border-color: #fff; padding: 6px 22px 8px; background: rgba(10,12,16,.55); }
+  .slot.next .dist { font-size: 60px; }
+  .slot.next .unit { font-size: 30px; }
+  .slot.next .label { font-size: 24px; opacity: .75; }
+  .slot.next .tip { border-top-color: #fff; }
+  .slot.finish .pill { border-color: #22d36b; }
+  .slot.finish .tip  { border-top-color: #22d36b; }
+</style>
+</head>
+<body>
+<script>
+  const SLOTS = 4, H = 256
+  const els = []
+  for (let i = 0; i < SLOTS; i++) {
+    const s = document.createElement('div')
+    s.className = 'slot' + (i > 0 ? ' next' : '')
+    s.style.top = (i * H) + 'px'
+    s.innerHTML = '<div class="pill"><span class="dist"></span><span class="unit">m</span></div><div class="label"></div><div class="tip"></div>'
+    document.body.appendChild(s)
+    els.push({ el: s, dist: s.querySelector('.dist'), label: s.querySelector('.label') })
+  }
+  // { accent?, slots: [ { dist, label, finish } | null, ... ] }
+  window.addEventListener('message', (e) => {
+    const d = e.data
+    if (!d || d.type !== 'cpPill') return
+    if (d.accent) document.documentElement.style.setProperty('--accent', d.accent)
+    for (let i = 0; i < SLOTS; i++) {
+      const s = d.slots && d.slots[i], o = els[i]
+      if (!s) { o.el.classList.remove('on'); continue }
+      o.dist.textContent = s.dist
+      o.label.textContent = s.label
+      o.el.classList.toggle('finish', !!s.finish)
+      o.el.classList.add('on')
+    }
+  })
+</script>
+</body>
+</html>

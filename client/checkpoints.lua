@@ -62,14 +62,23 @@ local LOOKAHEAD     = CPB.lookahead or 3
 -- the car on its own as you drive, so it only needs rebuilding when the active
 -- gate changes.
 --
---   mode = "multi"  the chained route above (default)
+--   mode = "course" the course itself, gate to gate (default, see below)
+--   mode = "multi"  the chained road route above
 --   mode = "blip"   the old per-gate SetBlipRoute lines
 --   mode = "off"    no line; the gate markers only
 --
--- The caveat is the same for either: this is ROAD pathfinding, so where a track
--- deliberately leaves the network — an alley, the wrong side of a divided road,
--- a dirt cut, a car park — the line takes the road version of that leg.
-local ROUTE_MODE    = CPB.routeMode or "multi"
+-- "multi" and "blip" are ROAD pathfinding: a gate near a junction, on the wrong
+-- side of a divided road or off the network gets snapped to some other road,
+-- and the line sends you round the block instead of along the track. That was
+-- the "route shows another way" confusion.
+--
+-- "course" is the GPS CUSTOM route (what Rockstar's own races use): it draws
+-- exactly the points it is given -- car -> next gate -> the gates after it --
+-- with no pathfinding, so it can only ever show the intended course.
+local ROUTE_MODE    = CPB.routeMode or "course"
+-- Gates the course line runs through (more than the lookahead blips: a line is
+-- readable much further ahead than numbered dots).
+local ROUTE_AHEAD   = CPB.routeAhead or 6
 local ROUTE_ALL     = CPB.routeAll ~= false
 local ROUTE_COLOUR  = CPB.routeColour or 17      -- blip colour id (blip mode)
 -- HUD colour index — a DIFFERENT scale from blip colours, which is why this is
@@ -318,6 +327,8 @@ local function _clearAllBlips()
     -- race and keeps drawing a line to a checkpoint that no longer exists.
     SetGpsMultiRouteRender(false)
     ClearGpsMultiRoute()
+    SetGpsCustomRouteRender(false, 18, 30)
+    ClearGpsCustomRoute()
     MultiRouteOn = false
 end
 
@@ -357,15 +368,40 @@ local function _clearMultiRoute()
     if not MultiRouteOn then return end
     SetGpsMultiRouteRender(false)
     ClearGpsMultiRoute()
+    SetGpsCustomRouteRender(false, 18, 30)
+    ClearGpsCustomRoute()
     MultiRouteOn = false
+end
+
+-- "course": straight legs through the next ROUTE_AHEAD gates, following the car.
+local function _buildCourseRoute(idx, total)
+    -- (hudColour, displayOnFoot, followPlayer): followPlayer draws the live leg
+    -- from the car to the first point.
+    StartGpsCustomRoute(ROUTE_HUD, true, true)
+    local added = 0
+    for n = 0, ROUTE_AHEAD - 1 do
+        local at = idx + n
+        if at > total then
+            if TrackType ~= "circuit" then break end
+            at = ((at - 1) % total) + 1
+        end
+        local cp = CurrentCheckpoints[at]
+        if not cp then break end
+        AddPointToGpsCustomRoute(cp.coords.x, cp.coords.y, cp.coords.z)
+        added = added + 1
+    end
+    if added == 0 then ClearGpsCustomRoute() return end
+    SetGpsCustomRouteRender(true, 18, 30)   -- radar / pause-map line thickness
+    MultiRouteOn = true
 end
 
 local function _buildMultiRoute(idx)
     _clearMultiRoute()
-    if ROUTE_MODE ~= "multi" then return end
 
     local total = #CurrentCheckpoints
     if total < 1 then return end
+    if ROUTE_MODE == "course" then return _buildCourseRoute(idx, total) end
+    if ROUTE_MODE ~= "multi" then return end
 
     -- (hudColour, routeFromPlayer, displayOnFoot). Routing from the player is
     -- what makes leg one live; without it the line starts at gate 1 and the
@@ -491,6 +527,8 @@ Citizen.CreateThread(function()
             -- idempotent and does not rebuild the route, so it is simply set
             -- again rather than tested for.
             if MultiRouteOn then SetGpsMultiRouteRender(true) end
+        elseif ROUTE_MODE == "course" then
+            if MultiRouteOn then SetGpsCustomRouteRender(true, 18, 30) end
 
         elseif ROUTE_MODE == "blip" then
             -- Re-assert the whole routed set, not just the active gate: the line

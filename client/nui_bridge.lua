@@ -298,6 +298,7 @@ Citizen.CreateThread(function()
         and not _myRaceOver
         and GetResourceState("spz-raceUI") == "started" then
             local cp = exports["spz-races"]:GetCurrentCP()
+            SPZ_CpReadoutLive = cp ~= nil   -- cp_pill3d.lua draws while this is set
             if cp then
                 local pos = GetEntityCoords(PlayerPedId())
 
@@ -325,7 +326,8 @@ Citizen.CreateThread(function()
 
                 local payload = { dist = dist }
 
-                if _hudPill() then
+                -- The 3D pills (cp_pill3d.lua) replace this flat one when on.
+                if _hudPill() and not (SPZ_CpPill3DEnabled and SPZ_CpPill3DEnabled()) then
                     -- Anchored to the CHECKPOINT, slightly above the ground
                     -- point, with a stem drawn down to it: it answers "where is
                     -- the gate", including when it is behind geometry.
@@ -347,6 +349,7 @@ Citizen.CreateThread(function()
         else
             -- Not driving a route (finished, DNF, idle, cleanup, TT over) →
             -- make sure the readout is gone rather than frozen on screen.
+            SPZ_CpReadoutLive = false
             if GetResourceState("spz-raceUI") == "started" then
                 exports["spz-raceUI"]:UpdateCPWaypoint({ dist = 0 })
             end
@@ -608,6 +611,19 @@ local function _tourActive()
     return ok and on == true
 end
 
+-- GlobalState.lateJoin (server/world.lua PublishLateJoin) -> { track, seconds }
+-- while the current warmup can still be joined, else nil.
+local function _lateJoinOpen()
+    local lj = GlobalState.lateJoin
+    if type(lj) ~= "table" then return nil end
+    local secs = nil
+    if lj.endsAt then
+        secs = lj.endsAt - GetCloudTimeAsInt()
+        if secs <= 0 then return nil end
+    end
+    return { track = lj.track, seconds = secs }
+end
+
 local function _lobbyMode()
     if LocalPlayer.state.inRace then return { mode = "hidden" } end
     if LocalPlayer.state.inMinigame then return { mode = "hidden" } end  -- pursuit etc. own E
@@ -620,6 +636,13 @@ local function _lobbyMode()
     -- seconds until the armed race starts (nil when no window is running)
     local winMs   = _joinWindowEnd - GetGameTimer()
     local winSecs = winMs > 0 and math.ceil(winMs / 1000) or nil
+
+    -- A warmup is running and still takes players: E drops you onto its grid.
+    -- Shown to pending players too -- they'd otherwise wait a whole race.
+    local lj = _lateJoinOpen()
+    if lj and not LocalPlayer.state.inQueue then
+        return { mode = "warmup", track = lj.track, seconds = lj.seconds }
+    end
 
     if LocalPlayer.state.inQueue or LocalPlayer.state.pendingRace then
         return {
@@ -653,7 +676,7 @@ _pushLobby = function()
     if GetResourceState("spz-raceUI") ~= "started" then return end
     local lb  = _lobbyMode()
     if lb.mode ~= "hidden" then lb.mgKey = _mgKey() end
-    local sig = ("%s|%s|%s|%s|%s"):format(lb.mode, lb.queueCount or "", lb.queuePos or "", lb.seconds or "", lb.mgKey or "")
+    local sig = ("%s|%s|%s|%s|%s|%s"):format(lb.mode, lb.queueCount or "", lb.queuePos or "", lb.seconds or "", lb.mgKey or "", lb.track or "")
     if sig ~= _lastLobbySig then
         _lastLobbySig = sig
         exports["spz-raceUI"]:UpdateLobby(lb)
@@ -674,7 +697,13 @@ Citizen.CreateThread(function()
         if not LocalPlayer.state.inRace and not _G.SPZ_InTimeTrial and not LocalPlayer.state.inMinigame
         and not IsPauseMenuActive() and not IsNuiFocused() and not _isSpectating() then
             if IsControlJustPressed(0, 51) then   -- INPUT_CONTEXT (E)
-                if LocalPlayer.state.inQueue or LocalPlayer.state.pendingRace then
+                if _lateJoinOpen() and not LocalPlayer.state.inQueue then
+                    -- Pending players included: straight into the open warmup.
+                    -- Long debounce: a second E while the car is still
+                    -- spawning used to read as "leave" and pull them back out.
+                    TriggerServerEvent("SPZ:joinQueue")
+                    Citizen.Wait(3000)
+                elseif LocalPlayer.state.inQueue or LocalPlayer.state.pendingRace then
                     TriggerServerEvent("SPZ:leaveQueue")
                 else
                     TriggerServerEvent("SPZ:joinQueue")
