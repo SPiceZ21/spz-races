@@ -104,6 +104,7 @@ files {
   'stream/spz_checkpoint.ytyp',
   'html/cp/anim.html',
   'html/cp/pill.html',
+  'html/cp/fonts/*.ttf',
   'html/cp/*.png',
 }
 

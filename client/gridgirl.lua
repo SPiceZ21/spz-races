@@ -15,10 +15,10 @@
 
 -- ── The roster ───────────────────────────────────────────────────────────────
 --
--- Six models, drawn in random ORDER rather than at random: the list is shuffled
+-- Three models, drawn in random ORDER rather than at random: the list is shuffled
 -- and then worked through one race at a time, and only reshuffled once it is
 -- empty. Independent random picks would hand you the same girl three races
--- running often enough to look broken; a shuffled bag guarantees all six appear
+-- running often enough to look broken; a shuffled bag guarantees all three appear
 -- before any of them repeats.
 --
 -- `props` and `components` are what each model actually offers. The component
@@ -27,11 +27,8 @@
 -- bearing: a model with no prop variations must not be asked for a random one,
 -- which is how you get a floating hat or nothing at all.
 local PED_MODELS = {
-    { model = `a_f_y_runner_01`,    props = 1, components = 5 },
-    { model = `csb_anita`,          props = 1, components = 5 },
-    { model = `csb_stripper_01`,    props = 0, components = 7 },
-    { model = `mp_f_deadhooker`,    props = 0, components = 5 },
     { model = `s_f_y_bartender_01`, props = 0, components = 4 },
+    { model = `s_f_y_clubbar_01`,   props = 0, components = 4 },
     { model = `s_f_y_hooker_01`,    props = 1, components = 5 },
 }
 
