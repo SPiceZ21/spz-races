@@ -261,7 +261,7 @@ local function _runThreeTwoOne()
 end
 
 -- Flag girl selection, shared across the lobby. See the call site below.
-local FLAG_GIRL_COUNT = 6      -- #PED_MODELS in client/gridgirl.lua
+local FLAG_GIRL_COUNT = 3      -- #PED_MODELS in client/gridgirl.lua
 local flagGirlBag = {}
 
 local function nextFlagGirl()
