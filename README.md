@@ -1,122 +1,121 @@
 # spz-races
 
-> Race engine — queue, poll, countdown, checkpoints, sectors, results · `v1.9.0`
+> The race engine: queue, vote, grid, warmup, checkpoints, timing and results.
+
+![version](https://img.shields.io/badge/version-1.45.0-ff6200) ![SPiceZ-Core](https://img.shields.io/badge/SPiceZ--Core-beta-18181b)
 
 ## Overview
 
-`spz-races` runs the race. It owns the lifecycle state machine, the join queue, the track
-vote, the grid and countdown, checkpoint and sector validation, live positions, DNF and
-reconnect handling, results, and the intermission that loops back into the next race.
+Runs the whole race loop on the server. Players queue, vote on track and car class (spz-poll), spawn on a grid in a private bucket, free-drive a warmup, then race. Lap, sector and finish times are measured server-side. Also includes Time Trials, duels and **Track Studio** for building tracks in the world.
 
-The server decides everything. A client may *propose* an event — a checkpoint crossing, an
-incident, a rewind — and the server accepts it only if it can check the claim against data
-it owns: which gate you were due to cross and where you actually are, what state the race
-is in, and hard per-race ceilings. The client owns timing precision, because only it has
-the frame; it never owns an outcome.
+## Features
 
-It also hosts the leaderboard back end (`server/leaderboard/`) — records, standings and
-stats — which [spz-leaderboard](../spz-leaderboard/README.md) renders.
+- Queue → vote → warmup → countdown → race → results cycle
+- Late join during warmup
+- Server-side lap / sector / finish timing
+- Road-following GPS route and 3D distance pills over the next gates
+- Rewind, flip and back-to-checkpoint recovery
+- Time Trials and 1v1 duels
+- Track Studio: drive the route and drop gates (`custom_tracks.json`)
+- Flag girl race start
 
-## Race flow
+## Requirements
 
-1. **Idle** → first player queues, arming a dynamic join window.
-2. **Poll** — players vote on track and vehicle class ([spz-poll](../spz-poll/README.md)).
-3. **Warmup** (90 s) — world set up, grid spawned, doubles as spawn grace.
-4. **Countdown** — grid settle, 3-2-1.
-5. **Live** — checkpoints, sectors, positions, overtakes, incidents.
-6. **Finish** — first finisher arms a straggler countdown (warned at 60/30/10 s), then
-   force-DNF.
-7. **Results + intermission** run in parallel; the next join window arms immediately.
-
-Modes: standard race, time trial, and duel.
-
-## Structure
-
-| Side | File | Purpose |
-|---|---|---|
-| Shared | `config.lua` | Race configuration and tuning |
-| Shared | `shared/race_states.lua` | Race state enum |
-| Shared | `shared/events.lua` | Race event names, merged into `SPZ.Events` |
-| Shared | `shared/points.lua` | Points scoring table |
-| Shared | `shared/sectors.lua` | Sector split helpers |
-| Server | `data/tracks.lua` | Track definitions (101 tracks: 76 circuit, 25 sprint) |
-| Server | `server/main.lua` · `state_machine.lua` | Entry point and race lifecycle |
-| Server | `server/queue.lua` · `poll.lua` | Join queue and track vote |
-| Server | `server/world.lua` · `countdown.lua` · `lapcount.lua` | World setup, grid, lap count |
-| Server | `server/checkpoints.lua` · `sectors.lua` | Checkpoint and sector authority |
-| Server | `server/positions.lua` · `overtakes.lua` · `incidents.lua` | Live standings, pass clips, incidents |
-| Server | `server/dnf.lua` · `reconnect.lua` | DNF and mid-race rejoin |
-| Server | `server/results.lua` · `cleanup.lua` · `intermission.lua` | Results, teardown, next cycle |
-| Server | `server/timetrail.lua` · `duel.lua` | Alternate modes |
-| Server | `server/leaderboard/*.lua` | Records, standings, stats, race archive, callbacks |
-| Server | `server/creator.lua` · `dev_heading.lua` | Track creation tooling |
-| Client | `client/main.lua` · `nui_bridge.lua` | Race flow and UI delegation |
-| Client | `client/checkpoints.lua` · `cp_cross.lua` · `hit_detector.lua` | Checkpoint rendering and detection |
-| Client | `client/raceblips.lua` · `trackboard.lua` · `bonus.lua` | Blips, record boards, bonus and overtake flourishes |
-| Client | `client/lockin.lua` · `recover.lua` · `incidents.lua` | Grid lock, recovery, incidents |
-| Client | `client/rewind.lua` · `showcase.lua` | Time rewind, post-race car showcase |
-| Client | `client/timetrail.lua` · `duel.lua` | Alternate modes |
-| Client | `client/creator.lua` · `editor.lua` · `dev_heading.lua` | Track creation tooling |
-
-## Exports
-
-| Group | Exports |
+| Resource | Type |
 |---|---|
-| State | `SetRaceState` |
-| Queue | `JoinQueue` · `LeaveQueue` · `IsQueued` · `GetQueueCount` |
-| Checkpoints | `SetActiveCheckpoint` · `GetCurrentCP` · `StartCheckpointVisuals` · `StopCheckpointVisuals` · `GetRespawnPoint` |
-| Results | `MarkDNF` · `HandlePlayerDisconnect` |
-| Time trial | `IsInTimeTrial` |
-| Spawn | `ConfirmRaceSpawn` |
+| `ox_lib` | third-party |
+| `spz-core` | SPiceZ module |
+| `spz-identity` | SPiceZ module |
+| `spz-vehicles` | SPiceZ module |
+| `oxmysql` | third-party |
 
-## Events
+## Installation
 
-Names live in `shared/events.lua` and are merged into `SPZ.Events`
-(`spz-core/shared/events.lua`). Other resources import
-`'@spz-core/shared/events.lua'` to see them — each resource has its own Lua state.
+Included in the [txAdmin recipe](https://github.com/SPiceZ21/spz-txrecipe). Manual install:
 
-| Event | When | Use for |
-|---|---|---|
-| `SPZ:racerFinished` | Once per **finisher**, on crossing | Feeds, telemetry, showcase. Field still incomplete. |
-| `SPZ:raceEnd` | Once per **race**, from `ProcessRaceResults` | Scoring, persistence, payouts. |
-| `SPZ:standings` | Every `Config.StandingsBroadcastInterval` | Live race board (spz-spectate), other out-of-race UIs. |
-| `SPZ:raceStateChanged` | Every lifecycle transition | Anything that mirrors race phase. |
+1. Download `spz-races` from GitHub (latest release, or the repository) into your `resources` folder.
+2. Add to `server.cfg`, after its requirements:
 
-`SPZ:raceEnd` is fired by `ProcessRaceResults` and nowhere else. Firing it per finisher ran
-every listener twice per race — double progression, duplicate result rows, and a Discord
-post per finisher.
+```cfg
+ensure spz-races
+```
 
-## Anti-abuse
+## Configuration
 
-| Claim | Server check |
-|---|---|
-| Checkpoint hit | Must be the gate the racer is due to cross, and the ped must be within range of it |
-| Incident report | Speed sanity-checked against `Config.Incidents.minImpactSpeed`, capped per race |
-| Rewind credit | Clamped per claim (history buffer), per lap (`maxCreditPerLapMs`), and epochs can never pass `now` |
+- `config.lua`
+- `server/leaderboard/config.lua`
 
-A run that credits any rewind time carries `rewind_ms > 0` into results and is barred from
-track records, personal bests and raceline storage. Rewind earns no credit at all inside a
-duel.
+See the file for every option.
 
 ## Commands
 
-| Command | Effect |
+| Command | Who | Description |
+|---|---|---|
+| `/duel` | player | `/duel <player> <track> <stake>` — challenge a player |
+| `/joinrace` | player | Join the race queue (also `E` in freeroam) |
+| `/leaverace` | player | Leave the queue / race |
+| `/quittt` | player | Quit the time trial |
+| `/srace` | player | Start a quick solo race |
+| `/timetrail` | player | Start a time trial |
+| `/clearstart` | admin | Remove a surveyed start line |
+| `/racehud` | admin | Re-read race HUD convars |
+| `/setstart` | admin | Survey a start line for a track |
+| `/startlines` | admin | List surveyed start lines |
+| `/checkgateprops` | dev | Check gate prop models resolve |
+| `/copdebug` | dev | Cop-chase debug overlay |
+| `/cpdebug` | dev | Draw checkpoint gates in 3D |
+| `/fixheadings` | dev | Recompute gate headings |
+| `/flagdrop` | dev | Preview the flag girl animation |
+| `/racesoundtest` | dev | Play the grid sounds |
+| `/wantedtest` | dev | Preview the wanted HUD |
+
+## Key binds
+
+Rebindable in **Settings → Key Bindings → FiveM**.
+
+| Action | Default |
 |---|---|
-| `/joinrace` · `/leaverace` | Queue in / out |
-| `/timetrail` · `/tt_restart` · `/quittt` | Time trial control (leaving the car also ends the run) |
-| `/duel` | Challenge a player |
-| `/spz_respawn_cp` (F4) · `/spz_flip_car` (X) | Recovery — offered by name when you miss a checkpoint |
-| `/fixheadings` · `/checkgateprops` | Track tooling (make / edit / on-off is in the admin menu → Tracks) |
+| Race: tune car during warmup | `Y` |
+| Race: back to last checkpoint | `F4` |
+| Race: flip car upright | `K` |
+| Race: Rewind Time | `B` |
+| Time Trial — Restart to Start | `BACK` |
 
-## Dependencies
+## Exports
 
-`ox_lib` · `spz-core` · `spz-identity` · `spz-vehicles` · `oxmysql`
+| Export | Side |
+|---|---|
+| `ConfirmRaceSpawn` | server |
+| `GetCheckpointDebug` | client |
+| `GetCurrentCP` | client |
+| `GetQueueCount` | server |
+| `GetRaceInfo` | server |
+| `GetRespawnPoint` | client |
+| `GetRewindCreditMs` | client |
+| `GetTTCpIndex` | client |
+| `HandlePlayerDisconnect` | server |
+| `IsInTimeTrial` | server |
+| `IsQueued` | server |
+| `IsRewinding` | client |
+| `IsTrackCreatorActive` | client |
+| `IsTrackEditorActive` | client |
+| `IsTrackStudioActive` | client |
+| `JoinQueue` | server |
+| `LeaveQueue` | server |
+| `MarkDNF` | server |
+| `SetActiveCheckpoint` | client |
+| `SetRaceState` | server |
+| `StartCheckpointVisuals` | client |
+| `StopCheckpointVisuals` | client |
 
-## Credits
+```lua
+exports["spz-races"]:ConfirmRaceSpawn(...)
+```
 
-Checkpoint prop models by **BzZzi** —
-[original release](https://forum.cfx.re/t/props-checkpoints/5267670).
+## Notes
+
+- Tracks built in Track Studio are stored in `data/custom_tracks.json`, not the database — back that file up.
 
 ---
 
-Part of [SPiceZ-Core](../README.md) · GPL-3.0
+Part of **SPiceZ-Core** — [documentation](https://github.com/SPiceZ21/Docs) · [all modules](https://github.com/SPiceZ21/Docs/blob/main/modules/README.md)
