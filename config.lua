@@ -545,7 +545,7 @@ Config.StartLineTool = {
 -- Voted on per race: the traffic ballot carries an on/off switch, majority wins
 -- (`Default` breaks a tie and covers a poll where nobody touched it).
 Config.CopChase = {
-  Enabled  = true,     -- false removes the switch from the ballot entirely
+  Enabled  = false,    -- false removes the switch from the ballot entirely
   -- true: cops are spawned by the SERVER as networked entities, so every racer
   -- sees and collides with the same cops (server/copchase.lua). The chased
   -- racer's client still drives them. false: old local-only packs.

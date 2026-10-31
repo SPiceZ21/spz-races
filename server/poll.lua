@@ -160,7 +160,23 @@ local function RecordedPath(track)
         return exports["spz-raceline"]:GetTrackOutline(track.name, PATH_MAX,
             first and { x = first.x, y = first.y } or nil)
     end)
-    return ok and type(out) == "table" and #out >= 10 and out or nil
+    if not (ok and type(out) == "table" and #out >= 10) then return nil end
+
+    -- The line is stored by track NAME. A track edited after its record was set
+    -- (or a lap that cut a section) keeps the old line, and the map then showed
+    -- a different route from the one you race. Every checkpoint must lie on
+    -- the line; otherwise fall back to drawing the checkpoints themselves.
+    local LIMIT = 120 * 120
+    for _, cp in ipairs(track.checkpoints or {}) do
+        local c, best = cp.coords, math.huge
+        for _, p in ipairs(out) do
+            local dx, dy = p.x - c.x, p.y - c.y
+            local d = dx * dx + dy * dy
+            if d < best then best = d; if d <= LIMIT then break end end
+        end
+        if best > LIMIT then return nil end
+    end
+    return out
 end
 
 local function TrackPath(track)
