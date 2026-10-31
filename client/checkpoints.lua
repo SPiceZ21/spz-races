@@ -647,12 +647,31 @@ RegisterNetEvent("SPZ:nextCheckpoint", function(newIndex)
     -- Periodic resyncs re-send the CURRENT index — only chime and restyle
     -- when the checkpoint actually advanced.
     if newIndex == CurrentCPIndex then return end
-    -- The CP we just crossed was the old target — remember it as the respawn point.
-    LastCaughtIdx  = CurrentCPIndex
+
+    -- An ADVANCE is the very next gate (wrapping to 1 on a circuit). Anything
+    -- else is a rewind rollback (server/checkpoints.lua SPZ:rewindCheckpoint)
+    -- moving the target BACK. Treating a rollback as an advance used to record
+    -- the gate AHEAD as "last caught", so F4 (back to last checkpoint) sent the
+    -- player forward to the gate they hadn't reached yet.
+    local total   = #CurrentCheckpoints
+    local nextIdx = CurrentCPIndex + 1
+    if nextIdx > total then nextIdx = 1 end
+    local advance = (newIndex == nextIdx)
+
+    if advance then
+        -- The CP we just crossed was the old target — remember it as the respawn point.
+        LastCaughtIdx = CurrentCPIndex
+    else
+        -- Rolled back: the last gate actually passed is the one before the new target.
+        local prev = newIndex - 1
+        if prev < 1 then prev = (TrackType == "circuit") and total or nil end
+        LastCaughtIdx = prev
+    end
     CurrentCPIndex = newIndex
+
     -- Custom clip, so it goes through spz-raceUI's NUI page (ui/public/aud/)
-    -- rather than PlaySoundFrontend.
-    if GetResourceState("spz-raceUI") == "started" then
+    -- rather than PlaySoundFrontend. Only for a real pass, not a rollback.
+    if advance and GetResourceState("spz-raceUI") == "started" then
         exports["spz-raceUI"]:PlaySound("cppass")
     end
     _applyActive(CurrentCPIndex)

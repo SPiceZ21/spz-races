@@ -59,6 +59,33 @@ local function _currentCpIndex()
     return idx
 end
 
+--- True when the snapshot names gate `snapCp`, the live target is the gate
+--- right after it, and the car's position now is already past that gate's
+--- line (same plane test as client/cp_cross.lua).
+local function _landedPastGate(snapCp, nowCp)
+    local ok, cps, _, trackType = pcall(function() return exports["spz-races"]:GetCheckpointDebug() end)
+    if not ok or type(cps) ~= "table" then return false end
+    local total = #cps
+    local after = snapCp + 1
+    if after > total then after = (trackType == "circuit") and 1 or nil end
+    if after ~= nowCp then return false end             -- more than one gate apart: real rollback
+    local cp = cps[snapCp]
+    if not (cp and cp.left and cp.right and cp.coords) then return false end
+
+    local gx, gy = cp.right.x - cp.left.x, cp.right.y - cp.left.y
+    local glen = math.sqrt(gx * gx + gy * gy)
+    if glen < 0.01 then return false end
+    local nx, ny = -gy / glen, gx / glen
+    if cp.heading then
+        local rad = math.rad(cp.heading)
+        if (nx * -math.sin(rad) + ny * math.cos(rad)) < 0 then nx, ny = -nx, -ny end
+    end
+    local pos = GetEntityCoords(PlayerPedId())   -- the ped rides in the car; same position
+    local d = (pos.x - cp.coords.x) * nx + (pos.y - cp.coords.y) * ny
+    -- Past the line, and close to it (a lap or a hairpin later the plane means nothing).
+    return d > 0 and d < 80.0
+end
+
 local function _pushFrame(t, pos, rot, vel, cp)
     _buffer[#_buffer + 1] = {
         t = t, x = pos.x, y = pos.y, z = pos.z,
@@ -311,6 +338,14 @@ local function _finishRewind()
         -- circuit lap (heading for the line) and landed before the last
         -- checkpoint. The server validates it either way.
         local earlier = nowCp and (_lastApplied.cp < nowCp or (nowCp == 1 and _lastApplied.cp > 1))
+
+        -- The per-frame snapshot lags the real crossing: the target only moves
+        -- once the server confirms the gate, so frames recorded just AFTER the
+        -- car went through still name that gate. Landing there rolled the racer
+        -- back a gate they had already passed. When the snapshot is exactly one
+        -- gate behind, ask the gate itself which side the car landed on.
+        if earlier and _landedPastGate(_lastApplied.cp, nowCp) then earlier = false end
+
         if earlier then
             TriggerServerEvent("SPZ:rewindCheckpoint", _lastApplied.cp)
         end
