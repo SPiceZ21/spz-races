@@ -286,6 +286,7 @@ RegisterNetEvent("SPZ:tt:Begin",         function() _myRaceOver = false end)
 --
 -- Config is the fallback for the window before GlobalState has replicated, and
 -- for a client whose spz-races server half is not answering.
+local _cpWpSent = false   -- a flat-pill update is on screen and needs clearing
 local function _hudPill()
     local v = GlobalState.hudCpPill
     if v == nil then return (Config and Config.Hud and Config.Hud.CpDistancePill) == true end
@@ -340,7 +341,16 @@ Citizen.CreateThread(function()
                     }
                 end
 
-                exports["spz-raceUI"]:UpdateCPWaypoint(payload)
+                -- Only the flat pill reads this. With the 3D (DUI) pill on,
+                -- nothing does, so don't send a NUI message every frame for it;
+                -- one empty update clears a flat pill that was showing.
+                if payload.pill then
+                    exports["spz-raceUI"]:UpdateCPWaypoint(payload)
+                    _cpWpSent = true
+                elseif _cpWpSent then
+                    exports["spz-raceUI"]:UpdateCPWaypoint({ dist = 0 })
+                    _cpWpSent = false
+                end
                 Citizen.Wait(0)
             else
                 exports["spz-raceUI"]:UpdateCPWaypoint({ dist = 0 })
