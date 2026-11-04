@@ -40,7 +40,7 @@ end
 
 local function ensureDui()
     if dui then return ready end
-    local url = ("nui://%s/html/cp/pill.html"):format(GetCurrentResourceName())
+    local url = "nui://spz-hud/dui/cp/pill.html"   -- DUI pages ship from spz-hud
     dui = CreateDui(url, W, H)
     CreateRuntimeTextureFromDuiHandle(CreateRuntimeTxd(TXD), TEX, GetDuiHandle(dui))
     -- The page needs a moment to load before it takes messages.

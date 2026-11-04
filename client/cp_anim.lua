@@ -26,7 +26,7 @@ local function create()
     active = true
     local rtxd = CreateRuntimeTxd("spz_cp_anim")
     for name, size in pairs(ATLAS) do
-        local url = ("nui://%s/html/cp/anim.html?tex=%s"):format(GetCurrentResourceName(), name)
+        local url = ("nui://spz-hud/dui/cp/anim.html?tex=%s"):format(name)   -- DUI pages ship from spz-hud
         local dui = CreateDui(url, size[1], size[2])
         duis[#duis + 1] = dui
         CreateRuntimeTextureFromDuiHandle(rtxd, name, GetDuiHandle(dui))

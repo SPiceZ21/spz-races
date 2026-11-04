@@ -102,10 +102,6 @@ client_scripts {
 -- declared and requested as a DLC ITYP so the models resolve.
 files {
   'stream/spz_checkpoint.ytyp',
-  'html/cp/anim.html',
-  'html/cp/pill.html',
-  'html/cp/fonts/*.ttf',
-  'html/cp/*.png',
 }
 
 data_file 'DLC_ITYP_REQUEST' 'stream/spz_checkpoint.ytyp'
@@ -114,6 +110,7 @@ dependencies {
   'ox_lib',
   'spz-core',
   'spz-identity',
+  'spz-hud',        -- serves the checkpoint DUI pages (dui/cp)
   'spz-vehicles',
   'oxmysql',
 }
