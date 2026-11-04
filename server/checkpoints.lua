@@ -131,9 +131,7 @@ local function CompleteCircuitLap(source, pData, now)
 
     pData.current_lap       = pData.current_lap + 1
     pData.lap_start_time    = now
-    pData.rewind_credit_lap = 0   -- per-lap credit budget resets with the lap
-    TriggerClientEvent("SPZ:rewindCredit", source, 0,
-        (Config.Rewind or {}).maxCreditPerLapMs or 15000)
+    pData.rewind_credit_lap = 0   -- per-lap clock-credit cap resets with the lap
     StartSectorClock(pData, now)
 
     table.insert(pData.lap_times, lapTime)
@@ -375,7 +373,18 @@ local function _maxRewindCredit(cfg, factor)
     return math.floor((bufMs * (1.0 + 1.0 / mult) + 1000) * factor)
 end
 
-RegisterNetEvent("SPZ:rewindTime", function(ms)
+-- Whole-race rewind budget (Config.Rewind.budgetCharges x chargeSeconds), in ms.
+function RewindBudgetMs()
+    local cfg = Config.Rewind or {}
+    return math.floor((cfg.budgetCharges or 4) * (cfg.chargeSeconds or 15) * 1000)
+end
+
+--- Send a racer their rewind budget (used, max): the speedometer draws it.
+function SendRewindBudget(src, pData)
+    TriggerClientEvent("SPZ:rewindCredit", src, pData.rewind_used or 0, RewindBudgetMs())
+end
+
+RegisterNetEvent("SPZ:rewindTime", function(ms, rewound)
     local src   = source
     local pData = RaceSession.players[src]
     if not pData                               then return end
@@ -384,26 +393,38 @@ RegisterNetEvent("SPZ:rewindTime", function(ms)
 
     local cfg    = Config.Rewind or {}
     local factor = math.max(0.0, math.min(1.0, cfg.timeCreditFactor or 1.0))
-    if factor <= 0.0 then return end
+    local single = _maxRewindCredit(cfg, 1.0)
 
+    -- ── Budget: the rewound time comes off the whole-race allowance ──
+    -- The client stops a scrub when the budget runs out; this is the check
+    -- that holds if it does not. A scrub past the budget earns nothing.
+    local budget  = RewindBudgetMs()
+    local used    = pData.rewind_used or 0
+    local left    = math.max(0, budget - used)
+    rewound = math.floor(tonumber(rewound) or tonumber(ms) or 0)
+    if rewound <= 0 or rewound > single or left <= 0 then
+        SendRewindBudget(src, pData)
+        return
+    end
+    local spent = math.min(rewound, left)
+    pData.rewind_used = used + spent
+    SendRewindBudget(src, pData)
+
+    -- ── Clock credit, for the part of the scrub the budget covered ──
+    if factor <= 0.0 then return end
     ms = math.floor(tonumber(ms) or 0)
     if ms <= 0 or ms > _maxRewindCredit(cfg, factor) then return end
+    ms = math.floor(ms * spent / rewound + 0.5)
 
-    local used    = pData.rewind_credit_lap or 0
-    local allowed = math.max(0, (cfg.maxCreditPerLapMs or 15000) - used)
+    local usedLap = pData.rewind_credit_lap or 0
+    local allowed = math.max(0, (cfg.maxCreditPerLapMs or 15000) - usedLap)
     ms = math.min(ms, allowed)
     if ms <= 0 then return end
 
     local now   = GetGameTimer()
     local start = RaceSession.startTime or now
 
-    pData.rewind_credit_lap = used + ms
-
-    -- The per-lap allowance is the one genuinely limited resource in a rewind,
-    -- and until now the only way to discover you had spent it was to hold the
-    -- key and watch nothing happen. The speedometer draws it as a gauge.
-    TriggerClientEvent("SPZ:rewindCredit", src,
-        pData.rewind_credit_lap, cfg.maxCreditPerLapMs or 15000)
+    pData.rewind_credit_lap = usedLap + ms
     -- Whole-run total, never reset at a lap boundary. A time that won back any
     -- clock is not comparable to one driven clean, so this flag follows the
     -- result through to the leaderboard and blocks records/PBs.

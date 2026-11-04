@@ -399,6 +399,15 @@ function StartCountdownSequence()
             end
         end
 
+        -- Every racer starts with the full rewind budget, and is told so now:
+        -- the speedometer has nothing to draw until it hears the allowance.
+        if (Config.Rewind or {}).enabled ~= false then
+            for source, data in activeRacers() do
+                data.rewind_used = 0
+                SendRewindBudget(source, data)
+            end
+        end
+
         -- Advance state machine
         exports["spz-races"]:SetRaceState(SPZ.RaceState.LIVE)
     end)

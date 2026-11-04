@@ -437,9 +437,9 @@ RegisterNetEvent("SPZ:fastestLap", function(payload)
     })
 end)
 
--- Per-lap rewind allowance, forwarded to the speedometer. It lives on the
--- server (it is the server that clamps every claim), so the only way the dash
--- can draw it is to be told.
+-- Whole-race rewind budget (used, max), forwarded to the speedometer. It lives
+-- on the server (it is the server that clamps every claim), so the only way the
+-- dash can draw it is to be told: once at GO, then after every rewind.
 RegisterNetEvent("SPZ:rewindCredit", function(usedMs, maxMs)
     if GetResourceState("spz-speedometer") ~= "started" then return end
     pcall(function()

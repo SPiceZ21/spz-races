@@ -359,8 +359,8 @@ Config.RaceIntro = {
 -- ── Rewind (Forza Horizon-style time rewind) ────────────────────────────────
 -- Hold the key to scrub the car backward along its recent path; release to
 -- resume driving from that point with the momentum it had back then. Bounded
--- only by the rolling history buffer — no use cap, no cooldown beyond a short
--- settle after release.
+-- by the rolling history buffer per scrub and by the whole-race budget below
+-- (4 x 15 s), with no cooldown beyond a short settle after release.
 --
 -- RACES ONLY (LIVE state). Time trial has no rewind at all: the clock is the
 -- whole point of that mode, and a TT lap feeds the stored line, the ghost and
@@ -375,6 +375,14 @@ Config.Rewind = {
   -- Registry: Docs/keybinds.md
   key               = "B",
   bufferSeconds     = 10,     -- how far back you can scrub
+
+  -- ── Budget ───────────────────────────────────────────────────────────────
+  -- How much rewinding a racer gets for the WHOLE race: budgetCharges x
+  -- chargeSeconds of rewound time (4 x 15 s = 60 s), spent however they like,
+  -- in short taps or long scrubs. The speedometer draws it as budgetCharges
+  -- segments. When it is gone the key does nothing until the next race.
+  budgetCharges     = 4,
+  chargeSeconds     = 15,
   recordIntervalMs  = 66,     -- ~15 Hz history sampling
   playbackSpeedMult = 2.5,    -- scrub speed vs real time (10s buffer plays back in 4s)
   resumeCooldownMs  = 350,    -- short lockout after releasing before rewinding again

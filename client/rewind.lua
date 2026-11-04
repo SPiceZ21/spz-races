@@ -169,6 +169,19 @@ local _cooldownUntil       = 0
 local _liveCredit   = 0    -- factored: what the clock is actually given back
 local _liveRewound  = 0    -- unfactored: the true distance back in time
 
+-- Whole-race budget (Config.Rewind.budgetCharges x chargeSeconds), as the
+-- server last reported it. max 0 = not told yet: no limit is applied here
+-- (the server still enforces its own).
+local _budgetUsed, _budgetMax = 0, 0
+RegisterNetEvent("SPZ:rewindCredit", function(used, max)
+    _budgetUsed = math.max(0, tonumber(used) or 0)
+    _budgetMax  = math.max(0, tonumber(max) or 0)
+end)
+local function _budgetLeft()
+    if _budgetMax <= 0 then return math.huge end
+    return math.max(0, _budgetMax - _budgetUsed)
+end
+
 local function _creditFactor()
     local f = RCfg.timeCreditFactor
     if f == nil then return 1.0 end
@@ -369,13 +382,18 @@ local function _finishRewind()
     end
 
     _liveCredit, _liveRewound = 0, 0
-    if credit > 0 then
+    if rewound > 0 then
+        -- Spent from the budget now, so the next press sees it before the
+        -- server's confirmation arrives.
+        if _budgetMax > 0 then _budgetUsed = math.min(_budgetMax, _budgetUsed + rewound) end
+    end
+    if credit > 0 or rewound > 0 then
         -- `rewound` is the TRUE distance back in time; `credit` is what the
         -- clock is given back (they differ when timeCreditFactor < 1). Anything
         -- discarding un-driven history wants the first, anything moving a clock
         -- wants the second.
         TriggerEvent("SPZ:rewind:applied", credit, rewound)
-        TriggerServerEvent("SPZ:rewindTime", credit)
+        TriggerServerEvent("SPZ:rewindTime", credit, rewound)
     end
 
     _rewindEnt   = nil
@@ -418,6 +436,13 @@ local function _rewindLoop()
         -- slightly out of sync).
         local exhausted = _rewindHead <= oldest.t
         if exhausted then _rewindHead = oldest.t end
+
+        -- Out of budget: hold at the furthest point it allows and end here.
+        local left = _budgetLeft()
+        if now - _rewindHead >= left then
+            _rewindHead = now - left
+            exhausted = true
+        end
 
         local ent = _rewindEnt
         if not DoesEntityExist(ent) then
@@ -466,6 +491,11 @@ local function _rewindLoop()
         _liveRewound = _rewoundAt(_rewindHead)
         _liveCredit  = _liveRewound * _creditFactor()
 
+        -- The speedometer's rewind meter drains while the key is held.
+        if _budgetMax > 0 and GetResourceState("spz-speedometer") == "started" then
+            exports["spz-speedometer"]:SetRewindCredit(math.min(_budgetMax, _budgetUsed + _liveRewound), _budgetMax)
+        end
+
         if exhausted then
             _finishRewind()
             return
@@ -485,6 +515,7 @@ local function _startRewind()
     if GetGameTimer() < _cooldownUntil then return end
     if not _shouldRecord() then return end
     if #_buffer < 3 then return end
+    if _budgetLeft() <= 0 then return end   -- the race's rewind budget is spent
 
     local ped = PlayerPedId()
     local veh = GetVehiclePedIsIn(ped, false)
