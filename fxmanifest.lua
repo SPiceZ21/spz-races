@@ -3,7 +3,7 @@ game 'gta5'
 
 name 'spz-races'
 description 'SPiceZ-Core — Race engine: queue, vote, timing, checkpoints, race HUD, leaderboard, progression, spectate, replays, speed cameras'
-version '2.0.1'
+version '3.0.0'
 author 'SPiceZ-Core'
 
 shared_scripts {
