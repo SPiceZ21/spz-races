@@ -339,6 +339,17 @@ Config.CpBlips = {
 --
 -- Set Enabled = false and the sequence is exactly what it was before: no
 -- cover, no card, straight from warmup to the grid.
+-- Joining a race: the SPiceZ transition cover (spz-hud, the spawn screen's
+-- wipe) closes before the first grid teleport, so nobody sees the jump across
+-- the map or their car appearing around them. It opens once the player is
+-- seated in the race car on the grid (client/main.lua).
+-- LeadMs: how long the server waits after raising it before teleporting; it
+-- has to outlast the close (about 0.8 s). Set Enabled = false for no cover.
+Config.JoinCover = {
+  Enabled = true,
+  LeadMs  = 900,
+}
+
 Config.RaceIntro = {
   Enabled    = true,
 

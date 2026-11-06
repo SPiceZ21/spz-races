@@ -93,6 +93,55 @@ RegisterNetEvent("SPZ:tpToGrid", function(data)
     end
 end)
 
+-- ── Join cover ────────────────────────────────────────────────────────────────
+-- Joining a race used to snap the player across the map in plain view: the
+-- grid teleport, the car popping in around them, collision streaming back.
+-- The SPiceZ transition cover (spz-hud, the spawn screen's wipe) now closes
+-- first — the server sends SPZ:raceJoinCover and waits Config.JoinCover.LeadMs
+-- before the first grid teleport — and opens once we are seated in the race
+-- car on the grid. A grid teleport without a cover (the warmup retry pass)
+-- raises one on the spot.
+local JOIN_COVER = "spz-races:join"
+local joinCover = { on = false, arrived = false, startVeh = 0 }
+
+local function hudUp() return GetResourceState("spz-hud") == "started" end
+
+local function releaseJoinCover()
+    if not joinCover.on then return end
+    joinCover.on = false
+    pcall(function() exports["spz-hud"]:CoverHide(JOIN_COVER) end)
+end
+
+local function raiseJoinCover()
+    if joinCover.on or not hudUp() then return end
+    local ped = PlayerPedId()
+    joinCover = { on = true, arrived = false, startVeh = GetVehiclePedIsIn(ped, false) }
+    pcall(function() exports["spz-hud"]:CoverShow(JOIN_COVER, "Joining the grid") end)
+    CreateThread(function()
+        local started, seatedSince = GetGameTimer(), nil
+        while joinCover.on do
+            Wait(100)
+            local me  = PlayerPedId()
+            local veh = GetVehiclePedIsIn(me, false)
+            -- Seated as the driver of a car that is not the one we joined in,
+            -- after the grid teleport: that is the race car, on the grid.
+            if joinCover.arrived and veh ~= 0 and veh ~= joinCover.startVeh
+            and GetPedInVehicleSeat(veh, -1) == me then
+                seatedSince = seatedSince or GetGameTimer()
+            else
+                seatedSince = nil
+            end
+            if (seatedSince and GetGameTimer() - seatedSince > 900)
+            or GetGameTimer() - started > 25000 then
+                break
+            end
+        end
+        releaseJoinCover()
+    end)
+end
+
+RegisterNetEvent("SPZ:raceJoinCover", raiseJoinCover)
+
 -- ── Pre-spawn grid placement ──────────────────────────────────────────────────
 -- Moves the ped to its grid slot BEFORE the race vehicle is created, so the
 -- spawning client is in network scope of the new vehicle and can resolve its
@@ -105,6 +154,8 @@ end)
 -- mid-stream, which is exactly the case this teleport exists to fix.
 RegisterNetEvent("SPZ:tpToGridPoint", function(coords)
     if not coords then return end
+    raiseJoinCover()            -- no-op when the server already raised it
+    joinCover.arrived = true
     local ped = PlayerPedId()
 
     -- clearArea off here too: the warmup slots are separated, but the flag also
@@ -196,6 +247,18 @@ end)
 
 -- ── Safe-zone teleport ────────────────────────────────────────────────────────
 RegisterNetEvent("SPZ:tpToSafeZone", function()
+  CreateThread(function()
+    -- Leaving the race (finish, DNF, quit, cancel) goes through the transition
+    -- cover too: it closes over the race, the teleport happens behind it, and it
+    -- opens on the paddock once collision is in.
+    releaseJoinCover()
+    local covered = false
+    if hudUp() then
+        covered = pcall(function() exports["spz-hud"]:CoverShowWait("spz-races:leave", "Back to freeroam") end)
+    end
+
+    -- Looked up after the cover has closed: the race car may have been removed
+    -- by the server in the meantime.
     local ped = PlayerPedId()
     local veh = GetVehiclePedIsIn(ped, false)
     local sz  = (Config and Config.SafeZone)        or vector3(0.0, 0.0, 0.0)
@@ -219,4 +282,16 @@ RegisterNetEvent("SPZ:tpToSafeZone", function()
         exports["spz-races"]:HideWarmup()
         exports["spz-races"]:SetRaceOverlayVisible(false)
     end
+
+    if covered then
+        local deadline = GetGameTimer() + 2000
+        RequestCollisionAtCoord(sz.x, sz.y, sz.z)
+        while not HasCollisionLoadedAroundEntity(PlayerPedId()) and GetGameTimer() < deadline do
+            RequestCollisionAtCoord(sz.x, sz.y, sz.z)
+            Wait(50)
+        end
+        Wait(250)
+        pcall(function() exports["spz-hud"]:CoverHide("spz-races:leave") end)
+    end
+  end)
 end)

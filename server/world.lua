@@ -1,4 +1,11 @@
 -- server/world.lua
+-- Join cover lead (Config.JoinCover): 0 when switched off. On by default, so
+-- a config.lua written before this option existed still gets the cover.
+function JoinCoverLeadMs()
+    local c = Config.JoinCover
+    if c and c.Enabled == false then return 0 end
+    return tonumber(c and c.LeadMs) or 900
+end
 
 local spawnConfirmed = {}
 
@@ -164,7 +171,17 @@ function SetupRaceWorld()
     local spawnRaceId = RaceSession.raceId
     local staggerMs   = Config.SpawnStaggerMs or 800
 
+    -- Close everyone's transition cover once, before the first grid teleport,
+    -- rather than per racer (that would add the lead to every stagger step).
+    local coverLead = JoinCoverLeadMs()
+    if coverLead > 0 then
+        for _, src in ipairs(playersInOrder) do
+            TriggerClientEvent("SPZ:raceJoinCover", src)
+        end
+    end
+
     Citizen.CreateThread(function()
+        if coverLead > 0 then Citizen.Wait(coverLead) end
         for i, src in ipairs(playersInOrder) do
             if i > 1 then
                 -- Stagger exists so vehicle creations don't land on the same
@@ -478,6 +495,12 @@ function LateJoinRace(src)
     local raceId = RaceSession.raceId
     local model  = (type(RaceSession.carClass) == "table" and RaceSession.carClass.model) or "sultan"
     Citizen.CreateThread(function()
+        local coverLead = JoinCoverLeadMs()
+        if coverLead > 0 then
+            TriggerClientEvent("SPZ:raceJoinCover", src)
+            Citizen.Wait(coverLead)
+            if RaceSession.raceId ~= raceId or not RaceSession.players[src] then return end
+        end
         exports["spz-core"]:AssignPlayerToBucket(src, RaceSession.bucketId)
         TriggerClientEvent("SPZ:tpToGridPoint", src, slot.coords)
         Citizen.Wait(Config.GridTpSettleMs or 400)
