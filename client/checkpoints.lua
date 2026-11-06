@@ -671,8 +671,8 @@ RegisterNetEvent("SPZ:nextCheckpoint", function(newIndex)
 
     -- Custom clip, so it goes through spz-raceUI's NUI page (ui/public/aud/)
     -- rather than PlaySoundFrontend. Only for a real pass, not a rollback.
-    if advance and GetResourceState("spz-raceUI") == "started" then
-        exports["spz-raceUI"]:PlaySound("cppass")
+    if advance and GetResourceState("spz-races") == "started" then
+        exports["spz-races"]:PlaySound("cppass")
     end
     _applyActive(CurrentCPIndex)
 end)

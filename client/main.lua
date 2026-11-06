@@ -215,8 +215,8 @@ RegisterNetEvent("SPZ:tpToSafeZone", function()
     end
 
     -- Any teleport-out means the race is over for us — clear all race UI.
-    if GetResourceState("spz-raceUI") == "started" then
-        exports["spz-raceUI"]:HideWarmup()
-        exports["spz-raceUI"]:SetRaceOverlayVisible(false)
+    if GetResourceState("spz-races") == "started" then
+        exports["spz-races"]:HideWarmup()
+        exports["spz-races"]:SetRaceOverlayVisible(false)
     end
 end)

@@ -3,11 +3,11 @@
 
 -- ── Poll Events ───────────────────────────────────────────────────────────────
 RegisterNetEvent("SPZ:pollOpen", function(data)
-    if GetResourceState("spz-poll") ~= "started" then
-        print("^1[spz-races] WARNING: spz-poll not started^7")
+    if GetResourceState("spz-races") ~= "started" then
+        print("^1[spz-races] vote page not ready yet^7")
         return
     end
-    exports["spz-poll"]:StartPoll({
+    exports["spz-races"]:StartPoll({
         phase    = data.phase,
         -- `timer` is what spz-poll's own API documents, but its UI reads
         -- `duration` — sending only timer left the countdown bar permanently on
@@ -28,18 +28,18 @@ end)
 -- Voting is per player now: the moment YOUR three picks are in, your menu shuts
 -- and you are free until the grid forms — no waiting on the slowest voter.
 RegisterNetEvent("SPZ:pollClosed", function()
-    if GetResourceState("spz-poll") ~= "started" then return end
-    exports["spz-poll"]:StopPoll()
+    if GetResourceState("spz-races") ~= "started" then return end
+    exports["spz-races"]:StopPoll()
 end)
 
 RegisterNetEvent("SPZ:pollResult", function(data)
-    if GetResourceState("spz-poll") ~= "started" then return end
-    exports["spz-poll"]:UpdatePoll(data)
+    if GetResourceState("spz-races") ~= "started" then return end
+    exports["spz-races"]:UpdatePoll(data)
     -- "final" is the decided race, broadcast once everyone has voted. Any ballot
     -- still open at that point is closed here.
     if data.phase == "final" then
         Citizen.SetTimeout(1200, function()
-            exports["spz-poll"]:StopPoll()
+            exports["spz-races"]:StopPoll()
         end)
     end
 end)
@@ -71,8 +71,8 @@ RegisterKeyMapping("spz_warmuptune", "Race: tune car during warmup", "keyboard",
 
 RegisterNetEvent("SPZ:warmupPhase", function(data)
     _inWarmup = true
-    if GetResourceState("spz-raceUI") ~= "started" then return end
-    exports["spz-raceUI"]:ShowWarmup({
+    if GetResourceState("spz-races") ~= "started" then return end
+    exports["spz-races"]:ShowWarmup({
         remaining = data.remaining,
         total     = data.total,
         track     = data.track,
@@ -84,8 +84,8 @@ end)
 
 RegisterNetEvent("SPZ:warmupEnd", function()
     _inWarmup = false
-    if GetResourceState("spz-raceUI") ~= "started" then return end
-    exports["spz-raceUI"]:HideWarmup()
+    if GetResourceState("spz-races") ~= "started" then return end
+    exports["spz-races"]:HideWarmup()
 end)
 
 -- ── Race intro (cover → sweep → details card) ─────────────────────────────────
@@ -128,24 +128,24 @@ local function nameVehicle(data)
 end
 
 RegisterNetEvent("SPZ:raceIntro", function(data)
-    if GetResourceState("spz-raceUI") ~= "started" then return end
+    if GetResourceState("spz-races") ~= "started" then return end
     data = data or {}
     if data.phase == "reveal" then nameVehicle(data) end
-    exports["spz-raceUI"]:ShowRaceIntro(data)
+    exports["spz-races"]:ShowRaceIntro(data)
 end)
 
 -- Finish window: the leader is home and the rest have N seconds. Counted down
 -- on the HUD; taken down when this player finishes or DNFs (both send them to
 -- the safe zone) or the race ends.
 RegisterNetEvent("SPZ:finishWindow", function(seconds)
-    if GetResourceState("spz-raceUI") ~= "started" then return end
-    exports["spz-raceUI"]:ShowFinishWindow(seconds)
+    if GetResourceState("spz-races") ~= "started" then return end
+    exports["spz-races"]:ShowFinishWindow(seconds)
 end)
 
 RegisterNetEvent("SPZ:tpToSafeZone", function()
-    if GetResourceState("spz-raceUI") ~= "started" then return end
-    exports["spz-raceUI"]:HideFinishWindow()
-    exports["spz-raceUI"]:HideRaceIntro()
+    if GetResourceState("spz-races") ~= "started" then return end
+    exports["spz-races"]:HideFinishWindow()
+    exports["spz-races"]:HideRaceIntro()
 end)
 
 -- ── Countdown / Staging Events ────────────────────────────────────────────────
@@ -163,12 +163,12 @@ local COUNTDOWN_VOLUME = 0.7   -- under the GO on purpose: the release should la
 local GO_VOLUME        = 1.0
 
 local function playRaceSound(name, volume)
-    local state = GetResourceState("spz-raceUI")
+    local state = GetResourceState("spz-races")
     if state ~= "started" then
-        print(("^3[spz-races] sound '%s' skipped: spz-raceUI is %s^7"):format(name, state))
+        print(("^3[spz-races] sound '%s' skipped: race HUD is %s^7"):format(name, state))
         return
     end
-    local ok, err = pcall(function() exports["spz-raceUI"]:PlaySound(name, volume) end)
+    local ok, err = pcall(function() exports["spz-races"]:PlaySound(name, volume) end)
     print(("[spz-races] sound '%s' vol %.1f -> %s"):format(name, volume or 1, ok and "sent" or ("FAILED " .. tostring(err))))
 end
 
@@ -181,12 +181,12 @@ RegisterCommand("racesoundtest", function()
 end, false)
 
 RegisterNetEvent("SPZ:countdown", function(data)
-    if GetResourceState("spz-raceUI") ~= "started" then return end
+    if GetResourceState("spz-races") ~= "started" then return end
     -- Left the race (/leaverace = DNF) while a tick was already in flight:
     -- no countdown, no HUD for a race we're not in.
     if not LocalPlayer.state.inRace then return end
     playRaceSound("countdown", COUNTDOWN_VOLUME)
-    exports["spz-raceUI"]:ShowCountdown({
+    exports["spz-races"]:ShowCountdown({
         number  = data.seconds,
         totalSeconds = data.totalSeconds,
         isGo    = false,
@@ -200,12 +200,12 @@ RegisterNetEvent("SPZ:countdown", function(data)
 end)
 
 RegisterNetEvent("SPZ:go", function()
-    if GetResourceState("spz-raceUI") ~= "started" then return end
+    if GetResourceState("spz-races") ~= "started" then return end
     if not LocalPlayer.state.inRace then return end
     playRaceSound("go", GO_VOLUME)
-    exports["spz-raceUI"]:ShowCountdown({ isGo = true })
-    exports["spz-raceUI"]:SetRaceOverlayVisible(true)
-    exports["spz-raceUI"]:ResetSectors()
+    exports["spz-races"]:ShowCountdown({ isGo = true })
+    exports["spz-races"]:SetRaceOverlayVisible(true)
+    exports["spz-races"]:ResetSectors()
 end)
 
 RegisterNetEvent("SPZ:stagingEnd", function() end)
@@ -213,18 +213,18 @@ RegisterNetEvent("SPZ:stagingEnd", function() end)
 -- ── Race state (native statebag) ──────────────────────────────────────────────
 local function _onRaceState(state)
     if state == "IDLE" or state == "CLEANUP" then
-        if GetResourceState("spz-raceUI") == "started" then
-            exports["spz-raceUI"]:HideAll()
+        if GetResourceState("spz-races") == "started" then
+            exports["spz-races"]:HideAll()
         end
-        if GetResourceState("spz-poll") == "started" then
-            exports["spz-poll"]:StopPoll()
+        if GetResourceState("spz-races") == "started" then
+            exports["spz-races"]:StopPoll()
         end
     elseif state == "WAITING" or state == "COUNTDOWN" or state == "LIVE" then
-        if GetResourceState("spz-poll") == "started" then
-            exports["spz-poll"]:StopPoll()
+        if GetResourceState("spz-races") == "started" then
+            exports["spz-races"]:StopPoll()
         end
-        if state ~= "WAITING" and GetResourceState("spz-raceUI") == "started" then
-            exports["spz-raceUI"]:HideWarmup()
+        if state ~= "WAITING" and GetResourceState("spz-races") == "started" then
+            exports["spz-races"]:HideWarmup()
         end
     end
 end
@@ -297,7 +297,7 @@ Citizen.CreateThread(function()
     while true do
         if (_distState == "LIVE" or _ttActive)
         and not _myRaceOver
-        and GetResourceState("spz-raceUI") == "started" then
+        and GetResourceState("spz-races") == "started" then
             local cp = exports["spz-races"]:GetCurrentCP()
             SPZ_CpReadoutLive = cp ~= nil   -- cp_pill3d.lua draws while this is set
             if cp then
@@ -345,23 +345,23 @@ Citizen.CreateThread(function()
                 -- nothing does, so don't send a NUI message every frame for it;
                 -- one empty update clears a flat pill that was showing.
                 if payload.pill then
-                    exports["spz-raceUI"]:UpdateCPWaypoint(payload)
+                    exports["spz-races"]:UpdateCPWaypoint(payload)
                     _cpWpSent = true
                 elseif _cpWpSent then
-                    exports["spz-raceUI"]:UpdateCPWaypoint({ dist = 0 })
+                    exports["spz-races"]:UpdateCPWaypoint({ dist = 0 })
                     _cpWpSent = false
                 end
                 Citizen.Wait(0)
             else
-                exports["spz-raceUI"]:UpdateCPWaypoint({ dist = 0 })
+                exports["spz-races"]:UpdateCPWaypoint({ dist = 0 })
                 Citizen.Wait(200)
             end
         else
             -- Not driving a route (finished, DNF, idle, cleanup, TT over) →
             -- make sure the readout is gone rather than frozen on screen.
             SPZ_CpReadoutLive = false
-            if GetResourceState("spz-raceUI") == "started" then
-                exports["spz-raceUI"]:UpdateCPWaypoint({ dist = 0 })
+            if GetResourceState("spz-races") == "started" then
+                exports["spz-races"]:UpdateCPWaypoint({ dist = 0 })
             end
             Citizen.Wait(500)
         end
@@ -376,9 +376,9 @@ RegisterNetEvent("SPZ:spawnCheckpoints", function(checkpoints, currentIdx)
     -- rule above.
     _lastPosVersion = 0
 
-    if GetResourceState("spz-raceUI") ~= "started" then return end
+    if GetResourceState("spz-races") ~= "started" then return end
     clientBestLap = LocalPlayer.state.personalBest or 0
-    exports["spz-raceUI"]:UpdateRaceOverlay({
+    exports["spz-races"]:UpdateRaceOverlay({
         totalCheckpoints = #checkpoints,
         checkpoint       = currentIdx or 1,
         bestLapTime      = clientBestLap,
@@ -387,8 +387,8 @@ RegisterNetEvent("SPZ:spawnCheckpoints", function(checkpoints, currentIdx)
 end)
 
 RegisterNetEvent("SPZ:nextCheckpoint", function(cpIndex)
-    if GetResourceState("spz-raceUI") ~= "started" then return end
-    exports["spz-raceUI"]:UpdateRaceOverlay({ checkpoint = cpIndex })
+    if GetResourceState("spz-races") ~= "started" then return end
+    exports["spz-races"]:UpdateRaceOverlay({ checkpoint = cpIndex })
 end)
 
 RegisterNetEvent("SPZ:racerDisconnected", function(data)
@@ -406,17 +406,17 @@ RegisterNetEvent("SPZ:racerReconnected", function(data)
 end)
 
 RegisterNetEvent("SPZ:sectorComplete", function(data)
-    if GetResourceState("spz-raceUI") ~= "started" then return end
-    exports["spz-raceUI"]:UpdateSector(data)
+    if GetResourceState("spz-races") ~= "started" then return end
+    exports["spz-races"]:UpdateSector(data)
 end)
 
 RegisterNetEvent("SPZ:lapComplete", function(lapNum, lapTime)
-    if GetResourceState("spz-raceUI") ~= "started" then return end
+    if GetResourceState("spz-races") ~= "started" then return end
     if lapTime and (clientBestLap == nil or clientBestLap == 0 or lapTime < clientBestLap) then
         clientBestLap = lapTime
     end
-    exports["spz-raceUI"]:ResetSectors()
-    exports["spz-raceUI"]:UpdateRaceOverlay({
+    exports["spz-races"]:ResetSectors()
+    exports["spz-races"]:UpdateRaceOverlay({
         lapNum      = lapNum + 1,
         checkpoint  = 1,
         bestLapTime = clientBestLap or 0
@@ -427,10 +427,10 @@ end)
 -- both "you took it" and "someone else did" — a purple lap you cannot see
 -- being beaten is half a feature.
 RegisterNetEvent("SPZ:fastestLap", function(payload)
-    if GetResourceState("spz-raceUI") ~= "started" then return end
+    if GetResourceState("spz-races") ~= "started" then return end
     if type(payload) ~= "table" then return end
 
-    exports["spz-raceUI"]:ShowFastestLap({
+    exports["spz-races"]:ShowFastestLap({
         name = payload.name,
         ms   = payload.ms,
         mine = payload.source == GetPlayerServerId(PlayerId()),
@@ -468,12 +468,12 @@ RegisterNetEvent("SPZ:positionUpdate", function(payload, version)
         _lastPosVersion = version   -- higher, or lower after a server restart
     end
 
-    if GetResourceState("spz-raceUI") ~= "started" then return end
+    if GetResourceState("spz-races") ~= "started" then return end
     local now = GetGameTimer()
     if now - _lastPosBroadcast < 200 then return end
     _lastPosBroadcast = now
 
-    exports["spz-raceUI"]:UpdateRaceOverlay({
+    exports["spz-races"]:UpdateRaceOverlay({
         positions = payload,
         mySource  = GetPlayerServerId(PlayerId()),
     })
@@ -483,7 +483,7 @@ end)
 local _pendingStats = nil
 
 RegisterNetEvent("SPZ:raceEnd", function(results)
-    if GetResourceState("spz-raceUI") ~= "started" then return end
+    if GetResourceState("spz-races") ~= "started" then return end
 
     local mySource = GetPlayerServerId(PlayerId())
     local myResult = nil
@@ -524,8 +524,8 @@ RegisterNetEvent("SPZ:raceEnd", function(results)
     -- The stats card is about YOUR race. The full classification — who finished
     -- where, gaps, DNFs — lives on the results board, so say how to reach it
     -- rather than leaving the field's result undiscoverable.
-    if GetResourceState("spz-leaderboard") == "started" then
-        local key = "F6"   -- spz-leaderboard's default binding for /leaderboard
+    if GetResourceState("spz-races") == "started" then
+        local key = "F6"   -- the default binding for /leaderboard (client/ui/leaderboard.lua)
         SetTimeout(2500, function()
             lib.notify({
                 title       = "Race results",
@@ -538,10 +538,10 @@ RegisterNetEvent("SPZ:raceEnd", function(results)
 end)
 
 RegisterNetEvent("SPZ:progressionUpdate", function(data)
-    if GetResourceState("spz-raceUI") ~= "started" then return end
+    if GetResourceState("spz-races") ~= "started" then return end
     if not _pendingStats then return end
 
-    exports["spz-raceUI"]:ShowPostRaceStats({
+    exports["spz-races"]:ShowPostRaceStats({
         trackName           = _pendingStats.trackName,
         finishTime          = _pendingStats.finishTime,
         position            = _pendingStats.position,
@@ -683,13 +683,13 @@ local function _mgKey()
 end
 
 _pushLobby = function()
-    if GetResourceState("spz-raceUI") ~= "started" then return end
+    if GetResourceState("spz-races") ~= "started" then return end
     local lb  = _lobbyMode()
     if lb.mode ~= "hidden" then lb.mgKey = _mgKey() end
     local sig = ("%s|%s|%s|%s|%s|%s"):format(lb.mode, lb.queueCount or "", lb.queuePos or "", lb.seconds or "", lb.mgKey or "", lb.track or "")
     if sig ~= _lastLobbySig then
         _lastLobbySig = sig
-        exports["spz-raceUI"]:UpdateLobby(lb)
+        exports["spz-races"]:UpdateLobby(lb)
     end
 end
 

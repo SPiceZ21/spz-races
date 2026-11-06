@@ -135,8 +135,8 @@ end)
 -- ── UI bridge ─────────────────────────────────────────────────────────────────
 
 local function _uiUpdate(secondsBack, fraction, creditMs)
-    if GetResourceState("spz-raceUI") ~= "started" then return end
-    exports["spz-raceUI"]:UpdateRewind({
+    if GetResourceState("spz-races") ~= "started" then return end
+    exports["spz-races"]:UpdateRewind({
         active       = true,
         secondsBack  = secondsBack,
         fraction     = fraction,
@@ -149,8 +149,8 @@ local function _uiUpdate(secondsBack, fraction, creditMs)
 end
 
 local function _uiHide()
-    if GetResourceState("spz-raceUI") ~= "started" then return end
-    exports["spz-raceUI"]:HideRewind()
+    if GetResourceState("spz-races") ~= "started" then return end
+    exports["spz-races"]:HideRewind()
 end
 
 -- ── Rewind playback ───────────────────────────────────────────────────────────

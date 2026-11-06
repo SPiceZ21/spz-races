@@ -48,7 +48,7 @@ local function _lapLabel(n)
 end
 
 local function UI(action, data)
-    exports["spz-raceUI"]:TT_Broadcast(action, data or {})
+    exports["spz-races"]:TT_Broadcast(action, data or {})
 end
 
 -- ── Checkpoint visuals ────────────────────────────────────────────────────────
@@ -470,8 +470,8 @@ RegisterNetEvent("SPZ:tt:LapStarted", function(data)
         lapLabel = data.label,
         bestLap  = FmtTime(TTBestLap),
     })
-    if GetResourceState("spz-raceUI") == "started" then
-        exports["spz-raceUI"]:ResetSectors()
+    if GetResourceState("spz-races") == "started" then
+        exports["spz-races"]:ResetSectors()
     end
     PlaySoundFrontend(-1, "CHECKPOINT_UNDER_THE_BRIDGE_STUNT", "HUD_MINI_GAME_SOUNDSET", 1)
 end)
@@ -479,15 +479,15 @@ end)
 -- Split delta tower — server sends this on every CP crossing with the delta
 -- vs your best lap at that same checkpoint.
 RegisterNetEvent("SPZ:tt:split", function(data)
-    if GetResourceState("spz-raceUI") ~= "started" then return end
-    exports["spz-raceUI"]:ShowSplitDelta(data)
+    if GetResourceState("spz-races") ~= "started" then return end
+    exports["spz-races"]:ShowSplitDelta(data)
 end)
 
 RegisterNetEvent("SPZ:tt:NextCp", function(logicalIdx, physIdx)
     TTCpIndex = logicalIdx
 
-    if GetResourceState("spz-raceUI") == "started" then
-        exports["spz-raceUI"]:PlaySound("cppass")
+    if GetResourceState("spz-races") == "started" then
+        exports["spz-races"]:PlaySound("cppass")
     end
     if TTTrack then
         _setActiveCp(physIdx or _physIdx(logicalIdx))
@@ -538,8 +538,8 @@ end)
 
 RegisterNetEvent("SPZ:tt:End", function(data)
     -- Fully tear down the TT HUD/overlay (raceUI shows nothing for TT anymore)
-    exports["spz-raceUI"]:TT_Hide()
-    exports["spz-raceUI"]:SetRaceOverlayVisible(false)
+    exports["spz-races"]:TT_Hide()
+    exports["spz-races"]:SetRaceOverlayVisible(false)
     SetNuiFocus(false, false)
     _cleanup()
 

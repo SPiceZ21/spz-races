@@ -1306,8 +1306,8 @@ local function stopChase(reason)
     -- Clear the star row now rather than up to a tick later: the pursuit ending
     -- is the moment the driver is looking for confirmation of.
     lastWantedSig = ""
-    if GetResourceState("spz-raceUI") == "started" then
-        exports["spz-raceUI"]:UpdateWanted({ stars = 0 })
+    if GetResourceState("spz-races") == "started" then
+        exports["spz-races"]:UpdateWanted({ stars = 0 })
     end
     if cfg("UseNativeWanted", false) then
         SetPlayerWantedLevel(PlayerId(), 0, false)
@@ -1711,7 +1711,7 @@ end)
 -- row that changes a handful of times in a whole race.
 
 local function pushWanted()
-    if GetResourceState("spz-raceUI") ~= "started" then return end
+    if GetResourceState("spz-races") ~= "started" then return end
 
     local show = active and stars > 0 and cfg("Hud", true) ~= false
 
@@ -1724,7 +1724,7 @@ local function pushWanted()
     if sig == lastWantedSig then return end
     lastWantedSig = sig
 
-    exports["spz-raceUI"]:UpdateWanted({
+    exports["spz-races"]:UpdateWanted({
         stars  = show and stars or 0,
         max    = cfg("MaxStars", 5),
         escape = left > 0 and left or nil,
@@ -1754,15 +1754,15 @@ end)
 --   /wantedtest 5 8    5 stars, "LOSING THEM 8s"
 --   /wantedtest 0      clear it
 RegisterCommand("wantedtest", function(_, args)
-    if GetResourceState("spz-raceUI") ~= "started" then
-        print("^1[spz-races] spz-raceUI is not started.^7")
+    if GetResourceState("spz-races") ~= "started" then
+        print("^1[spz-races] race HUD not ready yet.^7")
         return
     end
 
     local n = tonumber(args[1]) or 3
     local esc = tonumber(args[2])
 
-    exports["spz-raceUI"]:UpdateWanted({
+    exports["spz-races"]:UpdateWanted({
         stars  = n,
         max    = cfg("MaxStars", 5),
         escape = esc and esc > 0 and esc or nil,

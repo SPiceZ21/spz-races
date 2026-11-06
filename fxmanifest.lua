@@ -2,7 +2,7 @@ fx_version 'cerulean'
 game 'gta5'
 
 name 'spz-races'
-description 'SPiceZ-Core — Race engine, poll, timing, checkpoints'
+description 'SPiceZ-Core — Race engine: queue, vote, timing, checkpoints, race HUD, leaderboard'
 version '1.45.4'
 author 'SPiceZ-Core'
 
@@ -68,6 +68,15 @@ server_scripts {
 }
 
 client_scripts {
+  -- Race HUD, vote and leaderboard pages (merged from spz-raceUI, spz-poll and
+  -- spz-leaderboard). Their pages are spz-hud apps; app.lua binds each file to
+  -- its page. First, so their exports exist before anything below uses them.
+  '@spz-hud/app.lua',
+  'client/ui/raceui_boot.lua',
+  'client/ui/raceui.lua',
+  'client/ui/poll.lua',
+  'client/ui/leaderboard.lua',
+
   'client/main.lua',
   'client/gridgirl.lua',
   'client/startcam.lua',

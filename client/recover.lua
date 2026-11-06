@@ -88,10 +88,10 @@ RegisterKeyMapping("spz_flip_car", "Race: flip car upright (controller)", "PAD_D
 -- The recovery keys live here, but the surface that shows them is spz-raceUI.
 -- Pushing them across keeps this file the single source for both.
 CreateThread(function()
-    while GetResourceState("spz-raceUI") ~= "started" do Wait(500) end
+    while GetResourceState("spz-races") ~= "started" do Wait(500) end
     local rw = Config and Config.Rewind or {}
     -- commands, not keys: spz-raceUI reads the player's live binding for each
-    exports["spz-raceUI"]:SetKeyHints({
+    exports["spz-races"]:SetKeyHints({
         respawn = { cmd = "spz_respawn_cp", default = KEY_RESPAWN, pad = "LLEFT_INDEX" },
         flip    = { cmd = "spz_flip_car",   default = KEY_FLIP,    pad = "RLEFT_INDEX" },
         rewind  = (rw.enabled ~= false) and { cmd = "+spz_rewind", default = rw.key or "B", pad = "L1_INDEX" } or nil,
