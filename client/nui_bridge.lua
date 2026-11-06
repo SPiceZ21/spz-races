@@ -56,7 +56,7 @@ end
 
 RegisterCommand("spz_warmuptune", function()
     if not _inWarmup or not LocalPlayer.state.inRace then return end
-    if GetResourceState("spz-tunners") ~= "started" then
+    if GetResourceState("spz-vehicles") ~= "started" then
         lib.notify({ description = "Tuner is not available right now", type = "error" })
         return
     end
@@ -65,7 +65,7 @@ RegisterCommand("spz_warmuptune", function()
         lib.notify({ description = "Get in your car to tune it", type = "error" })
         return
     end
-    exports["spz-tunners"]:OpenTunerMenu(veh)
+    exports["spz-vehicles"]:OpenTunerMenu(veh)
 end, false)
 RegisterKeyMapping("spz_warmuptune", "Race: tune car during warmup", "keyboard", "Y")
 
@@ -78,7 +78,7 @@ RegisterNetEvent("SPZ:warmupPhase", function(data)
         track     = data.track,
         class     = data.class,
         gridPos   = data.gridPos,
-        tuneKey   = GetResourceState("spz-tunners") == "started" and _tuneKey() or nil,
+        tuneKey   = GetResourceState("spz-vehicles") == "started" and _tuneKey() or nil,
     })
 end)
 
