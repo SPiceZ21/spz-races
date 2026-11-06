@@ -141,17 +141,17 @@ end)
 -- ── Replays (spz-replay) ─────────────────────────────────────────────────────
 -- Optional: with spz-replay stopped, the archive simply shows no replay buttons.
 local function replayIds(raceIds)
-    if GetResourceState("spz-replay") ~= "started" or #raceIds == 0 then return {} end
+    if GetResourceState("spz-races") ~= "started" or #raceIds == 0 then return {} end
     return lib.callback.await("spz-replay:hasReplays", false, raceIds) or {}
 end
 
 RegisterNUICallback("lbWatchReplay", function(data, cb)
-    if GetResourceState("spz-replay") ~= "started" then
+    if GetResourceState("spz-races") ~= "started" then
         cb({ ok = false, error = "Replays are offline." })
         return
     end
     closeBoard()
-    local ok, err = exports["spz-replay"]:WatchRace(data.raceId)
+    local ok, err = exports["spz-races"]:WatchRace(data.raceId)
     if not ok then lib.notify({ title = "Replays", description = err or "Couldn't open that replay.", type = "error" }) end
     cb({ ok = ok })
 end)

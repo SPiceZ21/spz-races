@@ -609,8 +609,8 @@ RegisterNetEvent("SPZ:pollOpen", function()
 end)
 
 local function _isSpectating()
-    return GetResourceState("spz-spectate") == "started"
-        and exports["spz-spectate"]:IsSpectating() == true
+    return GetResourceState("spz-races") == "started"
+        and exports["spz-races"]:IsSpectating() == true
 end
 
 -- The first-join tour (spz-tutorial) holds NUI focus while it points at this
