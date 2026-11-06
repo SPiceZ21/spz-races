@@ -29,3 +29,12 @@ exports('GetMapPins', function()
     end
     return pins
 end)
+
+-- The TAB hub's Speed records tab (spz-hud web/src/hub/Tabs.tsx): your best
+-- pass at every camera, plus the camera list for the ones you have not hit.
+RegisterNUICallback('hubSpeedRecords', function(_, cb)
+    local ok, recs = pcall(function() return lib.callback.await('spz-speedcam:getPersonalBests', false) end)
+    local cams = {}
+    for _, c in ipairs(SpeedCams or {}) do cams[#cams + 1] = { id = c.id, name = c.name, minSpeedKmh = c.minSpeedKmh } end
+    cb({ records = (ok and recs) or {}, cameras = cams })
+end)
