@@ -441,9 +441,9 @@ end)
 -- on the server (it is the server that clamps every claim), so the only way the
 -- dash can draw it is to be told: once at GO, then after every rewind.
 RegisterNetEvent("SPZ:rewindCredit", function(usedMs, maxMs)
-    if GetResourceState("spz-speedometer") ~= "started" then return end
+    if GetResourceState("spz-hud") ~= "started" then return end
     pcall(function()
-        exports["spz-speedometer"]:SetRewindCredit(usedMs, maxMs)
+        exports["spz-hud"]:SetRewindCredit(usedMs, maxMs)
     end)
 end)
 

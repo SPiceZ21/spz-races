@@ -492,8 +492,8 @@ local function _rewindLoop()
         _liveCredit  = _liveRewound * _creditFactor()
 
         -- The speedometer's rewind meter drains while the key is held.
-        if _budgetMax > 0 and GetResourceState("spz-speedometer") == "started" then
-            exports["spz-speedometer"]:SetRewindCredit(math.min(_budgetMax, _budgetUsed + _liveRewound), _budgetMax)
+        if _budgetMax > 0 and GetResourceState("spz-hud") == "started" then
+            exports["spz-hud"]:SetRewindCredit(math.min(_budgetMax, _budgetUsed + _liveRewound), _budgetMax)
         end
 
         if exhausted then
