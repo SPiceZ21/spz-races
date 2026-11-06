@@ -36,5 +36,6 @@ RegisterNUICallback('hubSpeedRecords', function(_, cb)
     local ok, recs = pcall(function() return lib.callback.await('spz-speedcam:getPersonalBests', false) end)
     local cams = {}
     for _, c in ipairs(SpeedCams or {}) do cams[#cams + 1] = { id = c.id, name = c.name, minSpeedKmh = c.minSpeedKmh } end
-    cb({ records = (ok and recs) or {}, cameras = cams })
+    local okP, plate = pcall(function() return lib.callback.await('spz-races:myPlate', false) end)
+    cb({ records = (ok and recs) or {}, cameras = cams, plate = okP and plate or nil })
 end)

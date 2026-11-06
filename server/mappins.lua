@@ -32,3 +32,9 @@ lib.callback.register('spz-races:mapTrackLayout', function(_, id)
     end
     return { points = pts, loop = t.type ~= 'sprint' }
 end)
+
+-- Your personal plate, for the hub's Speed records tiles.
+lib.callback.register('spz-races:myPlate', function(src)
+    local ok, plate = pcall(function() return exports['spz-core']:GetPlate(src) end)
+    return ok and plate or nil
+end)
