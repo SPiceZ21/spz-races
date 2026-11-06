@@ -150,7 +150,7 @@ function OnDuelLap(src, s, lapTime)
 
     -- Discord
     pcall(function()
-        exports["spz-log"]:Log("duel", "Ghost Duel",
+        exports["spz-discord"]:Log("duel", "Ghost Duel",
             ("%s challenged %s's ghost on %s for %d — %s (%s vs %s)")
             :format(RacerDisplayName(src) or "?", d.oppName, s.track.name, d.stake,
                     win and "CHALLENGER WON" or "CHALLENGER LOST", fmt(lapTime), fmt(d.targetMs)),

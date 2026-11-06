@@ -29,8 +29,8 @@ local function racerName(src)
 end
 
 local function raceWebhook()
-    if GetResourceState("spz-log") ~= "started" then return nil end
-    local ok, wh = pcall(function() return exports["spz-log"]:GetWebhook("race") end)
+    if GetResourceState("spz-discord") ~= "started" then return nil end
+    local ok, wh = pcall(function() return exports["spz-discord"]:GetWebhook("race") end)
     if ok and wh and wh ~= "" and not wh:find("YOUR_WEBHOOK") then return wh end
     return nil
 end
