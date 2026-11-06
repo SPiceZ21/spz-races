@@ -26,7 +26,9 @@ local function create()
     active = true
     local rtxd = CreateRuntimeTxd("spz_cp_anim")
     for name, size in pairs(ATLAS) do
-        local url = ("nui://spz-hud/dui/cp/anim.html?tex=%s"):format(name)   -- DUI pages ship from spz-hud
+        -- DUI pages ship from spz-hud. accent: the pending gates take the race
+        -- colour (client/accent.lua); "#" is sent as %23.
+        local url = ("nui://spz-hud/dui/cp/anim.html?tex=%s&accent=%s"):format(name, (SPZ_RaceAccent():gsub("#", "%%23")))
         local dui = CreateDui(url, size[1], size[2])
         duis[#duis + 1] = dui
         CreateRuntimeTextureFromDuiHandle(rtxd, name, GetDuiHandle(dui))

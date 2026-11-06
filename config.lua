@@ -345,6 +345,11 @@ Config.CpBlips = {
 -- seated in the race car on the grid (client/main.lua).
 -- LeadMs: how long the server waits after raising it before teleporting; it
 -- has to outlast the close (about 0.8 s). Set Enabled = false for no cover.
+-- The colour of the race visuals: the checkpoint distance pill, the checkpoint
+-- props still to drive through, the GPS route and the minimap gate blips.
+-- nil = spz-core's theme accent (server.cfg: setr spz_theme_accent "#ff6200").
+Config.RaceColour = nil   -- e.g. "#ff6200"
+
 Config.JoinCover = {
   Enabled = true,
   LeadMs  = 900,

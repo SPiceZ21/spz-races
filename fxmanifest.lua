@@ -109,6 +109,7 @@ client_scripts {
   'client/ui/poll.lua',
   'client/ui/leaderboard.lua',
 
+  'client/accent.lua',       -- SPZ_RaceAccent: the one colour for pill / props / route
   'client/main.lua',
   'client/gridgirl.lua',
   'client/startcam.lua',

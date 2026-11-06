@@ -147,7 +147,7 @@ CreateThread(function()
             if now - lastSend > 120 then
                 local sig = json.encode(slots)
                 if sig ~= lastSig then
-                    SendDuiMessage(dui, json.encode({ type = "cpPill", slots = slots }))
+                    SendDuiMessage(dui, json.encode({ type = "cpPill", slots = slots, accent = (SPZ_RaceAccent()) }))
                     lastSig = sig
                 end
                 lastSend = now

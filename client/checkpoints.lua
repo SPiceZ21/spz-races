@@ -422,6 +422,10 @@ local function _buildMultiRoute(idx)
     -- (hudColour, routeFromPlayer, displayOnFoot). Routing from the player is
     -- what makes leg one live; without it the line starts at gate 1 and the
     -- stretch being driven right now is the one stretch not drawn.
+    -- The route is drawn in a HUD colour slot: repaint that slot with the race
+    -- colour (client/accent.lua) so the line matches the pill and the gates.
+    local _, ar, ag, ab = SPZ_RaceAccent()
+    ReplaceHudColourWithRgba(ROUTE_HUD, ar, ag, ab, 255)
     StartGpsMultiRoute(ROUTE_HUD, true, true)
 
     local added = 0
@@ -482,7 +486,7 @@ local function _styleBlips(idx)
             -- Active (next) CP — orange diamond, and the head of the orange
             -- route line on the road.
             SetBlipSprite(blip,       SPRITE_ACTIVE)
-            SetBlipColour(blip,       COLOUR_ACTIVE)
+            SetBlipColour(blip,       SPZ_RaceAccentBlip())   -- the race colour (client/accent.lua)
             SetBlipScale(blip,        SCALE_ACTIVE)
             SetBlipAsShortRange(blip, false)
             SetBlipPriority(blip,     10)
