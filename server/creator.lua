@@ -152,8 +152,8 @@ RegisterNetEvent("SPZ:saveCustomTrack", function(payload)
     SPZ.Tracks[trackId] = loadedTrack
     -- Keep the track manager's on/off, laps and weight for this id.
     if ApplyTrackOverride then ApplyTrackOverride(trackId) end
-    if GetResourceState("spz-analytics") == "started" then
-        pcall(function() exports["spz-analytics"]:AdminAction(src, "track_save",
+    if GetResourceState("spz-core") == "started" then
+        pcall(function() exports["spz-core"]:AdminAction(src, "track_save",
             ("%s (%s), %d gates"):format(cleanTrack.name, trackId, #cleanTrack.checkpoints)) end)
     end
 
@@ -191,8 +191,8 @@ lib.callback.register("spz-races:deleteTrack", function(source, data)
     end
     currentTracks[trackId] = nil
     SaveResourceFile(GetCurrentResourceName(), "data/custom_tracks.json", json.encode(currentTracks, { indent = true }), -1)
-    if GetResourceState("spz-analytics") == "started" then
-        pcall(function() exports["spz-analytics"]:AdminAction(source, "track_delete", trackId) end)
+    if GetResourceState("spz-core") == "started" then
+        pcall(function() exports["spz-core"]:AdminAction(source, "track_delete", trackId) end)
     end
 
     if BuiltinTracks[trackId] then

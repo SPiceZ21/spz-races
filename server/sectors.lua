@@ -36,7 +36,7 @@ end
 -- Stored bests are loaded once per racer at race start so the hot path (a
 -- checkpoint hit) never blocks on the database.
 function LoadSectorPBs(source, track, carClass)
-    local ok, profile = pcall(function() return exports["spz-identity"]:GetProfile(source) end)
+    local ok, profile = pcall(function() return exports["spz-core"]:GetProfile(source) end)
     if not ok or not profile then return {} end
 
     local rows = MySQL.query.await(
@@ -53,7 +53,7 @@ function LoadSectorPBs(source, track, carClass)
 end
 
 local function SaveSectorPB(source, track, carClass, sector, ms)
-    local ok, profile = pcall(function() return exports["spz-identity"]:GetProfile(source) end)
+    local ok, profile = pcall(function() return exports["spz-core"]:GetProfile(source) end)
     if not ok or not profile then return end
 
     MySQL.query.await([[

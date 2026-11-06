@@ -33,7 +33,7 @@ function LB_GetPlayerStats(source)
     local cached = LBCache.Get(cacheKey)
     if cached then return cached end
 
-    local ok, profile = pcall(function() return exports["spz-identity"]:GetProfile(source) end)
+    local ok, profile = pcall(function() return exports["spz-core"]:GetProfile(source) end)
     if not ok or not profile then return EMPTY_STATS end
 
     local agg = MySQL.query.await(
@@ -81,7 +81,7 @@ function LB_GetPlayerHistory(source, page, pageSize)
     page     = page or 1
     local offset = (page - 1) * pageSize
 
-    local profile = exports["spz-identity"]:GetProfile(source)
+    local profile = exports["spz-core"]:GetProfile(source)
     if not profile then return { rows = {}, hasMore = false } end
 
     local rows = MySQL.query.await(
@@ -157,7 +157,7 @@ function LB_GetPlayerActivity(source, days)
     local cached = LBCache.Get(cacheKey)
     if cached then return cached end
 
-    local ok, profile = pcall(function() return exports["spz-identity"]:GetProfile(source) end)
+    local ok, profile = pcall(function() return exports["spz-core"]:GetProfile(source) end)
     if not ok or not profile then return {} end
 
     local rows = MySQL.query.await(
@@ -198,7 +198,7 @@ function LB_GetPlayerTrackSummary(source)
     local cached = LBCache.Get(cacheKey)
     if cached then return cached end
 
-    local ok, profile = pcall(function() return exports["spz-identity"]:GetProfile(source) end)
+    local ok, profile = pcall(function() return exports["spz-core"]:GetProfile(source) end)
     if not ok or not profile then return {} end
 
     local rows = MySQL.query.await(

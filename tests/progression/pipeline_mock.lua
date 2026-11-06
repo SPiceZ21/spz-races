@@ -82,7 +82,7 @@ local own = {}
 exports = setmetatable({}, {
     __call = function(_, name, fn) own[name] = fn end,
     __index = function(_, res)
-        if res == "spz-identity" then return identity end
+        if res == "spz-core" then return identity end
         if res == "spz-races" then
             return setmetatable({}, { __index = function(_, k)
                 return function(_, ...) return own[k](...) end

@@ -2,7 +2,7 @@
 
 -- Used by checkpoints.lua internally (no cross-resource call needed)
 function LB_GetPersonalBest(source, track, carClass)
-    local profile = source and exports["spz-identity"]:GetProfile(source)
+    local profile = source and exports["spz-core"]:GetProfile(source)
     if not profile then return nil end
 
     local result = MySQL.query.await(

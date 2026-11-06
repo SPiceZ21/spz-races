@@ -16,8 +16,8 @@ RaceSession = {
 
 -- spz-analytics (optional): race-engine failures for Grafana.
 function AnalyticsEvent(event, detail, src)
-    if GetResourceState("spz-analytics") == "started" then
-        pcall(function() exports["spz-analytics"]:Event(event, detail, src) end)
+    if GetResourceState("spz-core") == "started" then
+        pcall(function() exports["spz-core"]:Event(event, detail, src) end)
     end
 end
 
@@ -188,8 +188,8 @@ function RacerDisplayName(src)
     local name = ok and st and st.username
     if type(name) == "string" and name ~= "" then return name end
 
-    if GetResourceState("spz-identity") == "started" then
-        local ok, prof = pcall(function() return exports["spz-identity"]:GetProfile(src) end)
+    if GetResourceState("spz-core") == "started" then
+        local ok, prof = pcall(function() return exports["spz-core"]:GetProfile(src) end)
         if ok and prof and type(prof.username) == "string" and prof.username ~= "" then
             return prof.username
         end

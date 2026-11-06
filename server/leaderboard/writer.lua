@@ -36,7 +36,7 @@ function LB_BulkWriteResults(raceId, players)
     local params = {}
 
     for _, p in ipairs(players) do
-        local profile = p.source and exports["spz-identity"]:GetProfile(p.source)
+        local profile = p.source and exports["spz-core"]:GetProfile(p.source)
         if profile then
             table.insert(placeholders, placeholderGroup)
             local row = {
@@ -73,7 +73,7 @@ function LB_BulkWriteResults(raceId, players)
     -- Persist validated impact samples beside each player's race result.
     local incidentGroups, incidentParams = {}, {}
     for _, p in ipairs(players) do
-        local profile = p.source and exports["spz-identity"]:GetProfile(p.source)
+        local profile = p.source and exports["spz-core"]:GetProfile(p.source)
         for _, incident in ipairs(p.collisions or {}) do
             if profile and incident.x and incident.y and incident.z then
                 incidentGroups[#incidentGroups + 1] = "(?, ?, ?, ?, ?, ?, ?, ?)"
@@ -101,7 +101,7 @@ function LB_UpdateTrackRecord(track, trackType, carClass, finisher)
     if not finisher or finisher.dnf or not finisher.finish_time then return end
     -- A rewound run gave itself clock back; it is not a record-eligible time.
     if (finisher.rewind_ms or 0) > 0 then return end
-    local profile = finisher.source and exports["spz-identity"]:GetProfile(finisher.source)
+    local profile = finisher.source and exports["spz-core"]:GetProfile(finisher.source)
     if not profile then return end
 
     local classStr = tostring(carClass or "D")

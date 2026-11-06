@@ -30,8 +30,8 @@ function TrackAdminAllowed(src)
 end
 
 local function adminLog(src, action, detail)
-    if GetResourceState("spz-analytics") == "started" then
-        pcall(function() exports["spz-analytics"]:AdminAction(src, action, detail) end)
+    if GetResourceState("spz-core") == "started" then
+        pcall(function() exports["spz-core"]:AdminAction(src, action, detail) end)
     end
     print(("^5[spz-races]^7 %s (%s): %s — %s"):format(GetPlayerName(src) or "console", tostring(src), action, detail or ""))
 end

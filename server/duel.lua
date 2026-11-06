@@ -35,9 +35,9 @@ end
 -- ── Credit helpers ────────────────────────────────────────────────────────────
 
 local function addCreditsOnline(src, amount, reason)
-    local prof = exports["spz-identity"]:GetProfile(src)
+    local prof = exports["spz-core"]:GetProfile(src)
     if not prof then return end
-    exports["spz-identity"]:UpdateProfile(src, { credits = (prof.credits or 0) + amount })
+    exports["spz-core"]:UpdateProfile(src, { credits = (prof.credits or 0) + amount })
     MySQL.insert("INSERT INTO economy_transactions (player_id, amount, balance, reason) VALUES (?, ?, ?, ?)",
         { prof.id, amount, (prof.credits or 0) + amount, reason })
 end
@@ -55,7 +55,7 @@ end
 local function srcFromPid(pid)
     for _, sid in ipairs(GetPlayers()) do
         local s = tonumber(sid)
-        local ok, prof = pcall(function() return exports["spz-identity"]:GetProfile(s) end)
+        local ok, prof = pcall(function() return exports["spz-core"]:GetProfile(s) end)
         if ok and prof and prof.id == pid then return s end
     end
     return nil
@@ -66,7 +66,7 @@ local function resolveOpponent(arg)
     -- Online server id?
     local asId = tonumber(arg)
     if asId and GetPlayerName(asId) ~= nil then
-        local ok, prof = pcall(function() return exports["spz-identity"]:GetProfile(asId) end)
+        local ok, prof = pcall(function() return exports["spz-core"]:GetProfile(asId) end)
         if ok and prof and prof.id then return { pid = prof.id, name = prof.username or GetPlayerName(asId) } end
     end
 
@@ -74,7 +74,7 @@ local function resolveOpponent(arg)
     local low = tostring(arg):lower()
     for _, sid in ipairs(GetPlayers()) do
         local s = tonumber(sid)
-        local ok, prof = pcall(function() return exports["spz-identity"]:GetProfile(s) end)
+        local ok, prof = pcall(function() return exports["spz-core"]:GetProfile(s) end)
         if ok and prof and prof.username and prof.username:lower() == low then
             return { pid = prof.id, name = prof.username }
         end
@@ -196,7 +196,7 @@ RegisterCommand("duel", function(source, args)
     if stake > (c.MaxStake or math.huge) then SPZ.Notify(src, ("Maximum stake is %d."):format(c.MaxStake), "error"); return end
 
     -- Resolve challenger profile / balance
-    local me = exports["spz-identity"]:GetProfile(src)
+    local me = exports["spz-core"]:GetProfile(src)
     if not me then SPZ.Notify(src, "Profile not ready.", "error"); return end
     if (me.credits or 0) < stake then SPZ.Notify(src, "Not enough credits.", "error"); return end
 
@@ -218,7 +218,7 @@ RegisterCommand("duel", function(source, args)
     end
 
     -- ── Escrow the stake immediately ──────────────────────────────────────────
-    exports["spz-identity"]:UpdateProfile(src, { credits = (me.credits or 0) - stake })
+    exports["spz-core"]:UpdateProfile(src, { credits = (me.credits or 0) - stake })
     MySQL.insert("INSERT INTO economy_transactions (player_id, amount, balance, reason) VALUES (?, ?, ?, ?)",
         { me.id, -stake, (me.credits or 0) - stake, "Ghost duel stake" })
 
@@ -237,7 +237,7 @@ RegisterCommand("duel", function(source, args)
 
     if not ok then
         -- Refund on failure to start.
-        exports["spz-identity"]:UpdateProfile(src, { credits = me.credits or 0 })
+        exports["spz-core"]:UpdateProfile(src, { credits = me.credits or 0 })
         MySQL.update("UPDATE duels SET outcome = 'void', settled_at = CURRENT_TIMESTAMP WHERE id = ?", { duelId })
         SPZ.Notify(src, "Couldn't start the duel — stake refunded.", "error")
         return

@@ -162,7 +162,6 @@ data_file 'DLC_ITYP_REQUEST' 'stream/spz_checkpoint.ytyp'
 dependencies {
   'ox_lib',
   'spz-core',
-  'spz-identity',
   'spz-hud',        -- serves the checkpoint DUI pages (dui/cp)
   'spz-vehicles',
   'oxmysql',

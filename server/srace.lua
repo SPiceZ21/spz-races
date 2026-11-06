@@ -117,9 +117,9 @@ lib.callback.register("spz-races:srace:start", function(src, data)
     local cops = data.cops == true and (Config.CopChase or {}).Enabled ~= false
     ForcedRace = { track = track, selection = selection, traffic = traffic, cops = cops,
                    by = GetPlayerName(src) or tostring(src) }
-    if GetResourceState("spz-analytics") == "started" then
-        pcall(function() exports["spz-analytics"]:Track("admin_race") end)
-        pcall(function() exports["spz-analytics"]:AdminAction(src, "srace",
+    if GetResourceState("spz-core") == "started" then
+        pcall(function() exports["spz-core"]:Track("admin_race") end)
+        pcall(function() exports["spz-core"]:AdminAction(src, "srace",
             ("%s in %s (%s, traffic %s, cops %s)"):format(track.name, tostring(selection.model), tostring(data.mode or "now"), traffic, tostring(cops))) end)
     end
 

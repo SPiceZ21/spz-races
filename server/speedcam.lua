@@ -20,7 +20,7 @@ Citizen.CreateThread(function()
         speedKmh = tonumber(speedKmh)
         if not speedKmh or speedKmh < 0 or speedKmh > 600 then return end
 
-        local ok, profile = pcall(function() return exports["spz-identity"]:GetProfile(src) end)
+        local ok, profile = pcall(function() return exports["spz-core"]:GetProfile(src) end)
         local playerId = ok and profile and profile.id or nil
 
         -- ── Check personal best ───────────────────────────────────────────────
@@ -91,7 +91,7 @@ Citizen.CreateThread(function()
 
     -- Get player's personal bests across all cameras
     lib.callback.register("spz-speedcam:getPersonalBests", function(source)
-        local ok, profile = pcall(function() return exports["spz-identity"]:GetProfile(source) end)
+        local ok, profile = pcall(function() return exports["spz-core"]:GetProfile(source) end)
         if not ok or not profile then return {} end
 
         local rows = MySQL.query.await([[

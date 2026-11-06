@@ -58,7 +58,7 @@ end
 
 -- The caller's own duel record — both as challenger and as the ghost.
 function LB_GetDuelRecord(source)
-    local ok, profile = pcall(function() return exports["spz-identity"]:GetProfile(source) end)
+    local ok, profile = pcall(function() return exports["spz-core"]:GetProfile(source) end)
     if not ok or not profile then return {} end
 
     local row = MySQL.single.await(

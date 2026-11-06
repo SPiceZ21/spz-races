@@ -28,7 +28,7 @@ end
 function GrantFlatRP(src, amount, reason)
     src = tonumber(src)
     if not src or not amount or amount <= 0 then return 0 end
-    local p = exports["spz-identity"]:GetProfile(src)
+    local p = exports["spz-core"]:GetProfile(src)
     if not p then return 0 end
 
     local rp      = tonumber(p.rank_points) or 0
@@ -39,13 +39,13 @@ function GrantFlatRP(src, amount, reason)
 
     local rankBefore, tierBefore = p.rank or "C-5", tonumber(p.license_tier) or 0
     local rank, tier = SPZ.Rank.For(after, Rows())
-    exports["spz-identity"]:UpdateProfile(src, {
+    exports["spz-core"]:UpdateProfile(src, {
         rank_points = after, rank = rank,
         rp_day_key = dayKey, rp_day_gain = dayGain + delta,
         alltime_points = (p.alltime_points or 0) + delta,
     })
     if tier > tierBefore then
-        exports["spz-identity"]:UnlockLicense(src, tier, "rank_points", rank)
+        exports["spz-core"]:UnlockLicense(src, tier, "rank_points", rank)
     end
     NotifyRankChange(src, rankBefore, rank)
     TriggerClientEvent("SPZ:rpGranted", src, { rp = delta, reason = reason, rank = rank })
@@ -70,12 +70,12 @@ end)
 -- ── Player command: /rank ─────────────────────────────────────────────────
 RegisterCommand("rank", function(src)
     if src == 0 then return end
-    local p = exports["spz-identity"]:GetProfile(src)
+    local p = exports["spz-core"]:GetProfile(src)
     if not p then return end
     local rp = tonumber(p.rank_points) or 0
     local rank = SPZ.Rank.For(rp, Rows())
     local frac, nextRank = SPZ.Rank.Progress(rp, Rows())
-    local ok, title = pcall(function() return exports["spz-identity"]:GetRankName(rank) end)
+    local ok, title = pcall(function() return exports["spz-core"]:GetRankName(rank) end)
     title = ok and title or ""
     Reply(src, ("%s %s — %d RP%s · streak %d"):format(rank, title, rp,
         nextRank and (" · %d%% to %s"):format(math.floor(frac * 100), nextRank) or "",
@@ -89,7 +89,7 @@ end, false)
 local function OnlineByPlayerId()
     local map = {}
     for _, s in ipairs(GetPlayers()) do
-        local p = exports["spz-identity"]:GetProfile(tonumber(s))
+        local p = exports["spz-core"]:GetProfile(tonumber(s))
         if p then map[p.id] = tonumber(s) end
     end
     return map
@@ -98,7 +98,7 @@ end
 --- Rank card for one online player.
 local function AdminRankInfo(target)
     target = tonumber(target)
-    local p = target and exports["spz-identity"]:GetProfile(target)
+    local p = target and exports["spz-core"]:GetProfile(target)
     if not p then return nil end
     local rp = tonumber(p.rank_points) or 0
     local rank = SPZ.Rank.For(rp, Rows())
@@ -126,12 +126,12 @@ exports("AdminRankInfo", AdminRankInfo)
 --- Set one online player's RP. Rank and class letter follow from it.
 local function AdminSetRP(target, value)
     target, value = tonumber(target), tonumber(value)
-    local p = target and exports["spz-identity"]:GetProfile(target)
+    local p = target and exports["spz-core"]:GetProfile(target)
     if not p or not value or value < 0 then return false, "Invalid player or value" end
     value = math.floor(value)
     local before, oldRP = p.rank or "C-5", tonumber(p.rank_points) or 0
     local rank, tier = SPZ.Rank.For(value, Rows())
-    exports["spz-identity"]:UpdateProfile(target, { rank_points = value, rank = rank, license_tier = tier })
+    exports["spz-core"]:UpdateProfile(target, { rank_points = value, rank = rank, license_tier = tier })
     NotifyRankChange(target, before, rank)
     Log.warn(("ADMIN setrp: player %s %d RP -> %d RP (%s)"):format(p.id, oldRP, value, rank))
     return true, ("%d RP -> %d RP (%s)"):format(oldRP, value, rank)
@@ -160,12 +160,12 @@ local function AdminVoidRace(raceId)
     for _, r in ipairs(rows) do
         local s = online[r.player_id]
         if s then
-            local p = exports["spz-identity"]:GetProfile(s)
+            local p = exports["spz-core"]:GetProfile(s)
             local rp = tonumber(p.rank_points) or 0
             local after = math.max(SPZ.Rank.ClassFloor(rp, Rules), rp - r.delta)
             local rank, tier = SPZ.Rank.For(after, Rows())
             local before = p.rank
-            exports["spz-identity"]:UpdateProfile(s, { rank_points = after, rank = rank, license_tier = tier })
+            exports["spz-core"]:UpdateProfile(s, { rank_points = after, rank = rank, license_tier = tier })
             NotifyRankChange(s, before, rank)
         else
             local row = MySQL.single.await("SELECT rank_points FROM players WHERE id = ?", { r.player_id })

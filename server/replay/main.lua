@@ -56,8 +56,8 @@ end
 -- ── Browser ──────────────────────────────────────────────────────────────────
 
 local function analytics(feature)
-    if GetResourceState("spz-analytics") == "started" then
-        pcall(function() exports["spz-analytics"]:Track(feature) end)
+    if GetResourceState("spz-core") == "started" then
+        pcall(function() exports["spz-core"]:Track(feature) end)
     end
 end
 
@@ -74,8 +74,8 @@ end)
 lib.callback.register("spz-replay:delete", function(src, id)
     if not canDelete(src) then return false end
     MySQL.update.await("DELETE FROM race_replays WHERE id = ?", { tonumber(id) })
-    if GetResourceState("spz-analytics") == "started" then
-        pcall(function() exports["spz-analytics"]:AdminAction(src, "replay_delete", "replay #" .. tostring(id)) end)
+    if GetResourceState("spz-core") == "started" then
+        pcall(function() exports["spz-core"]:AdminAction(src, "replay_delete", "replay #" .. tostring(id)) end)
     end
     return true
 end)

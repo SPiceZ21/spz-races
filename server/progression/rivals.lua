@@ -15,7 +15,7 @@ local Notified = {}   -- [playerId] = { [track] = true }  (in-memory, per boot)
 -- ── Helpers ───────────────────────────────────────────────────────────────────
 
 local function profileId(src)
-    local ok, p = pcall(function() return exports["spz-identity"]:GetProfile(src) end)
+    local ok, p = pcall(function() return exports["spz-core"]:GetProfile(src) end)
     return ok and p and p.id or nil
 end
 

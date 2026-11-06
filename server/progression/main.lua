@@ -70,7 +70,7 @@ local function MapRace(results)
     local function add(r, dnf)
         if not r or not r.source then return end
         if dnf and EXCLUDED_REASONS[r.dnf_reason or ""] then return end
-        local profile = exports["spz-identity"]:GetProfile(r.source)
+        local profile = exports["spz-core"]:GetProfile(r.source)
         if not profile then profile = LoadOffline(r.identifier) end
         if not profile then return end
         local incidents = r.collisions and #r.collisions or 0
@@ -304,12 +304,12 @@ local function ProcessRace(results)
                 changes.license_tier = tierAfter
                 SaveOffline(p, changes)
             else
-                exports["spz-identity"]:UpdateProfile(src, changes)
+                exports["spz-core"]:UpdateProfile(src, changes)
 
                 -- Class promotion: spz-identity stores it, audits it and is the
                 -- single emitter of SPZ:licenseUnlocked.
                 if tierAfter > e.tierBefore then
-                    exports["spz-identity"]:UnlockLicense(src, tierAfter, "rank_points", rankAfter)
+                    exports["spz-core"]:UnlockLicense(src, tierAfter, "rank_points", rankAfter)
                 end
                 NotifyRankChange(src, e.rankBefore, rankAfter)
                 if newLevel > oldLevel then
@@ -376,13 +376,13 @@ end)
 -- Covers the backfill and any manual DB edit: rank string and class letter are
 -- always derived from rank_points, never authoritative on their own.
 function SyncRankFromRP(src)
-    local p = exports["spz-identity"]:GetProfile(src)
+    local p = exports["spz-core"]:GetProfile(src)
     if not p then return end
     local rank, tier = SPZ.Rank.For(tonumber(p.rank_points) or 0, Rows)
     local changes = {}
     if p.rank ~= rank then changes.rank = rank end
     if (tonumber(p.license_tier) or 0) ~= tier then changes.license_tier = tier end
-    if next(changes) then exports["spz-identity"]:UpdateProfile(src, changes) end
+    if next(changes) then exports["spz-core"]:UpdateProfile(src, changes) end
 end
 
 AddEventHandler("SPZ:playerReady", function(src)

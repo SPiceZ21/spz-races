@@ -58,7 +58,7 @@ local function openBoard(opts)
 
     -- Name lets the UI mark and jump to the player's own row.
     local name = GetPlayerName(PlayerId())
-    local ok, profile = pcall(function() return exports['spz-identity']:GetProfile() end)
+    local ok, profile = pcall(function() return exports['spz-core']:GetProfile() end)
     if ok and type(profile) == 'table' and profile.username then name = profile.username end
 
     SendNUIMessage({

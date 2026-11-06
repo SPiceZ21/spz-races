@@ -19,7 +19,7 @@ local function GrantBonus(source, opts)
     local credits = math.floor(opts.credits or 0)
     if xp == 0 and credits == 0 then return end
 
-    local profile = exports["spz-identity"]:GetProfile(source)
+    local profile = exports["spz-core"]:GetProfile(source)
     if not profile then return end
 
     local updates = {}
@@ -40,7 +40,7 @@ local function GrantBonus(source, opts)
         if newLevel ~= oldLevel then updates.level = newLevel end
     end
 
-    exports["spz-identity"]:UpdateProfile(source, updates)
+    exports["spz-core"]:UpdateProfile(source, updates)
 
     if newLevel > oldLevel then
         TriggerEvent("SPZ:levelUp", source, oldLevel, newLevel)
