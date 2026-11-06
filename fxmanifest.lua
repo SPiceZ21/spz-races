@@ -97,6 +97,7 @@ server_scripts {
 
   -- Speed cameras (merged from spz-speedcam)
   'server/speedcam.lua',
+  'server/mappins.lua',      -- tracks for the TAB hub map
 }
 
 client_scripts {
@@ -149,6 +150,7 @@ client_scripts {
   'client/replay/main.lua',
   'client/speedcam/main.lua',
   'client/speedcam/blips.lua',
+  'client/mappins.lua',      -- GetMapPins: tracks + speed cameras
 }
 
 -- Custom checkpoint / start / finish props.
