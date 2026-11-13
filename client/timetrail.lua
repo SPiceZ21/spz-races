@@ -380,6 +380,10 @@ RegisterNetEvent("SPZ:tt:OpenMenu", function(payload)
                     icon   = "car",
                     onSelect = function()
                         _selectedModel = car.model
+                        if payload.fixedTrack then
+                            TriggerServerEvent("SPZ:tt:SelectTrack", payload.fixedTrack, car.model)
+                            return
+                        end
                         _buildTrackMenus(menuId)
                         lib.showContext("tt_tracktype")
                     end,
@@ -402,6 +406,10 @@ RegisterNetEvent("SPZ:tt:OpenMenu", function(payload)
         end
 
         lib.registerContext({ id = "tt_main", title = "Time Trial — Select Car", options = main })
+    elseif payload.fixedTrack then
+        -- No car list, track already picked: start with the trial's default car.
+        TriggerServerEvent("SPZ:tt:SelectTrack", payload.fixedTrack, nil)
+        return
     else
         -- No car classes available — skip straight to track selection
         _selectedModel = nil

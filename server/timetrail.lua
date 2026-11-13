@@ -103,8 +103,7 @@ end
 
 -- ── /timetrail — open the car → track selection chain ────────────────────────
 
-RegisterCommand("timetrail", function(source)
-    local src = source
+local function _openTTMenu(src, fixedTrack)
     if TT[src] then
         _notify(src, "Already in Time Trial — use /quittt to exit.", "error")
         return
@@ -132,8 +131,19 @@ RegisterCommand("timetrail", function(source)
     end
     table.sort(tracks, function(a, b) return a.name < b.name end)
 
-    TriggerClientEvent("SPZ:tt:OpenMenu", src, { tracks = tracks, classes = classes })
-end, false)
+    TriggerClientEvent("SPZ:tt:OpenMenu", src, { tracks = tracks, classes = classes, fixedTrack = fixedTrack })
+end
+
+RegisterCommand("timetrail", function(source) _openTTMenu(source) end, false)
+
+-- Hub map "Start time trial": the track is already chosen, so the menu is car
+-- selection only, and picking a car starts the trial on that track.
+RegisterNetEvent("SPZ:tt:OpenMenuForTrack", function(trackIndex)
+    local src = source
+    if not SPZ.Tracks[trackIndex] and SPZ.Tracks[tonumber(trackIndex)] then trackIndex = tonumber(trackIndex) end
+    if not SPZ.Tracks[trackIndex] then return end
+    _openTTMenu(src, trackIndex)
+end)
 
 -- ── Net: player picked a track + car ──────────────────────────────────────────
 
